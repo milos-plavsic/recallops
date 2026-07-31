@@ -1,0 +1,14 @@
+{
+  "servers": {
+    "cockroachdb-cloud": {
+      "type": "http",
+      "url": "https://cockroachlabs.cloud/mcp",
+      "headers": { "mcp-cluster-id": "${input:cockroachClusterId}" }
+    }
+  },
+  "inputs": [{
+    "id": "cockroachClusterId",
+    "type": "promptString",
+    "description": "CockroachDB Cloud cluster ID"
+  }]
+}
