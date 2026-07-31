@@ -4,7 +4,13 @@ from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from recallops.archive import NullEvidenceArchive, S3EvidenceArchive
 from recallops.config import Settings, get_settings
-from recallops.domain import ApprovalRequest, IncidentAnalysis, IncidentCreate
+from recallops.domain import (
+    ApprovalRequest,
+    IncidentAnalysis,
+    IncidentCreate,
+    Memory,
+    OutcomeObservation,
+)
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.service import BedrockReasoner, DeterministicReasoner, IncidentService
 from recallops.store import InMemoryStore, MemoryStore, PostgresStore
@@ -76,5 +82,21 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         if not recorded:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found or already decided")
         return {"recorded": True}
+
+    @app.post(
+        "/v1/incidents/{incident_id}/outcome",
+        response_model=Memory,
+        response_model_exclude={"embedding"},
+        status_code=status.HTTP_201_CREATED,
+    )
+    def observe_outcome(
+        incident_id: UUID, payload: OutcomeObservation, tenant_id: str = Depends(tenant)
+    ) -> Memory:
+        if payload.tenant_id != tenant_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+        memory = service.learn_outcome(incident_id, payload)
+        if memory is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        return memory
 
     return app

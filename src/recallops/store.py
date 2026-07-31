@@ -41,6 +41,8 @@ class MemoryStore(Protocol):
         self, incident: IncidentCreate, analysis: IncidentAnalysis
     ) -> IncidentAnalysis: ...
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None: ...
+    def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None: ...
+    def save_outcome_memory(self, memory: Memory) -> Memory: ...
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
     ) -> bool: ...
@@ -51,6 +53,8 @@ class InMemoryStore:
         self.memories = list(memories)
         self.analyses: dict[tuple[str, UUID], IncidentAnalysis] = {}
         self.idempotency: dict[tuple[str, str], UUID] = {}
+        self.incidents: dict[tuple[str, UUID], IncidentCreate] = {}
+        self.outcome_memories: dict[tuple[str, UUID], Memory] = {}
         self.approvals: set[tuple[str, UUID]] = set()
 
     def add_memory(self, memory: Memory) -> None:
@@ -79,10 +83,24 @@ class InMemoryStore:
             return self.analyses[(incident.tenant_id, existing_id)]
         self.idempotency[key] = analysis.incident_id
         self.analyses[(incident.tenant_id, analysis.incident_id)] = analysis
+        self.incidents[(incident.tenant_id, analysis.incident_id)] = incident
         return analysis
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
         return self.analyses.get((tenant_id, incident_id))
+
+    def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None:
+        return self.incidents.get((tenant_id, incident_id))
+
+    def save_outcome_memory(self, memory: Memory) -> Memory:
+        assert memory.source_incident_id is not None
+        key = (memory.tenant_id, memory.source_incident_id)
+        existing = self.outcome_memories.get(key)
+        if existing is not None:
+            return existing
+        self.outcome_memories[key] = memory
+        self.memories.append(memory)
+        return memory
 
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
@@ -109,8 +127,9 @@ class PostgresStore:
             cursor.execute(
                 """INSERT INTO memories
                 (id, tenant_id, service, service_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, superseded_by, embedding, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                 outcome_score, confidence, valid, superseded_by, source_incident_id,
+                 embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (id) DO NOTHING""",
                 (
                     memory.id,
@@ -124,6 +143,7 @@ class PostgresStore:
                     memory.confidence,
                     memory.valid,
                     memory.superseded_by,
+                    memory.source_incident_id,
                     self._vector(memory.embedding),
                     memory.created_at,
                 ),
@@ -136,7 +156,8 @@ class PostgresStore:
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """SELECT id, tenant_id, service, service_version, symptom, action, outcome,
-                   outcome_score, confidence, valid, superseded_by, embedding::STRING AS embedding,
+                   outcome_score, confidence, valid, superseded_by, source_incident_id,
+                   embedding::STRING AS embedding,
                    created_at, 1 - (embedding <=> %s::VECTOR) AS similarity
                    FROM memories
                    WHERE tenant_id = %s AND service = %s AND valid
@@ -193,6 +214,53 @@ class PostgresStore:
             return None
         row = dict(raw_row)
         return IncidentAnalysis.model_validate(row["analysis"])
+
+    def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT tenant_id, service, service_version, symptom, idempotency_key
+                FROM incidents WHERE id=%s AND tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            raw_row = cursor.fetchone()
+        return IncidentCreate.model_validate(dict(raw_row)) if raw_row is not None else None
+
+    def save_outcome_memory(self, memory: Memory) -> Memory:
+        assert memory.source_incident_id is not None
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO memories
+                (id, tenant_id, service, service_version, symptom, action, outcome,
+                 outcome_score, confidence, valid, superseded_by, source_incident_id,
+                 embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                ON CONFLICT (source_incident_id) DO UPDATE
+                SET source_incident_id=excluded.source_incident_id
+                RETURNING id, tenant_id, service, service_version, symptom, action, outcome,
+                 outcome_score, confidence, valid, superseded_by, source_incident_id,
+                 embedding::STRING AS embedding, created_at""",
+                (
+                    memory.id,
+                    memory.tenant_id,
+                    memory.service,
+                    memory.service_version,
+                    memory.symptom,
+                    memory.action,
+                    memory.outcome,
+                    memory.outcome_score,
+                    memory.confidence,
+                    memory.valid,
+                    memory.superseded_by,
+                    memory.source_incident_id,
+                    self._vector(memory.embedding),
+                    memory.created_at,
+                ),
+            )
+            raw_row = cursor.fetchone()
+        assert raw_row is not None
+        row = dict(raw_row)
+        row["embedding"] = [float(value) for value in row["embedding"].strip("[]").split(",")]
+        return Memory.model_validate(row)
 
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str

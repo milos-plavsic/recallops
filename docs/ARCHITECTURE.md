@@ -8,7 +8,7 @@ Use CockroachDB as the single system of record for operational incident state, v
 
 A semantically similar remediation can be dangerous when it applies to another tenant or software version. Retrieval therefore cannot be the authorization mechanism. Tenant filtering occurs before ranking; invalid memories are excluded; compatibility affects rank; mutating actions require explicit approval.
 
-Keeping operational rows and embeddings in one transactional database avoids consistency gaps between an incident record and a separate vector store. A tenant and service prefix on the vector index aligns index filtering with the dominant retrieval boundary.
+Keeping operational rows and embeddings in one transactional database avoids consistency gaps between an incident record and a separate vector store. A tenant and service prefix on the vector index aligns index filtering with the dominant retrieval boundary. An observed outcome is linked to exactly one source incident, making retries idempotent and preserving the causal provenance of learned memory.
 
 ## Alternatives
 
@@ -18,4 +18,4 @@ Keeping operational rows and embeddings in one transactional database avoids con
 
 ## Current boundary
 
-The MVP proposes and records decisions but does not execute mutations. AWS deployment automation, immutable S3 evidence, CloudWatch ingestion, and MCP/ccloud demonstrations are the next vertical increments.
+The MVP proposes and records decisions but does not execute infrastructure mutations. It closes the memory lifecycle by learning from observed outcomes after operator review. Authenticated identity, allowlisted execution adapters, postcondition verification, and a judge-verifiable managed MCP workflow remain the next vertical increments.

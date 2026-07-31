@@ -10,6 +10,7 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
 - Tenant-prefixed vector retrieval and application-level tenant isolation.
 - Outcome, confidence, and service-version-aware memory ranking.
 - Idempotent incident ingestion.
+- Closed-loop outcome learning: resolved incidents become idempotent, attributable vector memories.
 - Mandatory approval records for mutating remediation proposals.
 - Amazon Bedrock Converse reasoning and Titan embeddings behind explicit provider flags.
 - Versioned, encrypted Amazon S3 evidence archival when a bucket is configured.
@@ -29,6 +30,10 @@ Seed three incident memories and run the outcome-conditioned retrieval scenario:
 docker compose --profile seed run --rm seed
 ./scripts/demo.ps1
 ```
+
+The demo analyzes an incident, records the operator's decision, observes the real outcome, and
+persists that experience as memory for future incidents. Re-running the seed is safe: the three
+demonstration memories use deterministic identifiers.
 
 For development without Docker:
 
