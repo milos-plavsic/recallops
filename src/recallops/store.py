@@ -16,13 +16,21 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
     return dot / (left_norm * right_norm) if left_norm and right_norm else 0.0
 
 
+def memory_rank_score(
+    similarity: float, outcome_score: float, compatibility: float, confidence: float
+) -> float:
+    return (
+        0.55 * similarity
+        + 0.25 * outcome_score
+        + 0.15 * compatibility
+        + 0.05 * confidence
+    )
+
+
 def rank_memory(memory: Memory, similarity: float, service_version: str) -> RetrievedMemory:
     compatibility = 1.0 if memory.service_version == service_version else 0.2
-    score = (
-        0.55 * similarity
-        + 0.25 * memory.outcome_score
-        + 0.15 * compatibility
-        + 0.05 * memory.confidence
+    score = memory_rank_score(
+        similarity, memory.outcome_score, compatibility, memory.confidence
     )
     return RetrievedMemory(
         memory=memory,

@@ -22,5 +22,5 @@ jobs:
       - run: python -m ruff check .
       - run: python -m mypy
       - run: python -m pytest --cov=recallops --cov-report=term-missing --cov-fail-under=75
+      - run: recallops-eval
       - run: docker compose config --quiet
-
