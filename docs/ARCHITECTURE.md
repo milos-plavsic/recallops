@@ -10,6 +10,12 @@ A semantically similar remediation can be dangerous when it applies to another t
 
 Keeping operational rows and embeddings in one transactional database avoids consistency gaps between an incident record and a separate vector store. A tenant and service prefix on the vector index aligns index filtering with the dominant retrieval boundary. An observed outcome is linked to exactly one source incident, making retries idempotent and preserving the causal provenance of learned memory.
 
+Every analysis returns an ordered, typed agent trace for embedding, governed retrieval,
+and evidence-grounded reasoning. Each step records read-only risk, bounded attempts and
+timeouts, status, privacy-preserving input digest, and evidence identifiers. The stored
+incident supplies the replay input while the digest detects drift without duplicating
+potentially sensitive symptoms into telemetry.
+
 ## Memory governance
 
 Observed outcomes enter `pending_review` with the observer identity and are excluded from retrieval.

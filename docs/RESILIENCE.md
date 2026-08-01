@@ -8,17 +8,19 @@ second application-level retry loop that would multiply latency and load.
 
 | Failure | System behavior | Safety property |
 | --- | --- | --- |
-| Bedrock embedding unavailable or malformed | Use deterministic 1024-dimensional embedding and mark the analysis degraded | Retrieval stays tenant/state filtered; no write action is invented |
+| Bedrock embedding unavailable or malformed | Skip vector retrieval, abstain from memory-backed remediation, and mark the analysis degraded | No vector from a different semantic space is queried or persisted |
 | Bedrock reasoning unavailable or malformed | Render a deterministic evidence-only diagnosis and mark the analysis degraded | The fallback cannot add telemetry beyond supplied memory |
 | S3 evidence write unavailable | Persist the CockroachDB analysis, emit a structured error, and return the result | Incident response remains available; archival loss is observable |
 | CockroachDB unavailable or deadline exceeded | Fail the API request | The service never answers from uncommitted or cross-tenant state |
 | Concurrent duplicate request | CockroachDB unique key or in-memory lock returns one incident | Retries cannot create multiple incident identities |
 | ECS revision cannot become healthy | Deployment circuit breaker rolls back | A failed release does not replace the last healthy revision |
 
-The degradation boundary is deliberately asymmetric. AI enrichment and derived S3
-evidence may fail open into a conservative diagnostic response. CockroachDB is the
-tenant-isolated source of truth and fails closed. Mutating remediation always retains
-its approval requirement.
+The degradation boundary is deliberately asymmetric. Reasoning may fall back to a
+deterministic evidence-only diagnostic, but embeddings never fall back across semantic
+spaces. An embedding outage therefore removes memory-backed remediation and learning
+until the configured provider recovers. Derived S3 evidence delivery retries through
+the transactional outbox. CockroachDB is the tenant-isolated source of truth and fails
+closed. Mutating remediation always retains its approval requirement.
 
 ## Reproduce
 

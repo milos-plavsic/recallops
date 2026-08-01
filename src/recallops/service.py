@@ -9,6 +9,7 @@ from botocore.exceptions import BotoCoreError, ClientError
 from recallops.archive import EvidenceArchive, NullEvidenceArchive
 from recallops.domain import (
     ActionRisk,
+    AgentToolTrace,
     ApprovalRequest,
     ExecutionAttestation,
     ExecutionAttestationRequest,
@@ -20,6 +21,7 @@ from recallops.domain import (
     OutcomeObservation,
     ProposedAction,
     RetrievedMemory,
+    ToolStatus,
 )
 from recallops.embedding import Embedder
 from recallops.resilience import DependencyUnavailable, aws_client_config
@@ -32,6 +34,11 @@ class IncidentWorkflowError(ValueError):
 
 def action_hash(command: str) -> str:
     return hashlib.sha256(command.encode("utf-8")).hexdigest()
+
+
+def trace_input_digest(*values: str) -> str:
+    canonical = "\x1f".join(values)
+    return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
 
 
 class Reasoner(Protocol):
@@ -110,6 +117,8 @@ class IncidentService:
         min_confidence: float = 0.50,
         min_rank_score: float = 0.65,
         min_margin: float = 0.03,
+        provider_max_attempts: int = 3,
+        provider_timeout_seconds: float = 15,
     ) -> None:
         self._store = store
         self._embedder = embedder
@@ -120,6 +129,8 @@ class IncidentService:
         self._min_confidence = min_confidence
         self._min_rank_score = min_rank_score
         self._min_margin = min_margin
+        self._provider_max_attempts = provider_max_attempts
+        self._provider_timeout_seconds = provider_timeout_seconds
 
     def _abstention_reasons(self, memories: list[RetrievedMemory]) -> list[str]:
         if not memories:
@@ -142,12 +153,36 @@ class IncidentService:
 
     def analyze(self, incident: IncidentCreate) -> IncidentAnalysis:
         degraded: list[str] = []
+        trace: list[AgentToolTrace] = []
+        embedding_input = f"{incident.service} {incident.symptom}"
         try:
-            embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+            embedding = self._embedder.embed(embedding_input)
+            trace.append(
+                AgentToolTrace(
+                    sequence=1,
+                    tool="embed_incident",
+                    status=ToolStatus.SUCCEEDED,
+                    input_digest=trace_input_digest(embedding_input, self._embedder.space_id),
+                    max_attempts=self._provider_max_attempts,
+                    timeout_seconds=self._provider_timeout_seconds,
+                    evidence_refs=[f"embedding-space:{self._embedder.space_id}"],
+                )
+            )
         except DependencyUnavailable as error:
             degraded.append(error.dependency)
             structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
             embedding = None
+            trace.append(
+                AgentToolTrace(
+                    sequence=1,
+                    tool="embed_incident",
+                    status=ToolStatus.DEGRADED,
+                    input_digest=trace_input_digest(embedding_input, self._embedder.space_id),
+                    max_attempts=self._provider_max_attempts,
+                    timeout_seconds=self._provider_timeout_seconds,
+                    degraded_reason=error.dependency,
+                )
+            )
         memories = (
             self._store.find_memories(
                 incident, embedding, self._embedder.space_id, self._max_memories
@@ -155,15 +190,54 @@ class IncidentService:
             if embedding is not None
             else []
         )
+        trace.append(
+            AgentToolTrace(
+                sequence=2,
+                tool="retrieve_governed_memory",
+                status=ToolStatus.SUCCEEDED if embedding is not None else ToolStatus.SKIPPED,
+                input_digest=trace_input_digest(
+                    incident.tenant_id,
+                    incident.service,
+                    incident.service_version,
+                    self._embedder.space_id,
+                ),
+                max_attempts=1,
+                evidence_refs=[f"memory:{item.memory.id}" for item in memories],
+                degraded_reason=("embedding_unavailable" if embedding is None else None),
+            )
+        )
         abstention_reasons = self._abstention_reasons(memories)
         best = memories[0] if memories and not abstention_reasons else None
         evidence = best.memory.outcome if best else "No compatible historical memory was found."
         try:
             diagnosis = self._reasoner.diagnosis(incident, evidence)
+            trace.append(
+                AgentToolTrace(
+                    sequence=3,
+                    tool="reason_from_evidence",
+                    status=ToolStatus.SUCCEEDED,
+                    input_digest=trace_input_digest(incident.model_dump_json(), evidence),
+                    max_attempts=self._provider_max_attempts,
+                    timeout_seconds=self._provider_timeout_seconds,
+                    evidence_refs=[f"memory:{best.memory.id}"] if best else [],
+                )
+            )
         except DependencyUnavailable as error:
             degraded.append(error.dependency)
             structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
             diagnosis = DeterministicReasoner().diagnosis(incident, evidence)
+            trace.append(
+                AgentToolTrace(
+                    sequence=3,
+                    tool="reason_from_evidence",
+                    status=ToolStatus.DEGRADED,
+                    input_digest=trace_input_digest(incident.model_dump_json(), evidence),
+                    max_attempts=self._provider_max_attempts,
+                    timeout_seconds=self._provider_timeout_seconds,
+                    evidence_refs=[f"memory:{best.memory.id}"] if best else [],
+                    degraded_reason=error.dependency,
+                )
+            )
         if best:
             proposed = ProposedAction(
                 name="apply_prior_remediation",
@@ -191,6 +265,7 @@ class IncidentService:
                 confidence=confidence,
                 memories=memories,
                 proposed_action=proposed,
+                agent_trace=trace,
                 retrieval_abstention_reasons=abstention_reasons,
                 degraded_dependencies=degraded,
             ),
@@ -239,9 +314,7 @@ class IncidentService:
             ExecutionAttestation(incident_id=incident_id, **request.model_dump())
         )
 
-    def learn_outcome(
-        self, incident_id: UUID, observation: OutcomeObservation
-    ) -> Memory | None:
+    def learn_outcome(self, incident_id: UUID, observation: OutcomeObservation) -> Memory | None:
         incident = self._store.get_incident(incident_id, observation.tenant_id)
         if incident is None:
             return None
@@ -273,7 +346,5 @@ class IncidentService:
         )
         return self._store.save_outcome_memory(memory)
 
-    def govern_memory(
-        self, memory_id: UUID, request: MemoryGovernanceRequest
-    ) -> Memory | None:
+    def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
         return self._store.govern_memory(memory_id, request)

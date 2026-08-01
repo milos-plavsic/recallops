@@ -51,6 +51,13 @@ function incidentPayload() {
     service_version: $("#version").value, symptom: $("#symptom").value,
     idempotency_key: state.key };
 }
+function renderTrace(trace = []) {
+  const steps = trace.map((step) => `<li class="trace-${escapeHtml(step.status)}">
+    <span>${step.sequence}</span><b>${escapeHtml(step.tool.replaceAll("_", " "))}</b>
+    <small>${escapeHtml(step.status)} · read-only · ≤${step.max_attempts} attempt${step.max_attempts === 1 ? "" : "s"}${step.timeout_seconds ? ` · ${step.timeout_seconds}s timeout` : ""}</small>
+  </li>`).join("");
+  return `<details class="agent-trace" open><summary>Replayable agent trace</summary><ol>${steps}</ol></details>`;
+}
 function renderAnalysis(analysis) {
   const memory = analysis.retrieval_abstention_reasons.length ? null : analysis.memories[0];
   const degraded = analysis.degraded_dependencies.length ? analysis.degraded_dependencies.join(", ") : "none";
@@ -61,7 +68,7 @@ function renderAnalysis(analysis) {
     <dt>Safety gate</dt><dd class="${analysis.proposed_action.requires_approval ? "risk" : ""}">${analysis.proposed_action.requires_approval ? "Human approval required" : "Read-only; no approval required"}</dd>
     <dt>Best memory</dt><dd>${memory ? `${escapeHtml(memory.memory.outcome)} · rank ${memory.rank_score.toFixed(3)}` : "Abstained — no compatible successful memory"}</dd>
     <dt>Retrieval abstention</dt><dd>${escapeHtml(abstention)}</dd>
-    <dt>Degraded</dt><dd>${escapeHtml(degraded)}</dd></dl>`;
+    <dt>Degraded</dt><dd>${escapeHtml(degraded)}</dd></dl>${renderTrace(analysis.agent_trace)}`;
   $("#loop-actions").hidden = false;
   state.action = analysis.proposed_action;
   $("#approve").disabled = !state.action.requires_approval;

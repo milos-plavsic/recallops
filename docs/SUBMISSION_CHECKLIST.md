@@ -9,11 +9,11 @@ immediately before final submission because the organizer may amend them.
 | New agentic application built during submission period | Git history and `docs/PROVENANCE.md` | Ready |
 | CockroachDB is the persistent memory layer | `migrations/`, `store.py`, architecture ADR | Ready |
 | At least two CockroachDB tools | Distributed Vector Indexing in application; ccloud CLI proof and Managed MCP judge config in `docs/COCKROACH_TOOLS.md` | Ready |
-| At least one AWS service meaningfully integrated | Live Bedrock reasoning/embedding, ECS, S3, API Gateway, Cognito, and CloudWatch | **Verified live** |
+| At least one AWS service meaningfully integrated | ECS, S3, API Gateway, Cognito, CloudWatch, and deployed Bedrock reasoning/embedding paths | **AWS runtime verified; Bedrock account authorization blocked** |
 | Functional, consistently installable project | Docker one-command demo, checksum migrations, CI | Ready |
 | Public open-source repository and visible license | `https://github.com/milos-plavsic/recallops`, MIT | Ready |
 | Source, README, dependencies, examples, dataset, setup/run instructions | Repository root, `.env.example`, evaluation dataset, judge guide | Ready |
-| Functional demo URL free for judges through judging | https://c1mmwo9632.execute-api.us-east-1.amazonaws.com | **Verified live** |
+| Functional demo URL free for judges through judging | https://c1mmwo9632.execute-api.us-east-1.amazonaws.com | **Verified live; Bedrock-dependent paths abstain until account authorization is restored** |
 | English project description | `docs/JUDGE_GUIDE.md` submission narrative | Ready |
 | Public YouTube/Vimeo demo under three minutes | `docs/JUDGE_GUIDE.md` video plan | **Pending recording/upload** |
 | Video shows functioning project and CockroachDB memory | Shot plan explicitly includes live loop and memory layer | Pending video |
@@ -37,3 +37,11 @@ immediately before final submission because the organizer may amend them.
 6. Run `./scripts/submission-audit.ps1 -DemoUrl … -VideoUrl …` from clean `main`.
 7. Submit before the deadline, open the resulting submission in a private browser,
    and preserve screenshots/confirmation email as proof of receipt.
+
+## Active external gate
+
+Amazon Bedrock currently returns `authorizationStatus: NOT_AUTHORIZED` for Amazon-owned
+models even when invoked as the account root. The same account is blocked from creating
+CloudFront distributions as unverified. Do not describe Bedrock as verified live until
+`scripts/bedrock-readiness.ps1` passes and a real invocation succeeds. The evidence and
+support-case payload are recorded in `docs/AWS_ACCOUNT_BLOCKER.md`.

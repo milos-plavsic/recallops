@@ -25,7 +25,8 @@ def test_archive_payload_excludes_raw_embeddings() -> None:
     payload = evidence_payload(incident, analysis)
 
     assert payload["schema_version"] == 1
-    assert "embedding" not in str(payload)
+    archived_memories = payload["analysis"]["memories"]
+    assert all("embedding" not in item["memory"] for item in archived_memories)
 
 
 class FakeS3Client:

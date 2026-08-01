@@ -95,8 +95,11 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         min_confidence=settings.retrieval_min_confidence,
         min_rank_score=settings.retrieval_min_rank_score,
         min_margin=settings.retrieval_min_margin,
+        provider_max_attempts=settings.provider_max_attempts,
+        provider_timeout_seconds=settings.provider_read_timeout_seconds,
     )
     authenticator = create_authenticator(settings)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         del app
@@ -217,9 +220,7 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         response_model=IncidentAnalysis,
         response_model_exclude={"memories": {"__all__": {"memory": {"embedding"}}}},
     )
-    def get_incident(
-        incident_id: UUID, identity: AuthenticatedPrincipal
-    ) -> IncidentAnalysis:
+    def get_incident(incident_id: UUID, identity: AuthenticatedPrincipal) -> IncidentAnalysis:
         result = store.get_analysis(incident_id, identity.tenant_id)
         if result is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
