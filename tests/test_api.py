@@ -55,7 +55,11 @@ def test_tenant_boundary_is_enforced() -> None:
 
 def test_health() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
-    assert client.get("/health").json() == {"status": "ok"}
+    response = client.get("/health")
+    assert response.json() == {"status": "ok"}
+    assert response.headers["x-content-type-options"] == "nosniff"
+    assert response.headers["x-frame-options"] == "DENY"
+    assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
 
 
 def test_incident_read_and_single_approval() -> None:
