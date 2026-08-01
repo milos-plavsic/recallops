@@ -18,6 +18,11 @@ class Settings(BaseSettings):
     evidence_bucket: str | None = None
     log_level: str = "INFO"
     max_memories: int = Field(default=5, ge=1, le=20)
+    auth_mode: Literal["demo", "oidc"] = "demo"
+    oidc_issuer: str | None = None
+    oidc_audience: str | None = None
+    oidc_tenant_claim: str = "tenant_id"
+    oidc_roles_claim: str = "cognito:groups"
 
 
 @lru_cache

@@ -28,7 +28,7 @@ def test_health() -> None:
 
 def test_incident_read_and_single_approval() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
-    headers = {"X-Tenant-ID": "demo"}
+    headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator-1"}
     created = client.post(
         "/v1/incidents",
         headers=headers,
@@ -89,7 +89,7 @@ def test_approval_rejects_cross_tenant_payload() -> None:
 
 def test_outcome_is_learned_once_and_embedding_is_not_exposed() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
-    headers = {"X-Tenant-ID": "demo"}
+    headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator-observer"}
     created = client.post(
         "/v1/incidents",
         headers=headers,
@@ -140,7 +140,7 @@ def test_outcome_for_unknown_incident_returns_not_found() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     response = client.post(
         "/v1/incidents/00000000-0000-0000-0000-000000000001/outcome",
-        headers={"X-Tenant-ID": "demo"},
+        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator-1"},
         json={
             "tenant_id": "demo",
             "action_taken": "inspect service metrics",
@@ -155,10 +155,10 @@ def test_outcome_for_unknown_incident_returns_not_found() -> None:
 
 def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
-    headers = {"X-Tenant-ID": "demo"}
+    observer_headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator-observer"}
     incident = client.post(
         "/v1/incidents",
-        headers=headers,
+        headers=observer_headers,
         json={
             "tenant_id": "demo",
             "service": "checkout",
@@ -169,7 +169,7 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
     ).json()
     memory = client.post(
         f"/v1/incidents/{incident['incident_id']}/outcome",
-        headers=headers,
+        headers=observer_headers,
         json={
             "tenant_id": "demo",
             "action_taken": "reduce worker concurrency",
@@ -181,7 +181,7 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
     ).json()
     self_review = client.post(
         f"/v1/memories/{memory['id']}/governance",
-        headers=headers,
+        headers=observer_headers,
         json={
             "tenant_id": "demo",
             "actor_id": "operator-observer",
@@ -193,7 +193,7 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
 
     activated = client.post(
         f"/v1/memories/{memory['id']}/governance",
-        headers=headers,
+        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator-reviewer"},
         json={
             "tenant_id": "demo",
             "actor_id": "operator-reviewer",
@@ -221,7 +221,7 @@ def test_unknown_memory_governance_returns_not_found() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     response = client.post(
         "/v1/memories/00000000-0000-0000-0000-000000000001/governance",
-        headers={"X-Tenant-ID": "demo"},
+        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator-reviewer"},
         json={
             "tenant_id": "demo",
             "actor_id": "operator-reviewer",
@@ -230,3 +230,31 @@ def test_unknown_memory_governance_returns_not_found() -> None:
         },
     )
     assert response.status_code == 404
+
+
+def test_demo_auth_requires_tenant_identity() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    response = client.get(
+        "/v1/incidents/00000000-0000-0000-0000-000000000001"
+    )
+    assert response.status_code == 401
+    assert response.headers["www-authenticate"] == "Bearer"
+
+
+def test_governance_requires_reviewer_role() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    response = client.post(
+        "/v1/memories/00000000-0000-0000-0000-000000000001/governance",
+        headers={
+            "X-Tenant-ID": "demo",
+            "X-Actor-ID": "operator-1",
+            "X-Roles": "operator",
+        },
+        json={
+            "tenant_id": "demo",
+            "actor_id": "operator-1",
+            "action": "revoke",
+            "reason": "operators cannot govern memory",
+        },
+    )
+    assert response.status_code == 403

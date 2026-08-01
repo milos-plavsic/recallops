@@ -13,6 +13,7 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
 - Closed-loop outcome learning: resolved incidents become idempotent, attributable vector memories.
 - Four-eyes memory governance with quarantine, activation, revocation, supersession, and audit events.
 - Conservative confidence decay: positive evidence ages while known failure penalties persist.
+- RS256 OIDC authentication with issuer, expiry, application, access-token, tenant, and role checks.
 - Mandatory approval records for mutating remediation proposals.
 - Amazon Bedrock Converse reasoning and Titan embeddings behind explicit provider flags.
 - Versioned, encrypted Amazon S3 evidence archival when a bucket is configured.
@@ -56,6 +57,24 @@ RECALLOPS_AWS_REGION=us-east-1
 ```
 
 Do not place AWS credentials in this repository. Use an ECS task role or another short-lived AWS credential provider.
+
+## Enable verified identity
+
+Local demos use explicit `X-Tenant-ID`, `X-Actor-ID`, and `X-Roles` headers. That mode is never a
+production trust boundary. Public deployments set:
+
+```text
+RECALLOPS_AUTH_MODE=oidc
+RECALLOPS_OIDC_ISSUER=https://cognito-idp.us-east-1.amazonaws.com/<user-pool-id>
+RECALLOPS_OIDC_AUDIENCE=<app-client-id>
+RECALLOPS_OIDC_TENANT_CLAIM=tenant_id
+RECALLOPS_OIDC_ROLES_CLAIM=cognito:groups
+```
+
+OIDC mode accepts RS256 access tokens only. It validates the signature against the issuer JWKS,
+requires expiry and issued-at claims, binds the token to the configured application, and derives
+tenant, actor, and roles exclusively from verified claims. Callers cannot override identity with
+headers or request fields. Operators may approve and observe outcomes; reviewers govern memory.
 
 ## Safety boundary
 
