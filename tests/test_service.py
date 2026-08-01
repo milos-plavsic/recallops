@@ -1,13 +1,20 @@
+from datetime import UTC, datetime, timedelta
+
+import pytest
+
 from recallops.domain import (
     ActionRisk,
+    GovernanceAction,
     IncidentAnalysis,
     IncidentCreate,
     Memory,
+    MemoryGovernanceRequest,
+    MemoryState,
     OutcomeObservation,
 )
 from recallops.embedding import DeterministicEmbedder
 from recallops.service import DeterministicReasoner, IncidentService
-from recallops.store import InMemoryStore
+from recallops.store import InMemoryStore, rank_memory
 
 
 class RecordingArchive:
@@ -97,6 +104,7 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
         outcome="latency recovered without recurrence",
         outcome_score=1.0,
         confidence=0.98,
+        actor_id="operator-observer",
     )
 
     first = service.learn_outcome(analysis.incident_id, observation)
@@ -104,9 +112,27 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
     assert first is not None
     assert second is not None
     assert first.id == second.id
+    assert first.state is MemoryState.PENDING_REVIEW
+
+    before_review = service.analyze(
+        incident().model_copy(update={"idempotency_key": "event-0002"})
+    )
+    assert before_review.memories == []
+
+    activated = service.govern_memory(
+        first.id,
+        MemoryGovernanceRequest(
+            tenant_id="demo",
+            actor_id="operator-reviewer",
+            action=GovernanceAction.ACTIVATE,
+            reason="independent telemetry review confirms sustained recovery",
+        ),
+    )
+    assert activated is not None
+    assert activated.state is MemoryState.ACTIVE
 
     future = service.analyze(
-        incident().model_copy(update={"idempotency_key": "event-0002"})
+        incident().model_copy(update={"idempotency_key": "event-0003"})
     )
     assert future.memories[0].memory.id == first.id
     assert future.proposed_action.command == "reduce worker concurrency"
@@ -124,6 +150,76 @@ def test_outcome_learning_enforces_tenant_boundary() -> None:
             outcome="should never be learned",
             outcome_score=1.0,
             confidence=1.0,
+            actor_id="attacker",
         ),
     )
     assert result is None
+
+
+def test_memory_activation_requires_independent_reviewer() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+    learned = service.learn_outcome(
+        analysis.incident_id,
+        OutcomeObservation(
+            tenant_id="demo",
+            action_taken="reduce worker concurrency",
+            outcome="latency recovered",
+            outcome_score=1.0,
+            confidence=0.9,
+            actor_id="operator-1",
+        ),
+    )
+    assert learned is not None
+    request = MemoryGovernanceRequest(
+        tenant_id="demo",
+        actor_id="operator-1",
+        action=GovernanceAction.ACTIVATE,
+        reason="self review must not activate memory",
+    )
+    with pytest.raises(ValueError, match="independent reviewer"):
+        service.govern_memory(learned.id, request)
+
+
+def test_memory_can_be_superseded_only_by_active_same_tenant_memory() -> None:
+    embedder = DeterministicEmbedder()
+    old = memory(embedder, "2026.07.31", 1.0, "old remediation")
+    replacement = memory(embedder, "2026.07.31", 1.0, "safer remediation")
+    store = InMemoryStore([old, replacement])
+    service = IncidentService(store, embedder, DeterministicReasoner())
+
+    updated = service.govern_memory(
+        old.id,
+        MemoryGovernanceRequest(
+            tenant_id="demo",
+            actor_id="reviewer-1",
+            action=GovernanceAction.SUPERSEDE,
+            reason="new remediation has stronger postcondition evidence",
+            replacement_memory_id=replacement.id,
+        ),
+    )
+    assert updated is not None
+    assert updated.state is MemoryState.SUPERSEDED
+    assert updated.valid is False
+    assert updated.superseded_by == replacement.id
+    assert store.memory_events[-1].from_state is MemoryState.ACTIVE
+    assert store.memory_events[-1].to_state is MemoryState.SUPERSEDED
+
+
+def test_positive_evidence_decays_but_known_failure_penalty_persists() -> None:
+    embedder = DeterministicEmbedder()
+    as_of = datetime(2026, 8, 1, tzinfo=UTC)
+    created_at = as_of - timedelta(days=360)
+    success = memory(embedder, "2026.07.31", 1.0, "successful remediation").model_copy(
+        update={"confidence": 1.0, "created_at": created_at}
+    )
+    failure = memory(embedder, "2026.07.31", -1.0, "failed remediation").model_copy(
+        update={"confidence": 1.0, "created_at": created_at}
+    )
+
+    ranked_success = rank_memory(success, 1.0, "2026.07.31", as_of=as_of)
+    ranked_failure = rank_memory(failure, 1.0, "2026.07.31", as_of=as_of)
+    assert ranked_success.freshness == pytest.approx(0.25)
+    assert ranked_success.effective_confidence == pytest.approx(0.25)
+    assert ranked_failure.rank_score < ranked_success.rank_score

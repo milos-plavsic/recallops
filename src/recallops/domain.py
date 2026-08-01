@@ -15,6 +15,21 @@ class IncidentStatus(StrEnum):
     MITIGATED = "mitigated"
 
 
+class MemoryState(StrEnum):
+    PENDING_REVIEW = "pending_review"
+    ACTIVE = "active"
+    QUARANTINED = "quarantined"
+    SUPERSEDED = "superseded"
+    REVOKED = "revoked"
+
+
+class GovernanceAction(StrEnum):
+    ACTIVATE = "activate"
+    QUARANTINE = "quarantine"
+    SUPERSEDE = "supersede"
+    REVOKE = "revoke"
+
+
 class IncidentCreate(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
     service: str = Field(min_length=1, max_length=120)
@@ -34,8 +49,12 @@ class Memory(BaseModel):
     outcome_score: float = Field(ge=-1, le=1)
     confidence: float = Field(ge=0, le=1)
     valid: bool = True
+    state: MemoryState = MemoryState.ACTIVE
     superseded_by: UUID | None = None
     source_incident_id: UUID | None = None
+    observed_by: str | None = None
+    reviewed_by: str | None = None
+    reviewed_at: datetime | None = None
     embedding: list[float] = Field(min_length=1024, max_length=1024)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -44,6 +63,8 @@ class RetrievedMemory(BaseModel):
     memory: Memory
     semantic_similarity: float = Field(ge=-1, le=1)
     compatibility: float = Field(ge=0, le=1)
+    freshness: float = Field(ge=0, le=1)
+    effective_confidence: float = Field(ge=0, le=1)
     rank_score: float
 
 
@@ -78,3 +99,24 @@ class OutcomeObservation(BaseModel):
     outcome: str = Field(min_length=3, max_length=4000)
     outcome_score: float = Field(ge=-1, le=1)
     confidence: float = Field(ge=0, le=1)
+    actor_id: str = Field(min_length=1, max_length=120)
+
+
+class MemoryGovernanceRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    actor_id: str = Field(min_length=1, max_length=120)
+    action: GovernanceAction
+    reason: str = Field(min_length=3, max_length=1000)
+    replacement_memory_id: UUID | None = None
+
+
+class MemoryEvent(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    memory_id: UUID
+    tenant_id: str
+    actor_id: str
+    action: GovernanceAction
+    reason: str
+    from_state: MemoryState
+    to_state: MemoryState
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))

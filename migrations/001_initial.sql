@@ -14,8 +14,13 @@ CREATE TABLE IF NOT EXISTS memories (
     outcome_score FLOAT8 NOT NULL CHECK (outcome_score BETWEEN -1 AND 1),
     confidence FLOAT8 NOT NULL CHECK (confidence BETWEEN 0 AND 1),
     valid BOOL NOT NULL DEFAULT true,
+    state STRING NOT NULL DEFAULT 'active'
+        CHECK (state IN ('pending_review', 'active', 'quarantined', 'superseded', 'revoked')),
     superseded_by UUID NULL REFERENCES memories(id),
     source_incident_id UUID NULL,
+    observed_by STRING NULL,
+    reviewed_by STRING NULL,
+    reviewed_at TIMESTAMPTZ NULL,
     embedding VECTOR(1024) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     INDEX memories_lookup (tenant_id, service, valid, created_at DESC),

@@ -10,6 +10,18 @@ A semantically similar remediation can be dangerous when it applies to another t
 
 Keeping operational rows and embeddings in one transactional database avoids consistency gaps between an incident record and a separate vector store. A tenant and service prefix on the vector index aligns index filtering with the dominant retrieval boundary. An observed outcome is linked to exactly one source incident, making retries idempotent and preserving the causal provenance of learned memory.
 
+## Memory governance
+
+Observed outcomes enter `pending_review` with the observer identity and are excluded from retrieval.
+Activation requires a different reviewer. Active memories can be quarantined, revoked, or superseded;
+supersession requires an active replacement in the same tenant. Terminal memories cannot silently
+re-enter circulation. Every accepted transition and its actor, reason, prior state, and next state is
+written to `memory_events` in the same transaction as the memory update.
+
+Positive outcome evidence and confidence decay with a 180-day half-life. Negative outcome evidence
+retains its full penalty: age does not make a known failed remediation safe. Decay changes ranking,
+not history; original observations remain immutable and auditable.
+
 ## Alternatives
 
 - Separate vector database: mature and flexible, but adds synchronization and operational failure modes without benefit to this scope.
@@ -18,4 +30,7 @@ Keeping operational rows and embeddings in one transactional database avoids con
 
 ## Current boundary
 
-The MVP proposes and records decisions but does not execute infrastructure mutations. It closes the memory lifecycle by learning from observed outcomes after operator review. Authenticated identity, allowlisted execution adapters, postcondition verification, and a judge-verifiable managed MCP workflow remain the next vertical increments.
+The MVP proposes and records decisions but does not execute infrastructure mutations. It closes the
+memory lifecycle with quarantined learning, independent review, revocation, supersession, and
+confidence decay. Verified identity, allowlisted execution adapters, and postcondition verification
+remain later vertical increments.

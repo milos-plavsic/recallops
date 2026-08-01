@@ -9,11 +9,12 @@ from recallops.domain import (
     IncidentAnalysis,
     IncidentCreate,
     Memory,
+    MemoryGovernanceRequest,
     OutcomeObservation,
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.service import BedrockReasoner, DeterministicReasoner, IncidentService
-from recallops.store import InMemoryStore, MemoryStore, PostgresStore
+from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
 
 
 def create_app(settings: Settings | None = None, store: MemoryStore | None = None) -> FastAPI:
@@ -97,6 +98,26 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         memory = service.learn_outcome(incident_id, payload)
         if memory is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        return memory
+
+    @app.post(
+        "/v1/memories/{memory_id}/governance",
+        response_model=Memory,
+        response_model_exclude={"embedding"},
+    )
+    def govern_memory(
+        memory_id: UUID,
+        payload: MemoryGovernanceRequest,
+        tenant_id: str = Depends(tenant),
+    ) -> Memory:
+        if payload.tenant_id != tenant_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+        try:
+            memory = service.govern_memory(memory_id, payload)
+        except MemoryGovernanceError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        if memory is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "memory not found")
         return memory
 
     return app

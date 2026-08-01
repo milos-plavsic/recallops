@@ -9,6 +9,8 @@ from recallops.domain import (
     IncidentAnalysis,
     IncidentCreate,
     Memory,
+    MemoryGovernanceRequest,
+    MemoryState,
     OutcomeObservation,
     ProposedAction,
 )
@@ -124,7 +126,15 @@ class IncidentService:
             outcome=observation.outcome,
             outcome_score=observation.outcome_score,
             confidence=observation.confidence,
+            valid=False,
+            state=MemoryState.PENDING_REVIEW,
             source_incident_id=incident_id,
+            observed_by=observation.actor_id,
             embedding=self._embedder.embed(f"{incident.service} {incident.symptom}"),
         )
         return self._store.save_outcome_memory(memory)
+
+    def govern_memory(
+        self, memory_id: UUID, request: MemoryGovernanceRequest
+    ) -> Memory | None:
+        return self._store.govern_memory(memory_id, request)
