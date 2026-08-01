@@ -81,6 +81,21 @@
         "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:PassRole"
       ],
       "Resource": "arn:aws:iam::778900739705:role/recallops-demo-*"
+    },
+    {
+      "Sid": "CreateRequiredServiceLinkedRoles",
+      "Effect": "Allow",
+      "Action": "iam:CreateServiceLinkedRole",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "iam:AWSServiceName": [
+            "elasticloadbalancing.amazonaws.com",
+            "ecs.amazonaws.com",
+            "cloudfront.amazonaws.com"
+          ]
+        }
+      }
     }
   ]
 }
