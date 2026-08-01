@@ -1,5 +1,12 @@
 # Judge guide
 
+Live demo: https://c1mmwo9632.execute-api.us-east-1.amazonaws.com
+
+Use the separately supplied operator and reviewer credentials. Sign in as the
+operator for analysis and outcome capture, then select **Switch identity** and sign
+in as the reviewer to activate the pending memory. The two accounts deliberately
+cannot substitute for one another.
+
 ## The 30-second thesis
 
 Most agent memory retrieves what sounds similar. RecallOps retrieves what is allowed,

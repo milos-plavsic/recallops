@@ -16,6 +16,10 @@ Parameters:
   BedrockEmbeddingModelId: { Type: String, Default: amazon.titan-embed-text-v2:0 }
   BedrockModelArns: { Type: CommaDelimitedList }
   DesiredCount: { Type: Number, Default: 1, MinValue: 1, MaxValue: 3 }
+  JudgeOperatorEmail: { Type: String, Default: recallops.operator@example.com }
+  JudgeReviewerEmail: { Type: String, Default: recallops.reviewer@example.com }
+  JudgeOperatorPassword: { Type: String, NoEcho: true, MinLength: 14 }
+  JudgeReviewerPassword: { Type: String, NoEcho: true, MinLength: 14 }
 
 Resources:
   OriginSubnetA:
@@ -123,7 +127,7 @@ Resources:
       AdminCreateUserConfig: { AllowAdminCreateUserOnly: true }
       AutoVerifiedAttributes: [email]
       UsernameAttributes: [email]
-      DeletionProtection: ACTIVE
+      DeletionProtection: INACTIVE
       MfaConfiguration: 'OFF'
       Schema:
         - Name: tenant_id
@@ -150,6 +154,96 @@ Resources:
   ReviewerGroup:
     Type: AWS::Cognito::UserPoolGroup
     Properties: { GroupName: reviewer, UserPoolId: !Ref UserPool, Precedence: 10 }
+  JudgeProvisionerRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-judge-provisioner'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: provision-judges
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - cognito-idp:AdminCreateUser
+                  - cognito-idp:AdminDeleteUser
+                  - cognito-idp:AdminGetUser
+                  - cognito-idp:AdminSetUserPassword
+                  - cognito-idp:AdminUpdateUserAttributes
+                  - cognito-idp:AdminAddUserToGroup
+                Resource: !GetAtt UserPool.Arn
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-judge-provisioner:*'
+  JudgeProvisionerFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-judge-provisioner'
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt JudgeProvisionerRole.Arn
+      Timeout: 30
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          import json
+          import urllib.request
+          import boto3
+
+          cognito = boto3.client("cognito-idp")
+
+          def respond(event, context, status, reason=None):
+              body = json.dumps({"Status": status, "Reason": reason or "complete", "PhysicalResourceId": event.get("PhysicalResourceId", event["ResourceProperties"]["Username"]), "StackId": event["StackId"], "RequestId": event["RequestId"], "LogicalResourceId": event["LogicalResourceId"], "NoEcho": True})
+              request = urllib.request.Request(event["ResponseURL"], data=body.encode(), method="PUT", headers={"content-type": "", "content-length": str(len(body))})
+              urllib.request.urlopen(request, timeout=10)
+
+          def handler(event, context):
+              properties = event["ResourceProperties"]
+              pool = properties["UserPoolId"]
+              username = properties["Username"]
+              try:
+                  if event["RequestType"] == "Delete":
+                      try:
+                          cognito.admin_delete_user(UserPoolId=pool, Username=username)
+                      except cognito.exceptions.UserNotFoundException:
+                          pass
+                  else:
+                      attributes = [{"Name": "email", "Value": username}, {"Name": "email_verified", "Value": "true"}, {"Name": "custom:tenant_id", "Value": properties["TenantId"]}]
+                      try:
+                          cognito.admin_create_user(UserPoolId=pool, Username=username, UserAttributes=attributes, MessageAction="SUPPRESS")
+                      except cognito.exceptions.UsernameExistsException:
+                          cognito.admin_update_user_attributes(UserPoolId=pool, Username=username, UserAttributes=attributes)
+                      cognito.admin_set_user_password(UserPoolId=pool, Username=username, Password=properties["Password"], Permanent=True)
+                      cognito.admin_add_user_to_group(UserPoolId=pool, Username=username, GroupName=properties["Group"])
+                  respond(event, context, "SUCCESS")
+              except Exception as error:
+                  respond(event, context, "FAILED", str(error))
+  JudgeOperator:
+    Type: Custom::RecallOpsJudge
+    DependsOn: OperatorGroup
+    Properties:
+      ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
+      UserPoolId: !Ref UserPool
+      Username: !Ref JudgeOperatorEmail
+      Password: !Ref JudgeOperatorPassword
+      Group: operator
+      TenantId: demo
+  JudgeReviewer:
+    Type: Custom::RecallOpsJudge
+    DependsOn: ReviewerGroup
+    Properties:
+      ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
+      UserPoolId: !Ref UserPool
+      Username: !Ref JudgeReviewerEmail
+      Password: !Ref JudgeReviewerPassword
+      Group: reviewer
+      TenantId: demo
   UserPoolDomain:
     Type: AWS::Cognito::UserPoolDomain
     Properties:
@@ -215,13 +309,21 @@ Resources:
                 Action: s3:PutObject
                 Resource: !Sub '${EvidenceBucket.Arn}/tenants/*'
 
+  VpcLinkSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: API Gateway VPC Link egress
+      VpcId: !Ref VpcId
   LoadBalancerSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
       GroupDescription: CloudFront VPC origin ingress
       VpcId: !Ref VpcId
       SecurityGroupIngress:
-        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 172.31.0.0/16 }
+        - IpProtocol: tcp
+          FromPort: 80
+          ToPort: 80
+          SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
   TaskSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
@@ -261,59 +363,53 @@ Resources:
       Protocol: HTTP
       DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
 
-  VpcOrigin:
-    Type: AWS::CloudFront::VpcOrigin
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}'
+      RetentionInDays: 30
+  Api:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Name: !Sub '${AWS::StackName}-api'
+      ProtocolType: HTTP
+      DisableExecuteApiEndpoint: false
+  ApiVpcLink:
+    Type: AWS::ApiGatewayV2::VpcLink
+    Properties:
+      Name: !Sub '${AWS::StackName}-link'
+      SecurityGroupIds: [!Ref VpcLinkSecurityGroup]
+      SubnetIds: [!Ref OriginSubnetA, !Ref OriginSubnetB]
+  ApiIntegration:
+    Type: AWS::ApiGatewayV2::Integration
     DependsOn: HttpListener
     Properties:
-      VpcOriginEndpointConfig:
-        Arn: !Ref LoadBalancer
-        HTTPPort: 80
-        Name: !Sub '${AWS::StackName}-origin'
-        OriginProtocolPolicy: http-only
-  WebAcl:
-    Type: AWS::WAFv2::WebACL
+      ApiId: !Ref Api
+      IntegrationType: HTTP_PROXY
+      IntegrationMethod: ANY
+      IntegrationUri: !Ref HttpListener
+      ConnectionType: VPC_LINK
+      ConnectionId: !Ref ApiVpcLink
+      PayloadFormatVersion: '1.0'
+  ApiRoute:
+    Type: AWS::ApiGatewayV2::Route
     Properties:
-      Name: !Sub '${AWS::StackName}-edge'
-      Scope: CLOUDFRONT
-      DefaultAction: { Allow: {} }
-      VisibilityConfig:
-        CloudWatchMetricsEnabled: true
-        MetricName: !Sub '${AWS::StackName}-edge'
-        SampledRequestsEnabled: true
-      Rules:
-        - Name: rate-limit
-          Priority: 0
-          Action: { Block: {} }
-          Statement:
-            RateBasedStatement: { AggregateKeyType: IP, Limit: 500 }
-          VisibilityConfig: { CloudWatchMetricsEnabled: true, MetricName: rate-limit, SampledRequestsEnabled: true }
-        - Name: common-threats
-          Priority: 1
-          OverrideAction: { None: {} }
-          Statement:
-            ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesCommonRuleSet }
-          VisibilityConfig: { CloudWatchMetricsEnabled: true, MetricName: common-threats, SampledRequestsEnabled: true }
-  Distribution:
-    Type: AWS::CloudFront::Distribution
+      ApiId: !Ref Api
+      RouteKey: '$default'
+      Target: !Join ['/', [integrations, !Ref ApiIntegration]]
+  ApiStage:
+    Type: AWS::ApiGatewayV2::Stage
     Properties:
-      DistributionConfig:
-        Enabled: true
-        HttpVersion: http2and3
-        IPV6Enabled: true
-        PriceClass: PriceClass_100
-        WebACLId: !GetAtt WebAcl.Arn
-        Origins:
-          - Id: recallops
-            DomainName: !GetAtt LoadBalancer.DNSName
-            VpcOriginConfig: { VpcOriginId: !GetAtt VpcOrigin.Id }
-        DefaultCacheBehavior:
-          TargetOriginId: recallops
-          ViewerProtocolPolicy: redirect-to-https
-          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
-          CachedMethods: [GET, HEAD]
-          CachePolicyId: 413fdd86-6b09-4da5-91ec-9d18c81c8c40
-          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
-        ViewerCertificate: { CloudFrontDefaultCertificate: true, MinimumProtocolVersion: TLSv1.2_2021 }
+      ApiId: !Ref Api
+      StageName: '$default'
+      AutoDeploy: true
+      DefaultRouteSettings:
+        DetailedMetricsEnabled: true
+        ThrottlingBurstLimit: 50
+        ThrottlingRateLimit: 25
+      AccessLogSettings:
+        DestinationArn: !GetAtt ApiAccessLogGroup.Arn
+        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","method":"$context.httpMethod","path":"$context.path","status":"$context.status","latencyMs":"$context.responseLatency"}'
 
   UserPoolClient:
     Type: AWS::Cognito::UserPoolClient
@@ -325,8 +421,8 @@ Resources:
       AllowedOAuthFlows: [code]
       AllowedOAuthScopes: [openid]
       SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub 'https://${Distribution.DomainName}/']
-      LogoutURLs: [!Sub 'https://${Distribution.DomainName}/']
+      CallbackURLs: [!Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/']
+      LogoutURLs: [!Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/']
       EnableTokenRevocation: true
       PreventUserExistenceErrors: ENABLED
       AccessTokenValidity: 1
@@ -367,7 +463,7 @@ Resources:
             - { Name: RECALLOPS_OIDC_AUTHORIZATION_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize' }
             - { Name: RECALLOPS_OIDC_TOKEN_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token' }
             - { Name: RECALLOPS_OIDC_LOGOUT_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/logout' }
-            - { Name: RECALLOPS_OIDC_REDIRECT_URL, Value: !Sub 'https://${Distribution.DomainName}/' }
+            - { Name: RECALLOPS_OIDC_REDIRECT_URL, Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/' }
             - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
           HealthCheck:
             Command: [CMD-SHELL, "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)\""]
@@ -437,8 +533,8 @@ Resources:
       TreatMissingData: notBreaching
 
 Outputs:
-  ServiceUrl: { Value: !Sub 'https://${Distribution.DomainName}' }
-  DistributionId: { Value: !Ref Distribution }
+  ServiceUrl: { Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}' }
+  ApiId: { Value: !Ref Api }
   ClusterName: { Value: !Ref Cluster }
   ServiceName: { Value: !GetAtt Service.Name }
   UserPoolId: { Value: !Ref UserPool }

@@ -1,5 +1,7 @@
 # RecallOps
 
+**Live judge demo:** https://c1mmwo9632.execute-api.us-east-1.amazonaws.com
+
 RecallOps is an outcome-conditioned incident-response agent. It recalls prior incidents by semantic similarity, rejects operationally incompatible memories, proposes bounded remediations, and requires explicit human approval before consequential actions.
 
 This is a new project for the CockroachDB × AWS Build with Agentic Memory Hackathon. Its architectural starting points are disclosed in [docs/PROVENANCE.md](docs/PROVENANCE.md).

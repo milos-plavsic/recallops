@@ -6,6 +6,7 @@
       "Effect": "Allow",
       "Action": [
         "ec2:Describe*",
+        "ec2:GetSecurityGroupsForVpc",
         "elasticloadbalancing:Describe*",
         "ecs:Describe*",
         "ecs:ListTagsForResource",
@@ -34,6 +35,8 @@
         "ecs:DeregisterTaskDefinition", "ecs:CreateService", "ecs:UpdateService", "ecs:DeleteService",
         "ecs:TagResource", "ecs:UntagResource",
         "logs:CreateLogGroup", "logs:DeleteLogGroup", "logs:PutRetentionPolicy", "logs:DeleteRetentionPolicy", "logs:TagResource", "logs:UntagResource",
+        "logs:CreateLogDelivery", "logs:GetLogDelivery", "logs:UpdateLogDelivery", "logs:DeleteLogDelivery", "logs:ListLogDeliveries",
+        "logs:PutResourcePolicy", "logs:DeleteResourcePolicy", "logs:DescribeResourcePolicies",
         "cloudwatch:PutMetricAlarm", "cloudwatch:DeleteAlarms", "cloudwatch:TagResource", "cloudwatch:UntagResource"
       ],
       "Resource": "*",
@@ -48,24 +51,20 @@
         "cognito-idp:UpdateUserPoolClient", "cognito-idp:DescribeUserPoolClient", "cognito-idp:CreateUserPoolDomain",
         "cognito-idp:DeleteUserPoolDomain", "cognito-idp:DescribeUserPoolDomain", "cognito-idp:CreateGroup", "cognito-idp:DeleteGroup",
         "cognito-idp:GetGroup", "cognito-idp:UpdateGroup",
+        "cognito-idp:AdminCreateUser", "cognito-idp:AdminDeleteUser", "cognito-idp:AdminGetUser",
+        "cognito-idp:AdminAddUserToGroup", "cognito-idp:AdminRemoveUserFromGroup",
         "lambda:CreateFunction", "lambda:DeleteFunction", "lambda:GetFunction", "lambda:GetFunctionConfiguration",
-        "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:AddPermission", "lambda:RemovePermission",
+        "lambda:UpdateFunctionCode", "lambda:UpdateFunctionConfiguration", "lambda:AddPermission", "lambda:RemovePermission", "lambda:InvokeFunction",
         "lambda:TagResource", "lambda:UntagResource"
       ],
       "Resource": "*",
       "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } }
     },
     {
-      "Sid": "ManageDemoEdge",
+      "Sid": "ManageDemoApiGateway",
       "Effect": "Allow",
-      "Action": [
-        "cloudfront:CreateVpcOrigin", "cloudfront:GetVpcOrigin", "cloudfront:UpdateVpcOrigin", "cloudfront:DeleteVpcOrigin",
-        "cloudfront:CreateDistribution", "cloudfront:GetDistribution", "cloudfront:GetDistributionConfig",
-        "cloudfront:UpdateDistribution", "cloudfront:DeleteDistribution", "cloudfront:TagResource", "cloudfront:UntagResource",
-        "wafv2:CreateWebACL", "wafv2:GetWebACL", "wafv2:UpdateWebACL", "wafv2:DeleteWebACL",
-        "wafv2:ListTagsForResource", "wafv2:TagResource", "wafv2:UntagResource"
-      ],
-      "Resource": "*"
+      "Action": "apigateway:*",
+      "Resource": "arn:aws:apigateway:us-east-1::*"
     },
     {
       "Sid": "ManageDemoBuckets",
@@ -80,7 +79,10 @@
         "iam:CreateRole", "iam:DeleteRole", "iam:GetRole", "iam:TagRole", "iam:UntagRole",
         "iam:PutRolePolicy", "iam:DeleteRolePolicy", "iam:GetRolePolicy", "iam:ListRolePolicies", "iam:PassRole"
       ],
-      "Resource": "arn:aws:iam::778900739705:role/recallops-demo-*"
+      "Resource": [
+        "arn:aws:iam::778900739705:role/recallops-demo-*",
+        "arn:aws:iam::778900739705:role/recallops-live-*"
+      ]
     },
     {
       "Sid": "CreateRequiredServiceLinkedRoles",
@@ -92,7 +94,7 @@
           "iam:AWSServiceName": [
             "elasticloadbalancing.amazonaws.com",
             "ecs.amazonaws.com",
-            "cloudfront.amazonaws.com"
+            "ops.apigateway.amazonaws.com"
           ]
         }
       }
