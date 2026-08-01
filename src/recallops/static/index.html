@@ -59,12 +59,14 @@
           <button class="button primary" type="submit" id="analyze">Analyze incident</button>
         </form>
         <div class="panel result-panel">
-          <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-observe">2 Observe</span><span id="stage-review">3 Review</span><span id="stage-recall">4 Recall</span></div>
+          <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-approve">2 Approve</span><span id="stage-execute">3 Execute</span><span id="stage-observe">4 Observe</span><span id="stage-review">5 Review</span><span id="stage-recall">6 Recall</span></div>
           <div id="result" class="result" role="status" aria-live="polite">
             <p class="empty">Submit the incident. The agent will retrieve governed memory, explain its choice, and require approval for any mutating action.</p>
           </div>
           <div id="loop-actions" class="loop-actions" hidden>
-            <button class="button" id="observe" type="button">Record successful outcome</button>
+            <button class="button" id="approve" type="button" disabled>Approve exact action</button>
+            <button class="button" id="execute" type="button" disabled>Attest execution</button>
+            <button class="button" id="observe" type="button" disabled>Record successful outcome</button>
             <button class="button" id="review" type="button" disabled>Activate as reviewer</button>
             <button class="button primary" id="recall" type="button" disabled>Analyze again</button>
           </div>

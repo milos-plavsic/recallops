@@ -10,11 +10,30 @@ from recallops.resilience import DependencyUnavailable, aws_client_config
 
 
 class Embedder(Protocol):
+    @property
+    def provider(self) -> str: ...
+
+    @property
+    def model(self) -> str: ...
+
+    @property
+    def schema_version(self) -> int: ...
+
     def embed(self, text: str) -> list[float]: ...
+
+    @property
+    def space_id(self) -> str: ...
 
 
 class DeterministicEmbedder:
     dimensions = 1024
+    provider = "deterministic"
+    model = "sha256-feature-hash-1024"
+    schema_version = 1
+
+    @property
+    def space_id(self) -> str:
+        return f"{self.provider}:{self.model}:v{self.schema_version}"
 
     def embed(self, text: str) -> list[float]:
         values = [0.0] * self.dimensions
@@ -28,6 +47,9 @@ class DeterministicEmbedder:
 
 
 class BedrockTitanEmbedder:
+    provider = "bedrock"
+    schema_version = 1
+
     def __init__(
         self,
         region: str,
@@ -42,6 +64,14 @@ class BedrockTitanEmbedder:
             config=aws_client_config(connect_timeout, read_timeout, max_attempts),
         )
         self._model_id = model_id
+
+    @property
+    def model(self) -> str:
+        return self._model_id
+
+    @property
+    def space_id(self) -> str:
+        return f"{self.provider}:{self.model}:v{self.schema_version}"
 
     def embed(self, text: str) -> list[float]:
         try:

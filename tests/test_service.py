@@ -4,6 +4,8 @@ import pytest
 
 from recallops.domain import (
     ActionRisk,
+    ApprovalRequest,
+    ExecutionAttestationRequest,
     GovernanceAction,
     IncidentAnalysis,
     IncidentCreate,
@@ -13,7 +15,7 @@ from recallops.domain import (
     OutcomeObservation,
 )
 from recallops.embedding import DeterministicEmbedder
-from recallops.service import DeterministicReasoner, IncidentService
+from recallops.service import DeterministicReasoner, IncidentService, IncidentWorkflowError
 from recallops.store import InMemoryStore, rank_memory
 
 
@@ -77,6 +79,108 @@ def test_no_cross_tenant_retrieval() -> None:
     assert result.proposed_action.risk is ActionRisk.READ_ONLY
 
 
+def test_retrieval_never_crosses_embedding_spaces() -> None:
+    embedder = DeterministicEmbedder()
+    incompatible = memory(embedder, "2026.07.31", 1.0, "unsafe cross-space action")
+    incompatible.embedding_space = "bedrock:amazon.titan-embed-text-v2:0:v1"
+    result = IncidentService(
+        InMemoryStore([incompatible]), embedder, DeterministicReasoner()
+    ).analyze(incident())
+
+    assert result.memories == []
+    assert result.proposed_action.risk is ActionRisk.READ_ONLY
+
+
+def test_retrieval_abstains_when_evidence_confidence_is_insufficient() -> None:
+    embedder = DeterministicEmbedder()
+    weak = memory(embedder, "2026.07.31", 1.0, "weakly supported action")
+    weak.confidence = 0.2
+    result = IncidentService(InMemoryStore([weak]), embedder, DeterministicReasoner()).analyze(
+        incident()
+    )
+
+    assert "evidence_confidence_below_threshold" in result.retrieval_abstention_reasons
+    assert result.proposed_action.risk is ActionRisk.READ_ONLY
+
+
+def attest(service: IncidentService, analysis: IncidentAnalysis, actor: str) -> str:
+    action = analysis.proposed_action
+    execution = service.attest_execution(
+        analysis.incident_id,
+        ExecutionAttestationRequest(
+            tenant_id="demo",
+            actor_id=actor,
+            action_hash=action.action_hash,
+            action_taken=action.command,
+            evidence_refs=["test://execution/verified"],
+        ),
+    )
+    assert execution is not None
+    return execution.action_taken
+
+
+def test_mutating_execution_requires_approval_for_exact_action() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(
+        InMemoryStore([memory(embedder, "2026.07.31", 1.0, "reduce concurrency")]),
+        embedder,
+        DeterministicReasoner(),
+    )
+    analysis = service.analyze(incident())
+    action = analysis.proposed_action
+    request = ExecutionAttestationRequest(
+        tenant_id="demo",
+        actor_id="operator-1",
+        action_hash=action.action_hash,
+        action_taken=action.command,
+        evidence_refs=["test://execution/verified"],
+    )
+
+    with pytest.raises(IncidentWorkflowError, match="approved decision required"):
+        service.attest_execution(analysis.incident_id, request)
+
+    assert service.decide_approval(
+        analysis.incident_id,
+        ApprovalRequest(
+            tenant_id="demo",
+            actor_id="operator-1",
+            approved=True,
+            reason="exact action reviewed against current evidence",
+        ),
+    )
+    assert service.attest_execution(analysis.incident_id, request) is not None
+
+
+def test_execution_rejects_action_substitution() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+
+    with pytest.raises(IncidentWorkflowError, match="does not match"):
+        service.attest_execution(
+            analysis.incident_id,
+            ExecutionAttestationRequest(
+                tenant_id="demo",
+                actor_id="operator-1",
+                action_hash=analysis.proposed_action.action_hash,
+                action_taken="substituted destructive command",
+                evidence_refs=["test://execution/verified"],
+            ),
+        )
+
+
+def test_retrieval_abstains_when_top_candidates_are_ambiguous() -> None:
+    embedder = DeterministicEmbedder()
+    first = memory(embedder, "2026.07.31", 1.0, "action one")
+    second = memory(embedder, "2026.07.31", 1.0, "action two")
+    result = IncidentService(
+        InMemoryStore([first, second]), embedder, DeterministicReasoner()
+    ).analyze(incident())
+
+    assert "top_candidates_ambiguous" in result.retrieval_abstention_reasons
+    assert result.proposed_action.risk is ActionRisk.READ_ONLY
+
+
 def test_idempotency_returns_original_analysis() -> None:
     embedder = DeterministicEmbedder()
     service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
@@ -100,7 +204,7 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
     analysis = service.analyze(incident())
     observation = OutcomeObservation(
         tenant_id="demo",
-        action_taken="reduce worker concurrency",
+        action_taken=attest(service, analysis, "operator-observer"),
         outcome="latency recovered without recurrence",
         outcome_score=1.0,
         confidence=0.98,
@@ -135,7 +239,7 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
         incident().model_copy(update={"idempotency_key": "event-0003"})
     )
     assert future.memories[0].memory.id == first.id
-    assert future.proposed_action.command == "reduce worker concurrency"
+    assert future.proposed_action.command == observation.action_taken
 
 
 def test_outcome_learning_enforces_tenant_boundary() -> None:
@@ -160,11 +264,12 @@ def test_memory_activation_requires_independent_reviewer() -> None:
     embedder = DeterministicEmbedder()
     service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
     analysis = service.analyze(incident())
+    action_taken = attest(service, analysis, "operator-1")
     learned = service.learn_outcome(
         analysis.incident_id,
         OutcomeObservation(
             tenant_id="demo",
-            action_taken="reduce worker concurrency",
+            action_taken=action_taken,
             outcome="latency recovered",
             outcome_score=1.0,
             confidence=0.9,
