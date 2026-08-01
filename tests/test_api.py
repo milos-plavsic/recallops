@@ -254,6 +254,23 @@ def test_demo_auth_requires_tenant_identity() -> None:
     assert response.headers["www-authenticate"] == "Bearer"
 
 
+def test_public_config_and_authenticated_identity() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    config = client.get("/v1/config")
+    assert config.status_code == 200
+    assert config.json()["auth_required"] is False
+    identity = client.get(
+        "/v1/me",
+        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator-1", "X-Roles": "operator"},
+    )
+    assert identity.status_code == 200
+    assert identity.json() == {
+        "subject": "operator-1",
+        "tenant_id": "demo",
+        "roles": ["operator"],
+    }
+
+
 def test_governance_requires_reviewer_role() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     response = client.post(

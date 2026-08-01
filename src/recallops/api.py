@@ -118,6 +118,25 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     def evaluation_report() -> EvaluationReport:
         return evaluate(load_dataset(Path("evaluation/memory_cases.json")))
 
+    @app.get("/v1/config")
+    def public_config() -> dict[str, str | bool | None]:
+        return {
+            "auth_required": settings.auth_mode == "oidc",
+            "authorization_url": settings.oidc_authorization_url,
+            "token_url": settings.oidc_token_url,
+            "logout_url": settings.oidc_logout_url,
+            "client_id": settings.oidc_audience,
+            "redirect_url": settings.oidc_redirect_url,
+        }
+
+    @app.get("/v1/me")
+    def current_identity(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        return {
+            "subject": identity.subject,
+            "tenant_id": identity.tenant_id,
+            "roles": sorted(identity.roles),
+        }
+
     @app.post(
         "/v1/incidents",
         response_model=IncidentAnalysis,

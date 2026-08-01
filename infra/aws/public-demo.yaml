@@ -1,0 +1,446 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: RecallOps self-contained authenticated public judge demo
+
+Parameters:
+  ImageUri:
+    Type: String
+    AllowedPattern: '^.+@sha256:[a-f0-9]{64}$'
+  DatabaseUrlSecretArn: { Type: String, NoEcho: true }
+  VpcId: { Type: 'AWS::EC2::VPC::Id' }
+  TaskSubnetIds: { Type: 'List<AWS::EC2::Subnet::Id>' }
+  OriginAvailabilityZoneA: { Type: 'AWS::EC2::AvailabilityZone::Name' }
+  OriginAvailabilityZoneB: { Type: 'AWS::EC2::AvailabilityZone::Name' }
+  OriginSubnetCidrA: { Type: String, Default: 172.31.240.0/28 }
+  OriginSubnetCidrB: { Type: String, Default: 172.31.240.16/28 }
+  BedrockModelId: { Type: String, Default: amazon.nova-lite-v1:0 }
+  BedrockEmbeddingModelId: { Type: String, Default: amazon.titan-embed-text-v2:0 }
+  BedrockModelArns: { Type: CommaDelimitedList }
+  DesiredCount: { Type: Number, Default: 1, MinValue: 1, MaxValue: 3 }
+
+Resources:
+  OriginSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref OriginAvailabilityZoneA
+      CidrBlock: !Ref OriginSubnetCidrA
+      MapPublicIpOnLaunch: false
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-origin-a' }]
+  OriginSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VpcId
+      AvailabilityZone: !Ref OriginAvailabilityZoneB
+      CidrBlock: !Ref OriginSubnetCidrB
+      MapPublicIpOnLaunch: false
+      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-origin-b' }]
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
+      OwnershipControls:
+        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration: { Status: Enabled }
+      LifecycleConfiguration:
+        Rules:
+          - Id: archive-old-versions
+            Status: Enabled
+            NoncurrentVersionTransitions:
+              - { StorageClass: STANDARD_IA, TransitionInDays: 30 }
+            NoncurrentVersionExpiration: { NoncurrentDays: 365 }
+  EvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource: [!GetAtt EvidenceBucket.Arn, !Sub '${EvidenceBucket.Arn}/*']
+            Condition: { Bool: { 'aws:SecureTransport': 'false' } }
+
+  TokenClaimsFunctionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-token-claims'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: lambda.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: logs
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-token-claims:*'
+  TokenClaimsFunction:
+    Type: AWS::Lambda::Function
+    Properties:
+      FunctionName: !Sub '${AWS::StackName}-token-claims'
+      Runtime: python3.13
+      Handler: index.handler
+      Role: !GetAtt TokenClaimsFunctionRole.Arn
+      Timeout: 5
+      MemorySize: 128
+      Code:
+        ZipFile: |
+          def handler(event, context):
+              del context
+              tenant = event.get("request", {}).get("userAttributes", {}).get("custom:tenant_id")
+              if not tenant:
+                  raise ValueError("custom:tenant_id is required")
+              event["response"] = {"claimsAndScopeOverrideDetails": {"accessTokenGeneration": {"claimsToAddOrOverride": {"tenant_id": tenant}}}}
+              return event
+  TokenClaimsPermission:
+    Type: AWS::Lambda::Permission
+    Properties:
+      Action: lambda:InvokeFunction
+      FunctionName: !Ref TokenClaimsFunction
+      Principal: cognito-idp.amazonaws.com
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    DependsOn: TokenClaimsPermission
+    Properties:
+      UserPoolName: !Sub '${AWS::StackName}-judges'
+      AdminCreateUserConfig: { AllowAdminCreateUserOnly: true }
+      AutoVerifiedAttributes: [email]
+      UsernameAttributes: [email]
+      DeletionProtection: ACTIVE
+      MfaConfiguration: 'OFF'
+      Schema:
+        - Name: tenant_id
+          AttributeDataType: String
+          Mutable: false
+          Required: false
+          StringAttributeConstraints: { MinLength: '1', MaxLength: '80' }
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 14
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: true
+          RequireUppercase: true
+          TemporaryPasswordValidityDays: 1
+      LambdaConfig:
+        PreTokenGeneration: !GetAtt TokenClaimsFunction.Arn
+        PreTokenGenerationConfig:
+          LambdaArn: !GetAtt TokenClaimsFunction.Arn
+          LambdaVersion: V2_0
+  OperatorGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { GroupName: operator, UserPoolId: !Ref UserPool, Precedence: 10 }
+  ReviewerGroup:
+    Type: AWS::Cognito::UserPoolGroup
+    Properties: { GroupName: reviewer, UserPoolId: !Ref UserPool, Precedence: 10 }
+  UserPoolDomain:
+    Type: AWS::Cognito::UserPoolDomain
+    Properties:
+      Domain: !Sub 'recallops-${AWS::AccountId}-${AWS::Region}'
+      UserPoolId: !Ref UserPool
+
+  Cluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub '${AWS::StackName}-cluster'
+      ClusterSettings: [{ Name: containerInsights, Value: enabled }]
+  LogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}'
+      RetentionInDays: 30
+  ExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: execution
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [ecr:GetAuthorizationToken]
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/recallops'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !GetAtt LogGroup.Arn
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref DatabaseUrlSecretArn
+  TaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: runtime
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: bedrock:InvokeModel
+                Resource: !Ref BedrockModelArns
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub '${EvidenceBucket.Arn}/tenants/*'
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CloudFront VPC origin ingress
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - { IpProtocol: tcp, FromPort: 80, ToPort: 80, CidrIp: 172.31.0.0/16 }
+  TaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RecallOps tasks accept only ALB traffic
+      VpcId: !Ref VpcId
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+  LoadBalancer:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Scheme: internal
+      Type: application
+      SecurityGroups: [!Ref LoadBalancerSecurityGroup]
+      Subnets: [!Ref OriginSubnetA, !Ref OriginSubnetB]
+      LoadBalancerAttributes:
+        - { Key: routing.http.drop_invalid_header_fields.enabled, Value: 'true' }
+        - { Key: deletion_protection.enabled, Value: 'false' }
+  TargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      VpcId: !Ref VpcId
+      Port: 8080
+      Protocol: HTTP
+      TargetType: ip
+      HealthCheckPath: /health
+      Matcher: { HttpCode: '200' }
+      TargetGroupAttributes:
+        - { Key: deregistration_delay.timeout_seconds, Value: '30' }
+  HttpListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref LoadBalancer
+      Port: 80
+      Protocol: HTTP
+      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+
+  VpcOrigin:
+    Type: AWS::CloudFront::VpcOrigin
+    DependsOn: HttpListener
+    Properties:
+      VpcOriginEndpointConfig:
+        Arn: !Ref LoadBalancer
+        HTTPPort: 80
+        Name: !Sub '${AWS::StackName}-origin'
+        OriginProtocolPolicy: http-only
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
+    Properties:
+      Name: !Sub '${AWS::StackName}-edge'
+      Scope: CLOUDFRONT
+      DefaultAction: { Allow: {} }
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${AWS::StackName}-edge'
+        SampledRequestsEnabled: true
+      Rules:
+        - Name: rate-limit
+          Priority: 0
+          Action: { Block: {} }
+          Statement:
+            RateBasedStatement: { AggregateKeyType: IP, Limit: 500 }
+          VisibilityConfig: { CloudWatchMetricsEnabled: true, MetricName: rate-limit, SampledRequestsEnabled: true }
+        - Name: common-threats
+          Priority: 1
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement: { VendorName: AWS, Name: AWSManagedRulesCommonRuleSet }
+          VisibilityConfig: { CloudWatchMetricsEnabled: true, MetricName: common-threats, SampledRequestsEnabled: true }
+  Distribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2and3
+        IPV6Enabled: true
+        PriceClass: PriceClass_100
+        WebACLId: !GetAtt WebAcl.Arn
+        Origins:
+          - Id: recallops
+            DomainName: !GetAtt LoadBalancer.DNSName
+            VpcOriginConfig: { VpcOriginId: !GetAtt VpcOrigin.Id }
+        DefaultCacheBehavior:
+          TargetOriginId: recallops
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods: [DELETE, GET, HEAD, OPTIONS, PATCH, POST, PUT]
+          CachedMethods: [GET, HEAD]
+          CachePolicyId: 413fdd86-6b09-4da5-91ec-9d18c81c8c40
+          OriginRequestPolicyId: b689b0a8-53d0-40ab-baf2-68738e2966ac
+        ViewerCertificate: { CloudFrontDefaultCertificate: true, MinimumProtocolVersion: TLSv1.2_2021 }
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      UserPoolId: !Ref UserPool
+      ClientName: !Sub '${AWS::StackName}-browser'
+      GenerateSecret: false
+      AllowedOAuthFlowsUserPoolClient: true
+      AllowedOAuthFlows: [code]
+      AllowedOAuthScopes: [openid]
+      SupportedIdentityProviders: [COGNITO]
+      CallbackURLs: [!Sub 'https://${Distribution.DomainName}/']
+      LogoutURLs: [!Sub 'https://${Distribution.DomainName}/']
+      EnableTokenRevocation: true
+      PreventUserExistenceErrors: ENABLED
+      AccessTokenValidity: 1
+      TokenValidityUnits: { AccessToken: hours }
+
+  TaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-api'
+      RequiresCompatibilities: [FARGATE]
+      NetworkMode: awsvpc
+      Cpu: '512'
+      Memory: '1024'
+      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
+      TaskRoleArn: !GetAtt TaskRole.Arn
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      ContainerDefinitions:
+        - Name: api
+          Image: !Ref ImageUri
+          Essential: true
+          ReadonlyRootFilesystem: true
+          Command: [sh, -c, 'recallops-migrate && exec uvicorn recallops.main:app --host 0.0.0.0 --port 8080']
+          PortMappings: [{ ContainerPort: 8080, Protocol: tcp }]
+          Secrets:
+            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
+          Environment:
+            - { Name: RECALLOPS_STORE, Value: postgres }
+            - { Name: RECALLOPS_REASONING_PROVIDER, Value: bedrock }
+            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: bedrock }
+            - { Name: RECALLOPS_AUTH_MODE, Value: oidc }
+            - { Name: RECALLOPS_OIDC_TENANT_CLAIM, Value: tenant_id }
+            - { Name: RECALLOPS_OIDC_ROLES_CLAIM, Value: 'cognito:groups' }
+            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
+            - { Name: RECALLOPS_BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
+            - { Name: RECALLOPS_BEDROCK_EMBEDDING_MODEL_ID, Value: !Ref BedrockEmbeddingModelId }
+            - { Name: RECALLOPS_OIDC_ISSUER, Value: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}' }
+            - { Name: RECALLOPS_OIDC_AUDIENCE, Value: !Ref UserPoolClient }
+            - { Name: RECALLOPS_OIDC_AUTHORIZATION_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize' }
+            - { Name: RECALLOPS_OIDC_TOKEN_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token' }
+            - { Name: RECALLOPS_OIDC_LOGOUT_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/logout' }
+            - { Name: RECALLOPS_OIDC_REDIRECT_URL, Value: !Sub 'https://${Distribution.DomainName}/' }
+            - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          HealthCheck:
+            Command: [CMD-SHELL, "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)\""]
+            Interval: 30
+            Timeout: 5
+            Retries: 3
+            StartPeriod: 90
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: api
+  Service:
+    Type: AWS::ECS::Service
+    DependsOn: HttpListener
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-api'
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref TaskDefinition
+      DesiredCount: !Ref DesiredCount
+      LaunchType: FARGATE
+      PlatformVersion: LATEST
+      HealthCheckGracePeriodSeconds: 120
+      DeploymentConfiguration:
+        MaximumPercent: 200
+        MinimumHealthyPercent: 100
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref TaskSecurityGroup]
+          Subnets: !Ref TaskSubnetIds
+      LoadBalancers:
+        - { ContainerName: api, ContainerPort: 8080, TargetGroupArn: !Ref TargetGroup }
+  CpuAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: RecallOps sustained high CPU
+      Namespace: AWS/ECS
+      MetricName: CPUUtilization
+      Dimensions:
+        - { Name: ClusterName, Value: !Ref Cluster }
+        - { Name: ServiceName, Value: !GetAtt Service.Name }
+      Statistic: Average
+      Period: 300
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 80
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+  Target5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: RecallOps target errors
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 5
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: notBreaching
+
+Outputs:
+  ServiceUrl: { Value: !Sub 'https://${Distribution.DomainName}' }
+  DistributionId: { Value: !Ref Distribution }
+  ClusterName: { Value: !Ref Cluster }
+  ServiceName: { Value: !GetAtt Service.Name }
+  UserPoolId: { Value: !Ref UserPool }
+  UserPoolClientId: { Value: !Ref UserPoolClient }
+  EvidenceBucketName: { Value: !Ref EvidenceBucket }

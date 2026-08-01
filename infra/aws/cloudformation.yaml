@@ -80,7 +80,7 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub '${AWS::StackName}-execution'
-      AssumeRolePolicyDocument: &TaskTrust
+      AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
@@ -101,7 +101,12 @@ Resources:
     Type: AWS::IAM::Role
     Properties:
       RoleName: !Sub '${AWS::StackName}-task'
-      AssumeRolePolicyDocument: *TaskTrust
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
       Policies:
         - PolicyName: runtime
           PolicyDocument:
