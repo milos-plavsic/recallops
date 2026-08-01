@@ -23,7 +23,8 @@ $requiredFiles = @(
     "README.md", "LICENSE", "Dockerfile", "compose.yaml", ".env.example",
     "evaluation/memory_cases.json", "docs/JUDGE_GUIDE.md", "docs/ARCHITECTURE.md",
     "docs/COCKROACH_TOOLS.md", "docs/AWS_DEPLOYMENT.md", "docs/THREAT_MODEL.md",
-    "docs/BENCHMARK.md", "docs/COST_MODEL.md", "docs/PROVENANCE.md"
+    "docs/BENCHMARK.md", "docs/COST_MODEL.md", "docs/PROVENANCE.md",
+    "docs/AWS_ACCOUNT_BLOCKER.md", "scripts/bedrock-readiness.ps1"
 )
 $missing = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
 Add-Check "evidence-package" ($missing.Count -eq 0) $(if ($missing) { $missing -join ", " } else { "all required files present" })

@@ -19,6 +19,8 @@ def incident() -> IncidentCreate:
 
 
 class FailedEmbedder:
+    space_id = "bedrock:test-embedding:v1"
+
     def embed(self, text: str) -> list[float]:
         raise DependencyUnavailable("bedrock_embedding")
 
@@ -42,6 +44,18 @@ def test_provider_failures_degrade_without_inventing_action() -> None:
     assert result.proposed_action.name == "collect_diagnostics"
     assert result.proposed_action.requires_approval is False
     assert "No compatible historical memory" in result.diagnosis
+    assert [step.tool for step in result.agent_trace] == [
+        "embed_incident",
+        "retrieve_governed_memory",
+        "reason_from_evidence",
+    ]
+    assert [step.status for step in result.agent_trace] == [
+        "degraded",
+        "skipped",
+        "degraded",
+    ]
+    assert all(step.risk == "read_only" for step in result.agent_trace)
+    assert all(len(step.input_digest) == 64 for step in result.agent_trace)
 
 
 def test_embedding_failure_never_persists_fallback_vector() -> None:
@@ -80,9 +94,7 @@ def test_embedding_failure_never_persists_fallback_vector() -> None:
 
 
 def test_concurrent_idempotent_requests_return_one_incident() -> None:
-    service = IncidentService(
-        InMemoryStore(), DeterministicEmbedder(), FailedReasoner()
-    )
+    service = IncidentService(InMemoryStore(), DeterministicEmbedder(), FailedReasoner())
 
     with ThreadPoolExecutor(max_workers=16) as executor:
         results = list(executor.map(lambda _: service.analyze(incident()), range(64)))

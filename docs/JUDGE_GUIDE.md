@@ -15,6 +15,10 @@ incident, vector, outcome, approval, and governance event in one transactional c
 record. Amazon Bedrock reasons over that evidence; AWS runs and observes the secure
 service.
 
+Open **Replayable agent trace** after analysis to inspect the ordered tools, read-only
+risk classification, retry and timeout bounds, degradation state, and evidence
+references used by the agent.
+
 ## One-command local proof
 
 ```powershell

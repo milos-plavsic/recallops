@@ -32,6 +32,7 @@ def test_judge_console_and_live_evaluation_are_served() -> None:
 
     assert console.status_code == 200
     assert "RecallOps remembers consequences" in console.text
+    assert "Replayable agent trace" in client.get("/assets/app.js").text
     assert report.status_code == 200
     assert report.json()["passed"] is True
     assert report.json()["similarity_only"]["unsafe_selection_rate"] > 0
@@ -95,6 +96,12 @@ def test_incident_read_and_single_approval() -> None:
     assert created.status_code == 201
     incident = created.json()
     incident_id = incident["incident_id"]
+    assert [step["tool"] for step in incident["agent_trace"]] == [
+        "embed_incident",
+        "retrieve_governed_memory",
+        "reason_from_evidence",
+    ]
+    assert all(step["risk"] == "read_only" for step in incident["agent_trace"])
     assert client.get(f"/v1/incidents/{incident_id}", headers=headers).status_code == 200
     approval = {
         "tenant_id": "demo",
@@ -290,9 +297,7 @@ def test_unknown_memory_governance_returns_not_found() -> None:
 
 def test_demo_auth_requires_tenant_identity() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
-    response = client.get(
-        "/v1/incidents/00000000-0000-0000-0000-000000000001"
-    )
+    response = client.get("/v1/incidents/00000000-0000-0000-0000-000000000001")
     assert response.status_code == 401
     assert response.headers["www-authenticate"] == "Bearer"
 

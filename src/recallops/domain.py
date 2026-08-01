@@ -30,6 +30,12 @@ class GovernanceAction(StrEnum):
     REVOKE = "revoke"
 
 
+class ToolStatus(StrEnum):
+    SUCCEEDED = "succeeded"
+    DEGRADED = "degraded"
+    SKIPPED = "skipped"
+
+
 class IncidentCreate(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
     service: str = Field(min_length=1, max_length=120)
@@ -80,6 +86,18 @@ class ProposedAction(BaseModel):
     action_hash: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
+class AgentToolTrace(BaseModel):
+    sequence: int = Field(ge=1)
+    tool: str = Field(min_length=3, max_length=80, pattern=r"^[a-z0-9_]+$")
+    risk: ActionRisk = ActionRisk.READ_ONLY
+    status: ToolStatus
+    input_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    max_attempts: int = Field(ge=1, le=10)
+    timeout_seconds: float | None = Field(default=None, gt=0, le=120)
+    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
+    degraded_reason: str | None = Field(default=None, min_length=3, max_length=120)
+
+
 class IncidentAnalysis(BaseModel):
     incident_id: UUID = Field(default_factory=uuid4)
     status: IncidentStatus = IncidentStatus.OPEN
@@ -87,6 +105,7 @@ class IncidentAnalysis(BaseModel):
     confidence: float = Field(ge=0, le=1)
     memories: list[RetrievedMemory]
     proposed_action: ProposedAction
+    agent_trace: list[AgentToolTrace] = Field(default_factory=list, max_length=20)
     retrieval_abstention_reasons: list[str] = Field(default_factory=list)
     degraded_dependencies: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
