@@ -1,3 +1,4 @@
+import json
 import math
 import threading
 from collections.abc import Iterable, Mapping
@@ -8,6 +9,7 @@ from uuid import UUID
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from recallops.archive import evidence_payload
 from recallops.domain import (
     ApprovalDecision,
     ExecutionAttestation,
@@ -121,6 +123,7 @@ def _governance_target(
 
 
 class MemoryStore(Protocol):
+    transactional_archive: bool
     def add_memory(self, memory: Memory) -> None: ...
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
@@ -145,6 +148,7 @@ class MemoryStore(Protocol):
 
 
 class InMemoryStore:
+    transactional_archive = False
     def __init__(self, memories: Iterable[Memory] = ()) -> None:
         self.memories = list(memories)
         self.analyses: dict[tuple[str, UUID], IncidentAnalysis] = {}
@@ -278,6 +282,7 @@ class InMemoryStore:
 
 
 class PostgresStore:
+    transactional_archive = True
     def __init__(
         self,
         database_url: str,
@@ -392,9 +397,24 @@ class PostgresStore:
                 ),
             )
             raw_row = cursor.fetchone()
-        assert raw_row is not None
-        row = dict(raw_row)
-        return IncidentAnalysis.model_validate(row["analysis"])
+            assert raw_row is not None
+            row = dict(raw_row)
+            saved = IncidentAnalysis.model_validate(row["analysis"])
+            payload = evidence_payload(incident, saved)
+            cursor.execute(
+                """INSERT INTO evidence_outbox
+                (id, incident_id, tenant_id, service, service_version, payload)
+                VALUES (gen_random_uuid(),%s,%s,%s,%s,%s::JSONB)
+                ON CONFLICT (incident_id) DO NOTHING""",
+                (
+                    saved.incident_id,
+                    incident.tenant_id,
+                    incident.service,
+                    incident.service_version,
+                    json.dumps(payload, separators=(",", ":")),
+                ),
+            )
+        return saved
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:

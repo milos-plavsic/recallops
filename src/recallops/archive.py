@@ -1,5 +1,6 @@
 import json
 from typing import Any, Protocol
+from uuid import UUID
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -46,19 +47,35 @@ class S3EvidenceArchive:
         self._bucket = bucket
 
     def archive(self, incident: IncidentCreate, analysis: IncidentAnalysis) -> None:
-        key = f"tenants/{incident.tenant_id}/incidents/{analysis.incident_id}/analysis.json"
+        self.archive_payload(
+            incident.tenant_id,
+            analysis.incident_id,
+            evidence_payload(incident, analysis),
+            incident.service,
+            incident.service_version,
+        )
+
+    def archive_payload(
+        self,
+        tenant_id: str,
+        incident_id: UUID,
+        payload: dict[str, Any],
+        service: str,
+        service_version: str,
+    ) -> None:
+        key = f"tenants/{tenant_id}/incidents/{incident_id}/analysis.json"
         try:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
                 Body=json.dumps(
-                    evidence_payload(incident, analysis), separators=(",", ":")
+                    payload, separators=(",", ":")
                 ).encode(),
                 ContentType="application/json",
                 ServerSideEncryption="AES256",
                 Metadata={
-                    "service": incident.service,
-                    "service-version": incident.service_version,
+                    "service": service,
+                    "service-version": service_version,
                 },
             )
         except (BotoCoreError, ClientError) as error:

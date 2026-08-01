@@ -1,8 +1,9 @@
+import asyncio
 from collections.abc import AsyncIterator
-from contextlib import asynccontextmanager
+from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 from fastapi.responses import FileResponse
@@ -28,6 +29,7 @@ from recallops.domain import (
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
+from recallops.outbox import deliver_available
 from recallops.resilience import DependencyUnavailable
 from recallops.service import (
     BedrockReasoner,
@@ -97,9 +99,26 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
         del app
-        yield
-        if isinstance(store, PostgresStore):
-            store.close()
+        stop = asyncio.Event()
+        worker_id = f"api:{uuid4()}"
+
+        async def deliver_outbox() -> None:
+            while not stop.is_set():
+                if isinstance(store, PostgresStore) and isinstance(archive, S3EvidenceArchive):
+                    await asyncio.to_thread(
+                        deliver_available, settings.database_url, archive, worker_id, 25
+                    )
+                with suppress(TimeoutError):
+                    await asyncio.wait_for(stop.wait(), timeout=30)
+
+        worker = asyncio.create_task(deliver_outbox())
+        try:
+            yield
+        finally:
+            stop.set()
+            await worker
+            if isinstance(store, PostgresStore):
+                store.close()
 
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs", lifespan=lifespan)
     app.state.store = store

@@ -195,14 +195,15 @@ class IncidentService:
                 degraded_dependencies=degraded,
             ),
         )
-        try:
-            self._archive.archive(incident, saved)
-        except DependencyUnavailable as error:
-            structlog.get_logger().error(
-                "evidence_archive_failed",
-                dependency=error.dependency,
-                incident_id=str(saved.incident_id),
-            )
+        if not self._store.transactional_archive:
+            try:
+                self._archive.archive(incident, saved)
+            except DependencyUnavailable as error:
+                structlog.get_logger().error(
+                    "evidence_archive_failed",
+                    dependency=error.dependency,
+                    incident_id=str(saved.incident_id),
+                )
         return saved
 
     def decide_approval(self, incident_id: UUID, request: ApprovalRequest) -> bool:
