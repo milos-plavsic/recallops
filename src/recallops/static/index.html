@@ -54,7 +54,8 @@
           <label>Service<input id="service" value="checkout" required></label>
           <label>Version<input id="version" value="2026.07.31" required></label>
           <label>Symptom<textarea id="symptom" rows="3" required>latency spike after connection pool exhaustion</textarea></label>
-          <details><summary>Production authentication</summary><label>Bearer token<input id="token" type="password" autocomplete="off" placeholder="Optional in demo mode"></label></details>
+          <div id="auth-controls" hidden><span id="auth-status">Sign in required</span> <button id="signin" type="button">Sign in</button><button id="signout" type="button" hidden>Switch identity</button></div>
+          <details id="token-details"><summary>Production authentication</summary><label>Bearer token<input id="token" type="password" autocomplete="off" placeholder="Optional in demo mode"></label></details>
           <button class="button primary" type="submit" id="analyze">Analyze incident</button>
         </form>
         <div class="panel result-panel">

@@ -28,6 +28,10 @@ class Settings(BaseSettings):
     oidc_audience: str | None = None
     oidc_tenant_claim: str = "tenant_id"
     oidc_roles_claim: str = "cognito:groups"
+    oidc_authorization_url: str | None = None
+    oidc_token_url: str | None = None
+    oidc_logout_url: str | None = None
+    oidc_redirect_url: str | None = None
 
 
 @lru_cache
