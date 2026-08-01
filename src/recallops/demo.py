@@ -57,7 +57,11 @@ def main() -> None:
         if settings.embedding_provider == "bedrock"
         else DeterministicEmbedder()
     )
-    seed_memories(PostgresStore(settings.database_url), embedder)
+    store = PostgresStore(settings.database_url)
+    try:
+        seed_memories(store, embedder)
+    finally:
+        store.close()
 
 
 if __name__ == "__main__":

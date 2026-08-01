@@ -4,6 +4,9 @@ RecallOps is an outcome-conditioned incident-response agent. It recalls prior in
 
 This is a new project for the CockroachDB × AWS Build with Agentic Memory Hackathon. Its architectural starting points are disclosed in [docs/PROVENANCE.md](docs/PROVENANCE.md).
 
+**Fastest judge path:** run `./scripts/judge-demo.ps1`, then follow the
+[three-minute judge guide](docs/JUDGE_GUIDE.md).
+
 ## What is implemented
 
 - CockroachDB-backed structured incident state and 1024-dimensional distributed vector memory.

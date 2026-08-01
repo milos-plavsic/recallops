@@ -5,6 +5,19 @@ from recallops.config import Settings
 from recallops.store import InMemoryStore
 
 
+def test_judge_console_and_live_evaluation_are_served() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+
+    console = client.get("/")
+    report = client.get("/v1/evaluation")
+
+    assert console.status_code == 200
+    assert "RecallOps remembers consequences" in console.text
+    assert report.status_code == 200
+    assert report.json()["passed"] is True
+    assert report.json()["similarity_only"]["unsafe_selection_rate"] > 0
+
+
 def test_tenant_boundary_is_enforced() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     response = client.post(
