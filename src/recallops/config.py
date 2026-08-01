@@ -17,6 +17,11 @@ class Settings(BaseSettings):
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     evidence_bucket: str | None = None
     log_level: str = "INFO"
+    provider_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
+    provider_read_timeout_seconds: float = Field(default=15.0, gt=0, le=120)
+    provider_max_attempts: int = Field(default=3, ge=1, le=10)
+    database_connect_timeout_seconds: int = Field(default=5, ge=1, le=30)
+    database_statement_timeout_seconds: int = Field(default=15, ge=1, le=120)
     max_memories: int = Field(default=5, ge=1, le=20)
     auth_mode: Literal["demo", "oidc"] = "demo"
     oidc_issuer: str | None = None

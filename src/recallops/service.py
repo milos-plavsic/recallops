@@ -2,6 +2,8 @@ from typing import Protocol
 from uuid import UUID
 
 import boto3
+import structlog
+from botocore.exceptions import BotoCoreError, ClientError
 
 from recallops.archive import EvidenceArchive, NullEvidenceArchive
 from recallops.domain import (
@@ -14,7 +16,8 @@ from recallops.domain import (
     OutcomeObservation,
     ProposedAction,
 )
-from recallops.embedding import Embedder
+from recallops.embedding import DeterministicEmbedder, Embedder
+from recallops.resilience import DependencyUnavailable, aws_client_config
 from recallops.store import MemoryStore
 
 
@@ -31,33 +34,54 @@ class DeterministicReasoner:
 
 
 class BedrockReasoner:
-    def __init__(self, region: str, model_id: str) -> None:
-        self._client = boto3.client("bedrock-runtime", region_name=region)
+    def __init__(
+        self,
+        region: str,
+        model_id: str,
+        connect_timeout: float = 2.0,
+        read_timeout: float = 15.0,
+        max_attempts: int = 3,
+    ) -> None:
+        self._client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            config=aws_client_config(connect_timeout, read_timeout, max_attempts),
+        )
         self._model_id = model_id
 
     def diagnosis(self, incident: IncidentCreate, evidence: str) -> str:
-        response = self._client.converse(
-            modelId=self._model_id,
-            system=[
-                {
-                    "text": (
-                        "Diagnose only from supplied evidence. State uncertainty. "
-                        "Never invent telemetry."
-                    )
-                }
-            ],
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"text": f"Incident: {incident.model_dump_json()}\nEvidence: {evidence}"}
-                    ],
-                }
-            ],
-            inferenceConfig={"maxTokens": 300, "temperature": 0.0},
-        )
-        blocks = response["output"]["message"]["content"]
-        return "".join(block.get("text", "") for block in blocks).strip()
+        try:
+            response = self._client.converse(
+                modelId=self._model_id,
+                system=[
+                    {
+                        "text": (
+                            "Diagnose only from supplied evidence. State uncertainty. "
+                            "Never invent telemetry."
+                        )
+                    }
+                ],
+                messages=[
+                    {
+                        "role": "user",
+                        "content": [
+                            {
+                                "text": (
+                                    f"Incident: {incident.model_dump_json()}\nEvidence: {evidence}"
+                                )
+                            }
+                        ],
+                    }
+                ],
+                inferenceConfig={"maxTokens": 300, "temperature": 0.0},
+            )
+            blocks = response["output"]["message"]["content"]
+            diagnosis = "".join(block.get("text", "") for block in blocks).strip()
+            if not diagnosis:
+                raise ValueError("empty model response")
+            return diagnosis
+        except (BotoCoreError, ClientError, KeyError, TypeError, ValueError) as error:
+            raise DependencyUnavailable("bedrock_reasoning") from error
 
 
 class IncidentService:
@@ -76,11 +100,22 @@ class IncidentService:
         self._archive = archive or NullEvidenceArchive()
 
     def analyze(self, incident: IncidentCreate) -> IncidentAnalysis:
-        embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+        degraded: list[str] = []
+        try:
+            embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+        except DependencyUnavailable as error:
+            degraded.append(error.dependency)
+            structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
+            embedding = DeterministicEmbedder().embed(f"{incident.service} {incident.symptom}")
         memories = self._store.find_memories(incident, embedding, self._max_memories)
         best = memories[0] if memories else None
         evidence = best.memory.outcome if best else "No compatible historical memory was found."
-        diagnosis = self._reasoner.diagnosis(incident, evidence)
+        try:
+            diagnosis = self._reasoner.diagnosis(incident, evidence)
+        except DependencyUnavailable as error:
+            degraded.append(error.dependency)
+            structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
+            diagnosis = DeterministicReasoner().diagnosis(incident, evidence)
         if best and best.compatibility == 1.0 and best.memory.outcome_score > 0:
             proposed = ProposedAction(
                 name="apply_prior_remediation",
@@ -106,9 +141,17 @@ class IncidentService:
                 confidence=confidence,
                 memories=memories,
                 proposed_action=proposed,
+                degraded_dependencies=degraded,
             ),
         )
-        self._archive.archive(incident, saved)
+        try:
+            self._archive.archive(incident, saved)
+        except DependencyUnavailable as error:
+            structlog.get_logger().error(
+                "evidence_archive_failed",
+                dependency=error.dependency,
+                incident_id=str(saved.incident_id),
+            )
         return saved
 
     def learn_outcome(
@@ -117,6 +160,11 @@ class IncidentService:
         incident = self._store.get_incident(incident_id, observation.tenant_id)
         if incident is None:
             return None
+        try:
+            embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+        except DependencyUnavailable as error:
+            structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
+            embedding = DeterministicEmbedder().embed(f"{incident.service} {incident.symptom}")
         memory = Memory(
             tenant_id=incident.tenant_id,
             service=incident.service,
@@ -130,7 +178,7 @@ class IncidentService:
             state=MemoryState.PENDING_REVIEW,
             source_incident_id=incident_id,
             observed_by=observation.actor_id,
-            embedding=self._embedder.embed(f"{incident.service} {incident.symptom}"),
+            embedding=embedding,
         )
         return self._store.save_outcome_memory(memory)
 

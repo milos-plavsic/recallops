@@ -1,3 +1,5 @@
+from collections.abc import AsyncIterator
+from contextlib import asynccontextmanager
 from typing import Annotated
 from uuid import UUID
 
@@ -27,26 +29,57 @@ from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, P
 def create_app(settings: Settings | None = None, store: MemoryStore | None = None) -> FastAPI:
     settings = settings or get_settings()
     store = store or (
-        PostgresStore(settings.database_url) if settings.store == "postgres" else InMemoryStore()
+        PostgresStore(
+            settings.database_url,
+            settings.database_connect_timeout_seconds,
+            settings.database_statement_timeout_seconds,
+        )
+        if settings.store == "postgres"
+        else InMemoryStore()
     )
     embedder = (
-        BedrockTitanEmbedder(settings.aws_region, settings.bedrock_embedding_model_id)
+        BedrockTitanEmbedder(
+            settings.aws_region,
+            settings.bedrock_embedding_model_id,
+            settings.provider_connect_timeout_seconds,
+            settings.provider_read_timeout_seconds,
+            settings.provider_max_attempts,
+        )
         if settings.embedding_provider == "bedrock"
         else DeterministicEmbedder()
     )
     reasoner = (
-        BedrockReasoner(settings.aws_region, settings.bedrock_model_id)
+        BedrockReasoner(
+            settings.aws_region,
+            settings.bedrock_model_id,
+            settings.provider_connect_timeout_seconds,
+            settings.provider_read_timeout_seconds,
+            settings.provider_max_attempts,
+        )
         if settings.reasoning_provider == "bedrock"
         else DeterministicReasoner()
     )
     archive = (
-        S3EvidenceArchive(settings.aws_region, settings.evidence_bucket)
+        S3EvidenceArchive(
+            settings.aws_region,
+            settings.evidence_bucket,
+            settings.provider_connect_timeout_seconds,
+            settings.provider_read_timeout_seconds,
+            settings.provider_max_attempts,
+        )
         if settings.evidence_bucket
         else NullEvidenceArchive()
     )
     service = IncidentService(store, embedder, reasoner, settings.max_memories, archive)
     authenticator = create_authenticator(settings)
-    app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
+        del app
+        yield
+        if isinstance(store, PostgresStore):
+            store.close()
+
+    app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs", lifespan=lifespan)
     app.state.store = store
     app.state.service = service
 
