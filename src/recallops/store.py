@@ -9,6 +9,8 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from recallops.domain import (
+    ApprovalDecision,
+    ExecutionAttestation,
     GovernanceAction,
     IncidentAnalysis,
     IncidentCreate,
@@ -121,7 +123,7 @@ def _governance_target(
 class MemoryStore(Protocol):
     def add_memory(self, memory: Memory) -> None: ...
     def find_memories(
-        self, incident: IncidentCreate, embedding: list[float], limit: int
+        self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
     ) -> list[RetrievedMemory]: ...
     def save_analysis(
         self, incident: IncidentCreate, analysis: IncidentAnalysis
@@ -135,6 +137,11 @@ class MemoryStore(Protocol):
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
     ) -> bool: ...
+    def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None: ...
+    def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation: ...
+    def get_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> ExecutionAttestation | None: ...
 
 
 class InMemoryStore:
@@ -145,14 +152,15 @@ class InMemoryStore:
         self.incidents: dict[tuple[str, UUID], IncidentCreate] = {}
         self.outcome_memories: dict[tuple[str, UUID], Memory] = {}
         self.memory_events: list[MemoryEvent] = []
-        self.approvals: set[tuple[str, UUID]] = set()
+        self.approvals: dict[tuple[str, UUID], ApprovalDecision] = {}
+        self.executions: dict[tuple[str, UUID], ExecutionAttestation] = {}
         self._lock = threading.RLock()
 
     def add_memory(self, memory: Memory) -> None:
         self.memories.append(memory)
 
     def find_memories(
-        self, incident: IncidentCreate, embedding: list[float], limit: int
+        self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
     ) -> list[RetrievedMemory]:
         candidates = (
             rank_memory(
@@ -161,6 +169,7 @@ class InMemoryStore:
             for memory in self.memories
             if memory.tenant_id == incident.tenant_id
             and memory.service == incident.service
+            and memory.embedding_space == embedding_space
             and memory.valid
             and memory.state is MemoryState.ACTIVE
         )
@@ -240,8 +249,32 @@ class InMemoryStore:
         key = (tenant_id, incident_id)
         if key not in self.analyses or key in self.approvals:
             return False
-        self.approvals.add(key)
+        self.approvals[key] = ApprovalDecision(
+            incident_id=incident_id,
+            tenant_id=tenant_id,
+            actor_id=actor_id,
+            approved=approved,
+            reason=reason,
+        )
         return True
+
+    def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
+        return self.approvals.get((tenant_id, incident_id))
+
+    def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation:
+        key = (execution.tenant_id, execution.incident_id)
+        existing = self.executions.get(key)
+        if existing is not None:
+            if existing.action_hash != execution.action_hash:
+                raise MemoryGovernanceError("incident already has a different execution")
+            return existing
+        self.executions[key] = execution
+        return execution
+
+    def get_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> ExecutionAttestation | None:
+        return self.executions.get((tenant_id, incident_id))
 
 
 class PostgresStore:
@@ -282,8 +315,8 @@ class PostgresStore:
                 """INSERT INTO memories
                 (id, tenant_id, service, service_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                 observed_by, reviewed_by, reviewed_at, embedding_space, embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (id) DO NOTHING""",
                 (
                     memory.id,
@@ -302,26 +335,28 @@ class PostgresStore:
                     memory.observed_by,
                     memory.reviewed_by,
                     memory.reviewed_at,
+                    memory.embedding_space,
                     self._vector(memory.embedding),
                     memory.created_at,
                 ),
             )
 
     def find_memories(
-        self, incident: IncidentCreate, embedding: list[float], limit: int
+        self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
     ) -> list[RetrievedMemory]:
         vector = self._vector(embedding)
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """SELECT id, tenant_id, service, service_version, symptom, action, outcome,
                    outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                   observed_by, reviewed_by, reviewed_at,
+                   observed_by, reviewed_by, reviewed_at, embedding_space,
                    embedding::STRING AS embedding,
                    created_at, 1 - (embedding <=> %s::VECTOR) AS similarity
                    FROM memories
-                   WHERE tenant_id = %s AND service = %s AND valid AND state = 'active'
+                   WHERE tenant_id = %s AND service = %s AND embedding_space = %s
+                     AND valid AND state = 'active'
                    ORDER BY embedding <=> %s::VECTOR LIMIT %s""",
-                (vector, incident.tenant_id, incident.service, vector, limit * 3),
+                (vector, incident.tenant_id, incident.service, embedding_space, vector, limit * 3),
             )
             rows = cursor.fetchall()
         ranked = []
@@ -390,13 +425,14 @@ class PostgresStore:
                 """INSERT INTO memories
                 (id, tenant_id, service, service_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                 observed_by, reviewed_by, reviewed_at, embedding_space, embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (source_incident_id) DO UPDATE
                 SET source_incident_id=excluded.source_incident_id
                 RETURNING id, tenant_id, service, service_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding::STRING AS embedding,
+                 observed_by, reviewed_by, reviewed_at, embedding_space,
+                 embedding::STRING AS embedding,
                  created_at""",
                 (
                     memory.id,
@@ -415,6 +451,7 @@ class PostgresStore:
                     memory.observed_by,
                     memory.reviewed_by,
                     memory.reviewed_at,
+                    memory.embedding_space,
                     self._vector(memory.embedding),
                     memory.created_at,
                 ),
@@ -428,7 +465,8 @@ class PostgresStore:
     ) -> Memory | None:
         columns = """id, tenant_id, service, service_version, symptom, action, outcome,
             outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-            observed_by, reviewed_by, reviewed_at, embedding::STRING AS embedding, created_at"""
+            observed_by, reviewed_by, reviewed_at, embedding_space,
+            embedding::STRING AS embedding, created_at"""
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s FOR UPDATE",
@@ -505,3 +543,60 @@ class PostgresStore:
                 (actor_id, approved, reason, incident_id, tenant_id),
             )
             return cursor.fetchone() is not None
+
+    def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT incident_id, tenant_id, actor_id, approved, reason, created_at
+                FROM approvals WHERE incident_id=%s AND tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        return ApprovalDecision.model_validate(dict(row)) if row is not None else None
+
+    def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """INSERT INTO execution_attestations
+                (incident_id, tenant_id, actor_id, action_hash, action_taken, evidence_refs,
+                 created_at) VALUES (%s,%s,%s,%s,%s,%s::JSONB,%s)
+                ON CONFLICT (incident_id) DO UPDATE SET incident_id=excluded.incident_id
+                RETURNING incident_id, tenant_id, actor_id, action_hash, action_taken,
+                  evidence_refs, created_at""",
+                (
+                    execution.incident_id,
+                    execution.tenant_id,
+                    execution.actor_id,
+                    execution.action_hash,
+                    execution.action_taken,
+                    execution.model_dump_json(include={"evidence_refs"}),
+                    execution.created_at,
+                ),
+            )
+            row = cursor.fetchone()
+        assert row is not None
+        result = dict(row)
+        evidence = result["evidence_refs"]
+        result["evidence_refs"] = evidence.get("evidence_refs", evidence)
+        recorded = ExecutionAttestation.model_validate(result)
+        if recorded.action_hash != execution.action_hash:
+            raise MemoryGovernanceError("incident already has a different execution")
+        return recorded
+
+    def get_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> ExecutionAttestation | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT incident_id, tenant_id, actor_id, action_hash, action_taken,
+                  evidence_refs, created_at FROM execution_attestations
+                WHERE incident_id=%s AND tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        result = dict(row)
+        evidence = result["evidence_refs"]
+        result["evidence_refs"] = evidence.get("evidence_refs", evidence)
+        return ExecutionAttestation.model_validate(result)

@@ -18,6 +18,8 @@ from recallops.auth import (
 from recallops.config import Settings, get_settings
 from recallops.domain import (
     ApprovalRequest,
+    ExecutionAttestation,
+    ExecutionAttestationRequest,
     IncidentAnalysis,
     IncidentCreate,
     Memory,
@@ -26,7 +28,13 @@ from recallops.domain import (
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
-from recallops.service import BedrockReasoner, DeterministicReasoner, IncidentService
+from recallops.resilience import DependencyUnavailable
+from recallops.service import (
+    BedrockReasoner,
+    DeterministicReasoner,
+    IncidentService,
+    IncidentWorkflowError,
+)
 from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
 
 
@@ -74,7 +82,17 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         if settings.evidence_bucket
         else NullEvidenceArchive()
     )
-    service = IncidentService(store, embedder, reasoner, settings.max_memories, archive)
+    service = IncidentService(
+        store,
+        embedder,
+        reasoner,
+        settings.max_memories,
+        archive,
+        min_similarity=settings.retrieval_min_similarity,
+        min_confidence=settings.retrieval_min_confidence,
+        min_rank_score=settings.retrieval_min_rank_score,
+        min_margin=settings.retrieval_min_margin,
+    )
     authenticator = create_authenticator(settings)
     @asynccontextmanager
     async def lifespan(app: FastAPI) -> AsyncIterator[None]:
@@ -168,16 +186,34 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
-        recorded = store.record_approval(
-            incident_id,
-            identity.tenant_id,
-            identity.subject,
-            payload.approved,
-            payload.reason,
-        )
+        try:
+            recorded = service.decide_approval(incident_id, payload)
+        except IncidentWorkflowError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if not recorded:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found or already decided")
         return {"recorded": True}
+
+    @app.post(
+        "/v1/incidents/{incident_id}/execution",
+        response_model=ExecutionAttestation,
+        status_code=status.HTTP_201_CREATED,
+    )
+    def attest_execution(
+        incident_id: UUID,
+        payload: ExecutionAttestationRequest,
+        identity: AuthenticatedPrincipal,
+    ) -> ExecutionAttestation:
+        require_role(identity, "operator")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        try:
+            execution = service.attest_execution(incident_id, payload)
+        except IncidentWorkflowError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        if execution is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        return execution
 
     @app.post(
         "/v1/incidents/{incident_id}/outcome",
@@ -193,7 +229,16 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
-        memory = service.learn_outcome(incident_id, payload)
+        try:
+            memory = service.learn_outcome(incident_id, payload)
+        except DependencyUnavailable as error:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"{error.dependency} unavailable; outcome was not persisted",
+                headers={"Retry-After": "30"},
+            ) from error
+        except IncidentWorkflowError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if memory is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
         return memory

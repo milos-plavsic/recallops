@@ -1,4 +1,5 @@
-from typing import Protocol
+import json
+from typing import Any, Protocol
 
 import boto3
 from botocore.exceptions import BotoCoreError, ClientError
@@ -14,6 +15,18 @@ class EvidenceArchive(Protocol):
 class NullEvidenceArchive:
     def archive(self, incident: IncidentCreate, analysis: IncidentAnalysis) -> None:
         return None
+
+
+def evidence_payload(
+    incident: IncidentCreate, analysis: IncidentAnalysis
+) -> dict[str, Any]:
+    return {
+        "schema_version": 1,
+        "incident": incident.model_dump(mode="json"),
+        "analysis": analysis.model_dump(
+            mode="json", exclude={"memories": {"__all__": {"memory": {"embedding"}}}}
+        ),
+    }
 
 
 class S3EvidenceArchive:
@@ -38,7 +51,9 @@ class S3EvidenceArchive:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
-                Body=analysis.model_dump_json().encode(),
+                Body=json.dumps(
+                    evidence_payload(incident, analysis), separators=(",", ":")
+                ).encode(),
                 ContentType="application/json",
                 ServerSideEncryption="AES256",
                 Metadata={

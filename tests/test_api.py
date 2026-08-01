@@ -2,7 +2,26 @@ from fastapi.testclient import TestClient
 
 from recallops.api import create_app
 from recallops.config import Settings
+from recallops.domain import Memory
+from recallops.embedding import DeterministicEmbedder
 from recallops.store import InMemoryStore
+
+
+def execute_analyzed_action(client: TestClient, incident: dict, headers: dict[str, str]) -> str:
+    action = incident["proposed_action"]
+    response = client.post(
+        f"/v1/incidents/{incident['incident_id']}/execution",
+        headers=headers,
+        json={
+            "tenant_id": headers["X-Tenant-ID"],
+            "actor_id": headers["X-Actor-ID"],
+            "action_hash": action["action_hash"],
+            "action_taken": action["command"],
+            "evidence_refs": ["test://execution/verified"],
+        },
+    )
+    assert response.status_code == 201
+    return action["command"]
 
 
 def test_judge_console_and_live_evaluation_are_served() -> None:
@@ -40,7 +59,23 @@ def test_health() -> None:
 
 
 def test_incident_read_and_single_approval() -> None:
-    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    embedder = DeterministicEmbedder()
+    store = InMemoryStore(
+        [
+            Memory(
+                tenant_id="demo",
+                service="checkout",
+                service_version="v1",
+                symptom="elevated latency",
+                action="reduce worker concurrency",
+                outcome="latency recovered",
+                outcome_score=1.0,
+                confidence=0.95,
+                embedding=embedder.embed("checkout elevated latency"),
+            )
+        ]
+    )
+    client = TestClient(create_app(Settings(store="memory"), store))
     headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator-1"}
     created = client.post(
         "/v1/incidents",
@@ -54,7 +89,8 @@ def test_incident_read_and_single_approval() -> None:
         },
     )
     assert created.status_code == 201
-    incident_id = created.json()["incident_id"]
+    incident = created.json()
+    incident_id = incident["incident_id"]
     assert client.get(f"/v1/incidents/{incident_id}", headers=headers).status_code == 200
     approval = {
         "tenant_id": "demo",
@@ -114,10 +150,12 @@ def test_outcome_is_learned_once_and_embedding_is_not_exposed() -> None:
             "idempotency_key": "event-outcome-0001",
         },
     )
-    incident_id = created.json()["incident_id"]
+    incident = created.json()
+    incident_id = incident["incident_id"]
+    action_taken = execute_analyzed_action(client, incident, headers)
     payload = {
         "tenant_id": "demo",
-        "action_taken": "reduce worker concurrency",
+        "action_taken": action_taken,
         "outcome": "latency returned to baseline",
         "outcome_score": 1.0,
         "confidence": 0.97,
@@ -180,12 +218,13 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
             "idempotency_key": "event-governance-0001",
         },
     ).json()
+    action_taken = execute_analyzed_action(client, incident, observer_headers)
     memory = client.post(
         f"/v1/incidents/{incident['incident_id']}/outcome",
         headers=observer_headers,
         json={
             "tenant_id": "demo",
-            "action_taken": "reduce worker concurrency",
+            "action_taken": action_taken,
             "outcome": "latency returned to baseline",
             "outcome_score": 1.0,
             "confidence": 0.97,

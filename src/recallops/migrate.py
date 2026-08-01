@@ -46,3 +46,7 @@ def main() -> None:
     directory = Path(os.getenv("RECALLOPS_MIGRATIONS_DIR", "/app/migrations"))
     for name in apply_migrations(database_url, directory):
         print(f"applied {name}")
+
+
+if __name__ == "__main__":
+    main()

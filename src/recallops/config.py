@@ -23,6 +23,10 @@ class Settings(BaseSettings):
     database_connect_timeout_seconds: int = Field(default=5, ge=1, le=30)
     database_statement_timeout_seconds: int = Field(default=15, ge=1, le=120)
     max_memories: int = Field(default=5, ge=1, le=20)
+    retrieval_min_similarity: float = Field(default=0.55, ge=-1, le=1)
+    retrieval_min_confidence: float = Field(default=0.50, ge=0, le=1)
+    retrieval_min_rank_score: float = Field(default=0.65, ge=-1, le=1)
+    retrieval_min_margin: float = Field(default=0.03, ge=0, le=2)
     auth_mode: Literal["demo", "oidc"] = "demo"
     oidc_issuer: str | None = None
     oidc_audience: str | None = None

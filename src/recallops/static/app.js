@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   incidentId: sessionStorage.getItem("incident_id"),
   memoryId: sessionStorage.getItem("memory_id"),
+  action: null,
   key: null,
   config: null,
   identity: null
@@ -51,15 +52,21 @@ function incidentPayload() {
     idempotency_key: state.key };
 }
 function renderAnalysis(analysis) {
-  const memory = analysis.memories[0];
+  const memory = analysis.retrieval_abstention_reasons.length ? null : analysis.memories[0];
   const degraded = analysis.degraded_dependencies.length ? analysis.degraded_dependencies.join(", ") : "none";
-  $("#result").innerHTML = `<span class="confidence">${Math.round(analysis.confidence * 100)}% CONFIDENCE · ${analysis.memories.length} ELIGIBLE MEMORIES</span>
+  const abstention = analysis.retrieval_abstention_reasons.length ? analysis.retrieval_abstention_reasons.join(", ") : "none";
+  $("#result").innerHTML = `<span class="confidence">${Math.round(analysis.confidence * 100)}% CONFIDENCE · ${analysis.memories.length} GOVERNED CANDIDATES</span>
     <h3>${escapeHtml(analysis.diagnosis)}</h3><dl>
     <dt>Proposed action</dt><dd>${escapeHtml(analysis.proposed_action.command)}</dd>
     <dt>Safety gate</dt><dd class="${analysis.proposed_action.requires_approval ? "risk" : ""}">${analysis.proposed_action.requires_approval ? "Human approval required" : "Read-only; no approval required"}</dd>
     <dt>Best memory</dt><dd>${memory ? `${escapeHtml(memory.memory.outcome)} · rank ${memory.rank_score.toFixed(3)}` : "Abstained — no compatible successful memory"}</dd>
+    <dt>Retrieval abstention</dt><dd>${escapeHtml(abstention)}</dd>
     <dt>Degraded</dt><dd>${escapeHtml(degraded)}</dd></dl>`;
   $("#loop-actions").hidden = false;
+  state.action = analysis.proposed_action;
+  $("#approve").disabled = !state.action.requires_approval;
+  $("#execute").disabled = state.action.requires_approval;
+  $("#observe").disabled = true;
 }
 async function analyze(event) {
   event?.preventDefault(); $("#analyze").disabled = true;
@@ -68,9 +75,21 @@ async function analyze(event) {
     state.incidentId = result.incident_id; sessionStorage.setItem("incident_id", state.incidentId); renderAnalysis(result);
   } catch (error) { showError(error); } finally { $("#analyze").disabled = false; }
 }
+async function approve() {
+  try {
+    await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers(), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), reason: "operator verified the exact action and current incident evidence" }) });
+    $("#stage-approve").classList.add("active"); $("#approve").disabled = true; $("#execute").disabled = false;
+  } catch (error) { showError(error); }
+}
+async function execute() {
+  try {
+    await request(`/v1/incidents/${state.incidentId}/execution`, { method: "POST", headers: headers(), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), action_hash: state.action.action_hash, action_taken: state.action.command, evidence_refs: [`urn:recallops:execution:${Date.now()}`] }) });
+    $("#stage-execute").classList.add("active"); $("#execute").disabled = true; $("#observe").disabled = false;
+  } catch (error) { showError(error); }
+}
 async function observe() {
   try {
-    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: "reduce worker concurrency to 24 and recycle saturated connections", outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor() }) });
+    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor() }) });
     state.memoryId = result.id; sessionStorage.setItem("memory_id", state.memoryId); $("#stage-observe").classList.add("active"); $("#review").disabled = false; $("#observe").disabled = true;
     $("#result").innerHTML = `<span class="confidence">PENDING REVIEW</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
   } catch (error) { showError(error); }
@@ -140,6 +159,6 @@ async function initialize() {
   } catch (error) { $("#health-label").textContent = "API unavailable"; showError(error); }
 }
 $("#incident-form").addEventListener("submit", analyze);
-$("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
+$("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
 $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("click", signOut);
 initialize();
