@@ -75,3 +75,4 @@ MIT
 
 - AWS Fargate task resources: `infra/aws/cloudformation.yaml`
 - Managed MCP and ccloud judge flow: `docs/COCKROACH_TOOLS.md`
+- Live, sanitized CockroachDB Cloud evidence: `./scripts/ccloud-inspect.ps1`

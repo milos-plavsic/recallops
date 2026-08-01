@@ -9,6 +9,7 @@
   "inputs": [{
     "id": "cockroachClusterId",
     "type": "promptString",
-    "description": "CockroachDB Cloud cluster ID"
+    "description": "CockroachDB Cloud cluster ID",
+    "default": "a6f405c6-dbe0-4b46-bfe8-0d5d4d0e1f1f"
   }]
 }
