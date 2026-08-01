@@ -19,7 +19,12 @@ services:
         condition: service_healthy
     volumes:
       - ./migrations:/migrations:ro
-    entrypoint: ["cockroach", "sql", "--insecure", "--host=cockroach", "--file=/migrations/001_initial.sql"]
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - >-
+        for migration in /migrations/*.sql; do
+          cockroach sql --insecure --host=cockroach --file="$${migration}";
+        done
   api:
     build: .
     depends_on:

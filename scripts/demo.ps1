@@ -32,3 +32,18 @@ Invoke-RestMethod `
     -Headers $headers `
     -ContentType 'application/json' `
     -Body $approval | ConvertTo-Json
+
+$outcome = @{
+    tenant_id = 'demo'
+    action_taken = $analysis.proposed_action.command
+    outcome = 'Latency and error rate remained at baseline for the observation window'
+    outcome_score = 1.0
+    confidence = 0.97
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:8080/v1/incidents/$($analysis.incident_id)/outcome" `
+    -Headers $headers `
+    -ContentType 'application/json' `
+    -Body $outcome | ConvertTo-Json

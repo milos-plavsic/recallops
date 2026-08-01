@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS memories (
     confidence FLOAT8 NOT NULL CHECK (confidence BETWEEN 0 AND 1),
     valid BOOL NOT NULL DEFAULT true,
     superseded_by UUID NULL REFERENCES memories(id),
+    source_incident_id UUID NULL,
     embedding VECTOR(1024) NOT NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     INDEX memories_lookup (tenant_id, service, valid, created_at DESC),
@@ -44,4 +45,3 @@ CREATE TABLE IF NOT EXISTS approvals (
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     INDEX approvals_tenant_created (tenant_id, created_at DESC)
 );
-

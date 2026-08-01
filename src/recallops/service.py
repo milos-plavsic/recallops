@@ -1,9 +1,17 @@
 from typing import Protocol
+from uuid import UUID
 
 import boto3
 
 from recallops.archive import EvidenceArchive, NullEvidenceArchive
-from recallops.domain import ActionRisk, IncidentAnalysis, IncidentCreate, ProposedAction
+from recallops.domain import (
+    ActionRisk,
+    IncidentAnalysis,
+    IncidentCreate,
+    Memory,
+    OutcomeObservation,
+    ProposedAction,
+)
 from recallops.embedding import Embedder
 from recallops.store import MemoryStore
 
@@ -100,3 +108,23 @@ class IncidentService:
         )
         self._archive.archive(incident, saved)
         return saved
+
+    def learn_outcome(
+        self, incident_id: UUID, observation: OutcomeObservation
+    ) -> Memory | None:
+        incident = self._store.get_incident(incident_id, observation.tenant_id)
+        if incident is None:
+            return None
+        memory = Memory(
+            tenant_id=incident.tenant_id,
+            service=incident.service,
+            service_version=incident.service_version,
+            symptom=incident.symptom,
+            action=observation.action_taken,
+            outcome=observation.outcome,
+            outcome_score=observation.outcome_score,
+            confidence=observation.confidence,
+            source_incident_id=incident_id,
+            embedding=self._embedder.embed(f"{incident.service} {incident.symptom}"),
+        )
+        return self._store.save_outcome_memory(memory)

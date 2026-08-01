@@ -35,6 +35,7 @@ class Memory(BaseModel):
     confidence: float = Field(ge=0, le=1)
     valid: bool = True
     superseded_by: UUID | None = None
+    source_incident_id: UUID | None = None
     embedding: list[float] = Field(min_length=1024, max_length=1024)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
@@ -69,3 +70,11 @@ class ApprovalRequest(BaseModel):
     approved: bool
     actor_id: str = Field(min_length=1, max_length=120)
     reason: str = Field(min_length=3, max_length=1000)
+
+
+class OutcomeObservation(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    action_taken: str = Field(min_length=3, max_length=2000)
+    outcome: str = Field(min_length=3, max_length=4000)
+    outcome_score: float = Field(ge=-1, le=1)
+    confidence: float = Field(ge=0, le=1)

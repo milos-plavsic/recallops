@@ -1,4 +1,10 @@
-from recallops.domain import ActionRisk, IncidentAnalysis, IncidentCreate, Memory
+from recallops.domain import (
+    ActionRisk,
+    IncidentAnalysis,
+    IncidentCreate,
+    Memory,
+    OutcomeObservation,
+)
 from recallops.embedding import DeterministicEmbedder
 from recallops.service import DeterministicReasoner, IncidentService
 from recallops.store import InMemoryStore
@@ -79,3 +85,45 @@ def test_analysis_is_archived() -> None:
         InMemoryStore(), embedder, DeterministicReasoner(), archive=archive
     ).analyze(incident())
     assert archive.incident_ids == [str(result.incident_id)]
+
+
+def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+    observation = OutcomeObservation(
+        tenant_id="demo",
+        action_taken="reduce worker concurrency",
+        outcome="latency recovered without recurrence",
+        outcome_score=1.0,
+        confidence=0.98,
+    )
+
+    first = service.learn_outcome(analysis.incident_id, observation)
+    second = service.learn_outcome(analysis.incident_id, observation)
+    assert first is not None
+    assert second is not None
+    assert first.id == second.id
+
+    future = service.analyze(
+        incident().model_copy(update={"idempotency_key": "event-0002"})
+    )
+    assert future.memories[0].memory.id == first.id
+    assert future.proposed_action.command == "reduce worker concurrency"
+
+
+def test_outcome_learning_enforces_tenant_boundary() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+    result = service.learn_outcome(
+        analysis.incident_id,
+        OutcomeObservation(
+            tenant_id="other",
+            action_taken="exfiltrate remediation",
+            outcome="should never be learned",
+            outcome_score=1.0,
+            confidence=1.0,
+        ),
+    )
+    assert result is None

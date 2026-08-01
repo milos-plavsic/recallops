@@ -1,3 +1,5 @@
+from uuid import NAMESPACE_URL, uuid5
+
 from recallops.config import get_settings
 from recallops.domain import Memory
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder, Embedder
@@ -34,6 +36,7 @@ def seed_memories(store: PostgresStore, embedder: Embedder) -> None:
     for version, symptom, action, outcome, outcome_score, confidence in scenarios:
         store.add_memory(
             Memory(
+                id=uuid5(NAMESPACE_URL, f"recallops:demo:{version}:{symptom}:{action}"),
                 tenant_id="demo",
                 service="checkout",
                 service_version=version,
