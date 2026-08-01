@@ -7,6 +7,9 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
 **Fastest judge path:** run `./scripts/judge-demo.ps1`, then follow the
 [three-minute judge guide](docs/JUDGE_GUIDE.md).
 
+[![CI](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml/badge.svg)](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-c8ff4d.svg)](LICENSE)
+
 ## What is implemented
 
 - CockroachDB-backed structured incident state and 1024-dimensional distributed vector memory.
