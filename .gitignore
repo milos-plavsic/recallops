@@ -1,4 +1,5 @@
 .env
+.recallops/
 .venv/
 __pycache__/
 .pytest_cache/
@@ -8,4 +9,3 @@ __pycache__/
 htmlcov/
 dist/
 *.egg-info/
-

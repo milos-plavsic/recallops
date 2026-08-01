@@ -60,3 +60,36 @@ Private subnets and NAT gateways improve isolation but create fixed cost. For a
 short-lived judging environment, shut down the stack after judging while retaining
 the evidence bucket. Production deployments should use VPC endpoints where traffic
 and NAT cost justify the additional resources and operational surface.
+
+## Public judge demo
+
+`infra/aws/public-demo.yaml` is a separate, lower-fixed-cost topology for a public
+hackathon demonstration. API Gateway terminates managed HTTPS, applies route-level
+throttling, and writes structured access logs. A private VPC Link is the only ingress
+to an internal ALB. ECS tasks use public-subnet egress but accept traffic only from
+the ALB security group. This avoids a purchased domain, ACM certificate, and NAT
+gateway without exposing the origin.
+
+The demo stack also creates an administrator-only Cognito user pool, browser client
+using authorization code plus PKCE, server-side tenant claim injection, and separate
+operator and reviewer identities. Passwords are `NoEcho` parameters and are set by
+a least-privilege custom resource; they are never committed. API payload identity is
+derived from the verified access token, not from browser-controlled actor headers.
+
+CloudFormation runs under `recallops-cloudformation-execution`, whose trust policy
+admits only CloudFormation. `infra/aws/public-demo-execution-policy.json` contains
+the bounded permissions required by this stack. The deploying principal needs only
+stack lifecycle access and `iam:PassRole` for that service role.
+
+The CockroachDB secret must retain `sslmode=verify-full` and point `sslrootcert` to
+the runtime CA bundle (`/etc/ssl/certs/ca-certificates.crt` in the supplied image).
+Validate the exact image before deployment:
+
+```powershell
+docker run --rm -e "RECALLOPS_DATABASE_URL=$databaseUrl" IMAGE_DIGEST recallops-migrate
+```
+
+Use `AWS::ApiGatewayV2` rather than CloudFront for the demo endpoint when an AWS
+account is not verified to create CloudFront distributions. The production template
+remains the preferred custom-domain topology with HTTPS ALB, WAF, private tasks, and
+NAT or VPC endpoints.

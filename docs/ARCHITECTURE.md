@@ -38,7 +38,9 @@ future vertical increments; until they exist, mutation stays behind explicit hum
 
 ```mermaid
 flowchart LR
-  O[Operator] -->|HTTPS + OIDC| A[RecallOps on ECS Fargate]
+  O[Operator] -->|HTTPS + Cognito PKCE| G[API Gateway]
+  G -->|private VPC Link| L[Internal ALB]
+  L --> A[RecallOps on ECS Fargate]
   A -->|reason + embed| B[Amazon Bedrock]
   A -->|transactional vector memory| C[(CockroachDB)]
   A -->|versioned evidence| S[(Amazon S3)]
