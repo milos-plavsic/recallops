@@ -39,11 +39,28 @@ $outcome = @{
     outcome = 'Latency and error rate remained at baseline for the observation window'
     outcome_score = 1.0
     confidence = 0.97
+    actor_id = 'demo-observer'
 } | ConvertTo-Json
 
-Invoke-RestMethod `
+$learned = Invoke-RestMethod `
     -Method Post `
     -Uri "http://localhost:8080/v1/incidents/$($analysis.incident_id)/outcome" `
     -Headers $headers `
     -ContentType 'application/json' `
-    -Body $outcome | ConvertTo-Json
+    -Body $outcome
+
+$learned | ConvertTo-Json
+
+$governance = @{
+    tenant_id = 'demo'
+    actor_id = 'demo-reviewer'
+    action = 'activate'
+    reason = 'Independent review confirmed the observed recovery window'
+} | ConvertTo-Json
+
+Invoke-RestMethod `
+    -Method Post `
+    -Uri "http://localhost:8080/v1/memories/$($learned.id)/governance" `
+    -Headers $headers `
+    -ContentType 'application/json' `
+    -Body $governance | ConvertTo-Json

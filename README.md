@@ -11,6 +11,8 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
 - Outcome, confidence, and service-version-aware memory ranking.
 - Idempotent incident ingestion.
 - Closed-loop outcome learning: resolved incidents become idempotent, attributable vector memories.
+- Four-eyes memory governance with quarantine, activation, revocation, supersession, and audit events.
+- Conservative confidence decay: positive evidence ages while known failure penalties persist.
 - Mandatory approval records for mutating remediation proposals.
 - Amazon Bedrock Converse reasoning and Titan embeddings behind explicit provider flags.
 - Versioned, encrypted Amazon S3 evidence archival when a bucket is configured.
@@ -31,9 +33,9 @@ docker compose --profile seed run --rm seed
 ./scripts/demo.ps1
 ```
 
-The demo analyzes an incident, records the operator's decision, observes the real outcome, and
-persists that experience as memory for future incidents. Re-running the seed is safe: the three
-demonstration memories use deterministic identifiers.
+The demo analyzes an incident, records the operator's decision, observes the real outcome,
+quarantines the candidate memory, and activates it through an independent reviewer. Re-running the
+seed is safe: the three demonstration memories use deterministic identifiers.
 
 For development without Docker:
 
