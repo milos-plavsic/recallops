@@ -14,8 +14,8 @@ dependencies = [
   "fastapi>=0.140.13,<1",
   "psycopg[binary,pool]>=3.2,<4",
   "pydantic-settings>=2.14.2,<3",
-  "PyJWT[crypto]>=2.10,<3",
-  "structlog>=25.4,<26",
+  "PyJWT[crypto]>=2.13.0,<3",
+  "structlog>=26.1.0,<27",
   "uvicorn[standard]>=0.52.0,<1",
 ]
 
