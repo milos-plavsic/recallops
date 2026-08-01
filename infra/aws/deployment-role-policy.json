@@ -8,8 +8,10 @@
         "cloudformation:CreateStack",
         "cloudformation:UpdateStack",
         "cloudformation:DeleteStack",
+        "cloudformation:ContinueUpdateRollback",
         "cloudformation:DescribeStacks",
         "cloudformation:DescribeStackEvents",
+        "cloudformation:DescribeStackResources",
         "cloudformation:GetTemplateSummary"
       ],
       "Resource": "arn:aws:cloudformation:*:778900739705:stack/recallops-*/*"
@@ -29,6 +31,7 @@
       "Action": [
         "ecr:CreateRepository",
         "ecr:DescribeRepositories",
+        "ecr:DescribeImages",
         "ecr:PutLifecyclePolicy",
         "ecr:BatchCheckLayerAvailability",
         "ecr:GetDownloadUrlForLayer",
@@ -59,6 +62,9 @@
         "ecs:RegisterTaskDefinition",
         "ecs:DeregisterTaskDefinition",
         "ecs:DescribeTaskDefinition",
+        "ecs:RunTask",
+        "ecs:DescribeTasks",
+        "ecs:StopTask",
         "ecs:CreateService",
         "ecs:UpdateService",
         "ecs:DeleteService",

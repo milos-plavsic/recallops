@@ -251,7 +251,7 @@ Resources:
                       try:
                           cognito.admin_create_user(UserPoolId=pool, Username=username, UserAttributes=attributes, MessageAction="SUPPRESS")
                       except cognito.exceptions.UsernameExistsException:
-                          cognito.admin_update_user_attributes(UserPoolId=pool, Username=username, UserAttributes=attributes)
+                          pass
                       cognito.admin_set_user_password(UserPoolId=pool, Username=username, Password=password, Permanent=True)
                       cognito.admin_add_user_to_group(UserPoolId=pool, Username=username, GroupName=properties["Group"])
                   respond(event, context, "SUCCESS")
