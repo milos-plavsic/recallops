@@ -15,7 +15,7 @@ dependencies = [
   "psycopg[binary,pool]>=3.2,<4",
   "pydantic-settings>=2.10,<3",
   "PyJWT[crypto]>=2.10,<3",
-  "structlog>=25.4,<26",
+  "structlog>=26.1.0,<27",
   "uvicorn[standard]>=0.35,<1",
 ]
 
