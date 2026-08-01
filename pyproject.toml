@@ -11,7 +11,7 @@ requires-python = ">=3.12"
 license = { file = "LICENSE" }
 dependencies = [
   "boto3>=1.40,<2",
-  "fastapi>=0.116,<1",
+  "fastapi>=0.140.13,<1",
   "psycopg[binary,pool]>=3.2,<4",
   "pydantic-settings>=2.14.2,<3",
   "PyJWT[crypto]>=2.10,<3",
