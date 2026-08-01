@@ -25,3 +25,6 @@ inbound networking before accepting untrusted traffic. `X-Tenant-ID`, `X-Actor-I
 are local demonstration inputs and are ignored in OIDC mode. Do not connect execution
 adapters to production infrastructure until operations are allowlisted, dry-run capable,
 time-limited, auditable, and protected by postcondition checks.
+
+The complete abuse-case analysis and residual-risk register is in
+[`docs/THREAT_MODEL.md`](docs/THREAT_MODEL.md).
