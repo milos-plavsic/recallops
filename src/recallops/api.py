@@ -1,9 +1,12 @@
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from pathlib import Path
 from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
 
 from recallops.archive import NullEvidenceArchive, S3EvidenceArchive
 from recallops.auth import (
@@ -22,6 +25,7 @@ from recallops.domain import (
     OutcomeObservation,
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
+from recallops.evaluation import EvaluationReport, evaluate, load_dataset
 from recallops.service import BedrockReasoner, DeterministicReasoner, IncidentService
 from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
 
@@ -110,6 +114,10 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     def health() -> dict[str, str]:
         return {"status": "ok"}
 
+    @app.get("/v1/evaluation", response_model=EvaluationReport)
+    def evaluation_report() -> EvaluationReport:
+        return evaluate(load_dataset(Path("evaluation/memory_cases.json")))
+
     @app.post(
         "/v1/incidents",
         response_model=IncidentAnalysis,
@@ -192,4 +200,11 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_404_NOT_FOUND, "memory not found")
         return memory
 
+    static_directory = Path(__file__).with_name("static")
+
+    @app.get("/", include_in_schema=False)
+    def console() -> FileResponse:
+        return FileResponse(static_directory / "index.html")
+
+    app.mount("/assets", StaticFiles(directory=static_directory), name="assets")
     return app

@@ -5,6 +5,7 @@ WORKDIR /app
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY migrations ./migrations
+COPY evaluation ./evaluation
 RUN pip install --no-cache-dir .
 USER recallops
 EXPOSE 8080

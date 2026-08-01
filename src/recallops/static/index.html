@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="RecallOps outcome-conditioned incident memory console">
+  <title>RecallOps — operational memory that learns what worked</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/app.js" defer></script>
+</head>
+<body>
+  <a class="skip-link" href="#main">Skip to main content</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="RecallOps home"><span aria-hidden="true">R/</span> RecallOps</a>
+    <nav aria-label="Primary">
+      <a href="#proof">Proof</a><a href="#demo">Live loop</a><a href="#architecture">Architecture</a>
+      <a href="/docs">API</a>
+    </nav>
+    <span class="health"><i aria-hidden="true"></i><span id="health-label">Checking API</span></span>
+  </header>
+
+  <main id="main">
+    <section class="hero" aria-labelledby="hero-title">
+      <div>
+        <p class="eyebrow">OUTCOME-CONDITIONED AGENT MEMORY</p>
+        <h1 id="hero-title">Similarity recalls.<br><em>RecallOps remembers consequences.</em></h1>
+        <p class="lede">A safety-gated incident agent that retrieves only tenant-isolated, independently reviewed operational memory—then learns from verified outcomes.</p>
+        <div class="actions"><a class="button primary" href="#demo">Run the closed loop</a><a class="button" href="https://github.com/milos-plavsic/recallops">Inspect source</a></div>
+      </div>
+      <aside class="principle" aria-label="Core ranking equation">
+        <span>MEMORY FITNESS</span>
+        <code>.55 semantic + .25 outcome<br>+ .15 compatibility + .05 confidence</code>
+        <p>Eligibility is enforced before ranking. A high similarity score can never cross a tenant or governance boundary.</p>
+      </aside>
+    </section>
+
+    <section id="proof" class="section" aria-labelledby="proof-title">
+      <div class="section-heading"><div><p class="eyebrow">01 / MEASURABLE PROOF</p><h2 id="proof-title">Safety is a benchmark, not a claim.</h2></div><span id="benchmark-status" class="pill">Loading evaluation</span></div>
+      <div class="metrics" aria-live="polite">
+        <article><span>RecallOps safe top-1</span><strong id="recall-accuracy">—</strong><small id="baseline-accuracy">baseline —</small></article>
+        <article><span>Unsafe selection rate</span><strong id="recall-unsafe">—</strong><small id="baseline-unsafe">baseline —</small></article>
+        <article><span>Isolation violations</span><strong id="isolation-count">—</strong><small>tenant + validity gate</small></article>
+        <article><span>Mean reciprocal rank</span><strong id="recall-mrr">—</strong><small id="case-count">— cases</small></article>
+      </div>
+      <p class="method">Versioned deterministic cases include semantically attractive failed remediations, incompatible versions, invalid memories, and cross-tenant candidates. CI rejects a regression.</p>
+    </section>
+
+    <section id="demo" class="section demo" aria-labelledby="demo-title">
+      <div class="section-heading"><div><p class="eyebrow">02 / LIVE CLOSED LOOP</p><h2 id="demo-title">Turn an incident into governed memory.</h2></div><span class="pill neutral">No infrastructure mutation</span></div>
+      <div class="demo-grid">
+        <form id="incident-form" class="panel">
+          <h3>Incident signal</h3>
+          <label>Tenant<input id="tenant" value="demo" pattern="[A-Za-z0-9_-]+" required></label>
+          <label>Service<input id="service" value="checkout" required></label>
+          <label>Version<input id="version" value="2026.07.31" required></label>
+          <label>Symptom<textarea id="symptom" rows="3" required>latency spike after connection pool exhaustion</textarea></label>
+          <details><summary>Production authentication</summary><label>Bearer token<input id="token" type="password" autocomplete="off" placeholder="Optional in demo mode"></label></details>
+          <button class="button primary" type="submit" id="analyze">Analyze incident</button>
+        </form>
+        <div class="panel result-panel">
+          <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-observe">2 Observe</span><span id="stage-review">3 Review</span><span id="stage-recall">4 Recall</span></div>
+          <div id="result" class="result" role="status" aria-live="polite">
+            <p class="empty">Submit the incident. The agent will retrieve governed memory, explain its choice, and require approval for any mutating action.</p>
+          </div>
+          <div id="loop-actions" class="loop-actions" hidden>
+            <button class="button" id="observe" type="button">Record successful outcome</button>
+            <button class="button" id="review" type="button" disabled>Activate as reviewer</button>
+            <button class="button primary" id="recall" type="button" disabled>Analyze again</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section id="architecture" class="section" aria-labelledby="architecture-title">
+      <div class="section-heading"><div><p class="eyebrow">03 / SYSTEM OF RECORD</p><h2 id="architecture-title">One causal path. Explicit trust boundaries.</h2></div></div>
+      <div class="architecture" role="img" aria-label="Operator uses HTTPS and OIDC to reach RecallOps on ECS. RecallOps invokes Bedrock, stores transactional vector memory in CockroachDB, and archives evidence to S3 with CloudWatch observability.">
+        <div class="node human"><b>Operator</b><span>OIDC identity</span></div><i>HTTPS</i><div class="node core"><b>RecallOps / ECS</b><span>policy + orchestration</span></div><i>evidence</i><div class="node"><b>Amazon Bedrock</b><span>reason + embed</span></div>
+        <div class="branch"><div class="node database"><b>CockroachDB</b><span>incidents · vectors · governance</span></div><div class="node"><b>Amazon S3</b><span>versioned evidence</span></div><div class="node"><b>CloudWatch</b><span>logs · metrics · alarms</span></div></div>
+      </div>
+      <div class="safeguards"><span>Tenant filter before rank</span><span>Four-eyes activation</span><span>Immutable provenance</span><span>Confidence decay</span><span>Approval before mutation</span><span>Provider degradation</span></div>
+    </section>
+  </main>
+  <footer><span>RecallOps · CockroachDB × AWS Agentic Memory</span><span>Built for inspectability, not theatre.</span></footer>
+</body>
+</html>

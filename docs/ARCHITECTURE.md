@@ -30,7 +30,22 @@ not history; original observations remain immutable and auditable.
 
 ## Current boundary
 
-The MVP proposes and records decisions but does not execute infrastructure mutations. It closes the
-memory lifecycle with quarantined learning, independent review, revocation, supersession, and
-confidence decay. Verified identity, allowlisted execution adapters, and postcondition verification
-remain later vertical increments.
+The service proposes and records decisions but does not execute infrastructure mutations. It closes
+the memory lifecycle with quarantined learning, independent review, revocation, supersession, and
+confidence decay. Production identity is verified with signed OIDC access tokens and tenant scope is
+derived from immutable claims. Allowlisted execution adapters and postcondition verification remain
+future vertical increments; until they exist, mutation stays behind explicit human approval.
+
+```mermaid
+flowchart LR
+  O[Operator] -->|HTTPS + OIDC| A[RecallOps on ECS Fargate]
+  A -->|reason + embed| B[Amazon Bedrock]
+  A -->|transactional vector memory| C[(CockroachDB)]
+  A -->|versioned evidence| S[(Amazon S3)]
+  A -->|logs + metrics| W[CloudWatch]
+  C --> I[Incident]
+  I --> D[Decision + approval]
+  D --> U[Observed outcome]
+  U --> G[Independent governance]
+  G --> M[Eligible future memory]
+```
