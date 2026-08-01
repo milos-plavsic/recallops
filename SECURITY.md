@@ -5,6 +5,10 @@ Report vulnerabilities privately to the repository owner. Do not open public iss
 ## Current guarantees
 
 - Tenant identity is required and checked before retrieval.
+- Production OIDC mode validates RS256 signatures, issuer, expiry, issued-at time, application,
+  access-token use, tenant, subject, and roles before request handling.
+- Tenant and actor values in request bodies must match verified claims; identity headers are ignored
+  in OIDC mode.
 - Vector queries constrain tenant and service before ranking.
 - Consequential actions require a durable, single-decision approval record.
 - Newly observed outcomes are quarantined from retrieval until an independent actor reviews them.
@@ -16,9 +20,8 @@ Report vulnerabilities privately to the repository owner. Do not open public iss
 
 ## Deployment requirements
 
-The public hackathon demo must add TLS termination, authenticated user identity, rate limiting, and
-restricted inbound networking before accepting untrusted traffic. The `X-Tenant-ID` header is a
-local demonstration boundary, not production authentication. Until verified identity is enabled,
-do not expose outcome or governance endpoints to untrusted clients. Do not connect execution
+The public hackathon deployment must enable OIDC, TLS termination, rate limiting, and restricted
+inbound networking before accepting untrusted traffic. `X-Tenant-ID`, `X-Actor-ID`, and `X-Roles`
+are local demonstration inputs and are ignored in OIDC mode. Do not connect execution
 adapters to production infrastructure until operations are allowlisted, dry-run capable,
 time-limited, auditable, and protected by postcondition checks.

@@ -1,8 +1,15 @@
+from typing import Annotated
 from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, status
 
 from recallops.archive import NullEvidenceArchive, S3EvidenceArchive
+from recallops.auth import (
+    AuthenticationError,
+    AuthorizationError,
+    Principal,
+    create_authenticator,
+)
 from recallops.config import Settings, get_settings
 from recallops.domain import (
     ApprovalRequest,
@@ -38,12 +45,33 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         else NullEvidenceArchive()
     )
     service = IncidentService(store, embedder, reasoner, settings.max_memories, archive)
+    authenticator = create_authenticator(settings)
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
     app.state.store = store
     app.state.service = service
 
-    def tenant(x_tenant_id: str = Header(min_length=1, max_length=80)) -> str:
-        return x_tenant_id
+    def principal(
+        authorization: str | None = Header(default=None),
+        x_tenant_id: str | None = Header(default=None, max_length=80),
+        x_actor_id: str | None = Header(default=None, max_length=200),
+        x_roles: str | None = Header(default=None, max_length=500),
+    ) -> Principal:
+        try:
+            return authenticator.authenticate(authorization, x_tenant_id, x_actor_id, x_roles)
+        except AuthenticationError as error:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                str(error),
+                headers={"WWW-Authenticate": "Bearer"},
+            ) from error
+
+    def require_role(identity: Principal, role: str) -> None:
+        try:
+            identity.require(role)
+        except AuthorizationError as error:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
+
+    AuthenticatedPrincipal = Annotated[Principal, Depends(principal)]
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -55,9 +83,9 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         response_model_exclude={"memories": {"__all__": {"memory": {"embedding"}}}},
         status_code=status.HTTP_201_CREATED,
     )
-    def analyze(payload: IncidentCreate, tenant_id: str = Depends(tenant)) -> IncidentAnalysis:
-        if payload.tenant_id != tenant_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+    def analyze(payload: IncidentCreate, identity: AuthenticatedPrincipal) -> IncidentAnalysis:
+        if payload.tenant_id != identity.tenant_id:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload tenant differ")
         return service.analyze(payload)
 
     @app.get(
@@ -65,20 +93,27 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         response_model=IncidentAnalysis,
         response_model_exclude={"memories": {"__all__": {"memory": {"embedding"}}}},
     )
-    def get_incident(incident_id: UUID, tenant_id: str = Depends(tenant)) -> IncidentAnalysis:
-        result = store.get_analysis(incident_id, tenant_id)
+    def get_incident(
+        incident_id: UUID, identity: AuthenticatedPrincipal
+    ) -> IncidentAnalysis:
+        result = store.get_analysis(incident_id, identity.tenant_id)
         if result is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
         return result
 
     @app.post("/v1/incidents/{incident_id}/approval")
     def approve(
-        incident_id: UUID, payload: ApprovalRequest, tenant_id: str = Depends(tenant)
+        incident_id: UUID, payload: ApprovalRequest, identity: AuthenticatedPrincipal
     ) -> dict[str, bool]:
-        if payload.tenant_id != tenant_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+        require_role(identity, "operator")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
         recorded = store.record_approval(
-            incident_id, tenant_id, payload.actor_id, payload.approved, payload.reason
+            incident_id,
+            identity.tenant_id,
+            identity.subject,
+            payload.approved,
+            payload.reason,
         )
         if not recorded:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found or already decided")
@@ -91,10 +126,13 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         status_code=status.HTTP_201_CREATED,
     )
     def observe_outcome(
-        incident_id: UUID, payload: OutcomeObservation, tenant_id: str = Depends(tenant)
+        incident_id: UUID,
+        payload: OutcomeObservation,
+        identity: AuthenticatedPrincipal,
     ) -> Memory:
-        if payload.tenant_id != tenant_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+        require_role(identity, "operator")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
         memory = service.learn_outcome(incident_id, payload)
         if memory is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
@@ -108,10 +146,11 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     def govern_memory(
         memory_id: UUID,
         payload: MemoryGovernanceRequest,
-        tenant_id: str = Depends(tenant),
+        identity: AuthenticatedPrincipal,
     ) -> Memory:
-        if payload.tenant_id != tenant_id:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "tenant header and payload differ")
+        require_role(identity, "reviewer")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
         try:
             memory = service.govern_memory(memory_id, payload)
         except MemoryGovernanceError as error:

@@ -27,6 +27,7 @@ services:
         done
   api:
     build: .
+    image: recallops:local
     depends_on:
       migrate:
         condition: service_completed_successfully
@@ -37,6 +38,7 @@ services:
       - "8080:8080"
   seed:
     build: .
+    image: recallops:local
     profiles: ["seed"]
     depends_on:
       migrate:

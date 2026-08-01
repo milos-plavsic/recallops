@@ -1,6 +1,6 @@
 $ErrorActionPreference = 'Stop'
 
-$headers = @{ 'X-Tenant-ID' = 'demo' }
+$headers = @{ 'X-Tenant-ID' = 'demo'; 'X-Actor-ID' = 'demo-operator' }
 $incident = @{
     tenant_id = 'demo'
     service = 'checkout'
@@ -42,6 +42,8 @@ $outcome = @{
     actor_id = 'demo-observer'
 } | ConvertTo-Json
 
+$headers['X-Actor-ID'] = 'demo-observer'
+
 $learned = Invoke-RestMethod `
     -Method Post `
     -Uri "http://localhost:8080/v1/incidents/$($analysis.incident_id)/outcome" `
@@ -57,6 +59,8 @@ $governance = @{
     action = 'activate'
     reason = 'Independent review confirmed the observed recovery window'
 } | ConvertTo-Json
+
+$headers['X-Actor-ID'] = 'demo-reviewer'
 
 Invoke-RestMethod `
     -Method Post `
