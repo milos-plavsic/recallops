@@ -83,6 +83,7 @@ class IncidentAnalysis(BaseModel):
     confidence: float = Field(ge=0, le=1)
     memories: list[RetrievedMemory]
     proposed_action: ProposedAction
+    degraded_dependencies: list[str] = Field(default_factory=list)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

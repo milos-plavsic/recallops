@@ -4,6 +4,9 @@ import math
 from typing import Protocol
 
 import boto3
+from botocore.exceptions import BotoCoreError, ClientError
+
+from recallops.resilience import DependencyUnavailable, aws_client_config
 
 
 class Embedder(Protocol):
@@ -25,16 +28,33 @@ class DeterministicEmbedder:
 
 
 class BedrockTitanEmbedder:
-    def __init__(self, region: str, model_id: str) -> None:
-        self._client = boto3.client("bedrock-runtime", region_name=region)
+    def __init__(
+        self,
+        region: str,
+        model_id: str,
+        connect_timeout: float = 2.0,
+        read_timeout: float = 15.0,
+        max_attempts: int = 3,
+    ) -> None:
+        self._client = boto3.client(
+            "bedrock-runtime",
+            region_name=region,
+            config=aws_client_config(connect_timeout, read_timeout, max_attempts),
+        )
         self._model_id = model_id
 
     def embed(self, text: str) -> list[float]:
-        response = self._client.invoke_model(
-            modelId=self._model_id,
-            contentType="application/json",
-            accept="application/json",
-            body=json.dumps({"inputText": text, "dimensions": 1024, "normalize": True}),
-        )
-        payload = json.loads(response["body"].read())
-        return [float(value) for value in payload["embedding"]]
+        try:
+            response = self._client.invoke_model(
+                modelId=self._model_id,
+                contentType="application/json",
+                accept="application/json",
+                body=json.dumps({"inputText": text, "dimensions": 1024, "normalize": True}),
+            )
+            payload = json.loads(response["body"].read())
+            embedding = [float(value) for value in payload["embedding"]]
+            if len(embedding) != 1024:
+                raise ValueError("unexpected embedding dimensions")
+            return embedding
+        except (BotoCoreError, ClientError, KeyError, TypeError, ValueError) as error:
+            raise DependencyUnavailable("bedrock_embedding") from error

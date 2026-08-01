@@ -1,4 +1,5 @@
 import math
+import threading
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
@@ -145,6 +146,7 @@ class InMemoryStore:
         self.outcome_memories: dict[tuple[str, UUID], Memory] = {}
         self.memory_events: list[MemoryEvent] = []
         self.approvals: set[tuple[str, UUID]] = set()
+        self._lock = threading.RLock()
 
     def add_memory(self, memory: Memory) -> None:
         self.memories.append(memory)
@@ -167,14 +169,15 @@ class InMemoryStore:
     def save_analysis(
         self, incident: IncidentCreate, analysis: IncidentAnalysis
     ) -> IncidentAnalysis:
-        key = (incident.tenant_id, incident.idempotency_key)
-        existing_id = self.idempotency.get(key)
-        if existing_id is not None:
-            return self.analyses[(incident.tenant_id, existing_id)]
-        self.idempotency[key] = analysis.incident_id
-        self.analyses[(incident.tenant_id, analysis.incident_id)] = analysis
-        self.incidents[(incident.tenant_id, analysis.incident_id)] = incident
-        return analysis
+        with self._lock:
+            key = (incident.tenant_id, incident.idempotency_key)
+            existing_id = self.idempotency.get(key)
+            if existing_id is not None:
+                return self.analyses[(incident.tenant_id, existing_id)]
+            self.idempotency[key] = analysis.incident_id
+            self.analyses[(incident.tenant_id, analysis.incident_id)] = analysis
+            self.incidents[(incident.tenant_id, analysis.incident_id)] = incident
+            return analysis
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
         return self.analyses.get((tenant_id, incident_id))
@@ -242,10 +245,26 @@ class InMemoryStore:
 
 
 class PostgresStore:
-    def __init__(self, database_url: str) -> None:
+    def __init__(
+        self,
+        database_url: str,
+        connect_timeout_seconds: int = 5,
+        statement_timeout_seconds: int = 15,
+    ) -> None:
         self._pool = ConnectionPool(
-            database_url, min_size=1, max_size=10, kwargs={"row_factory": dict_row}
+            database_url,
+            min_size=1,
+            max_size=10,
+            timeout=connect_timeout_seconds,
+            kwargs={
+                "row_factory": dict_row,
+                "connect_timeout": connect_timeout_seconds,
+                "options": f"-c statement_timeout={statement_timeout_seconds * 1000}",
+            },
         )
+
+    def close(self) -> None:
+        self._pool.close()
 
     @staticmethod
     def _vector(values: list[float]) -> str:

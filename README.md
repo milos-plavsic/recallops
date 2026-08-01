@@ -100,6 +100,7 @@ MIT
 ## AWS and CockroachDB tools
 
 - Secure AWS Fargate deployment: [`docs/AWS_DEPLOYMENT.md`](docs/AWS_DEPLOYMENT.md)
+- Failure semantics and reproducible drills: [`docs/RESILIENCE.md`](docs/RESILIENCE.md)
 - AWS resources: private tasks, HTTPS ALB, WAF, scoped Bedrock IAM, S3, and CloudWatch:
   `infra/aws/cloudformation.yaml`
 - Managed MCP and ccloud judge flow: `docs/COCKROACH_TOOLS.md`
