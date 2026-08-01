@@ -33,6 +33,7 @@ recallops = "recallops.main:run"
 recallops-eval = "recallops.evaluation:main"
 recallops-migrate = "recallops.migrate:main"
 recallops-reembed = "recallops.reembed:main"
+recallops-outbox = "recallops.outbox:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recallops"]
