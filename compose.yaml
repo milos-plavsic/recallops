@@ -22,8 +22,10 @@ services:
     entrypoint: ["/bin/sh", "-ec"]
     command:
       - >-
+        cockroach sql --insecure --host=cockroach
+        --execute='CREATE DATABASE IF NOT EXISTS recallops';
         for migration in /migrations/*.sql; do
-          cockroach sql --insecure --host=cockroach --file="$${migration}";
+          cockroach sql --insecure --host=cockroach --database=recallops --file="$${migration}";
         done
   api:
     build: .

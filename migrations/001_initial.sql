@@ -1,8 +1,3 @@
-CREATE DATABASE IF NOT EXISTS recallops;
-USE recallops;
-
-SET CLUSTER SETTING feature.vector_index.enabled = true;
-
 CREATE TABLE IF NOT EXISTS memories (
     id UUID PRIMARY KEY,
     tenant_id STRING NOT NULL,
