@@ -18,8 +18,6 @@ Parameters:
   DesiredCount: { Type: Number, Default: 1, MinValue: 1, MaxValue: 3 }
   JudgeOperatorEmail: { Type: String, Default: recallops.operator@example.com }
   JudgeReviewerEmail: { Type: String, Default: recallops.reviewer@example.com }
-  JudgeOperatorPassword: { Type: String, NoEcho: true, MinLength: 14 }
-  JudgeReviewerPassword: { Type: String, NoEcho: true, MinLength: 14 }
 
 Resources:
   OriginSubnetA:
@@ -179,6 +177,13 @@ Resources:
                   - cognito-idp:AdminAddUserToGroup
                 Resource: !GetAtt UserPool.Arn
               - Effect: Allow
+                Action:
+                  - secretsmanager:CreateSecret
+                  - secretsmanager:DeleteSecret
+                  - secretsmanager:GetSecretValue
+                  - secretsmanager:PutSecretValue
+                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/judge/*'
+              - Effect: Allow
                 Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
                 Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-judge-provisioner:*'
   JudgeProvisionerFunction:
@@ -193,10 +198,33 @@ Resources:
       Code:
         ZipFile: |
           import json
+          import secrets
+          import string
           import urllib.request
           import boto3
 
           cognito = boto3.client("cognito-idp")
+          secret_store = boto3.client("secretsmanager")
+
+          def generated_password():
+              characters = [secrets.choice(string.ascii_lowercase), secrets.choice(string.ascii_uppercase), secrets.choice(string.digits), secrets.choice("!@#$%^&*()-_=+")]
+              characters.extend(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*()-_=+") for _ in range(20))
+              secrets.SystemRandom().shuffle(characters)
+              return "".join(characters)
+
+          def credential(secret_name, username):
+              try:
+                  current = json.loads(secret_store.get_secret_value(SecretId=secret_name)["SecretString"])
+              except secret_store.exceptions.ResourceNotFoundException:
+                  current = {}
+              password = current.get("password") or generated_password()
+              if current.get("email") != username or "password" not in current:
+                  value = json.dumps({"email": username, "password": password})
+                  if current:
+                      secret_store.put_secret_value(SecretId=secret_name, SecretString=value)
+                  else:
+                      secret_store.create_secret(Name=secret_name, Description="RecallOps generated judge credential", SecretString=value)
+              return password
 
           def respond(event, context, status, reason=None):
               body = json.dumps({"Status": status, "Reason": reason or "complete", "PhysicalResourceId": event.get("PhysicalResourceId", event["ResourceProperties"]["Username"]), "StackId": event["StackId"], "RequestId": event["RequestId"], "LogicalResourceId": event["LogicalResourceId"], "NoEcho": True})
@@ -213,13 +241,18 @@ Resources:
                           cognito.admin_delete_user(UserPoolId=pool, Username=username)
                       except cognito.exceptions.UserNotFoundException:
                           pass
+                      try:
+                          secret_store.delete_secret(SecretId=properties["CredentialSecretName"], ForceDeleteWithoutRecovery=True)
+                      except secret_store.exceptions.ResourceNotFoundException:
+                          pass
                   else:
+                      password = credential(properties["CredentialSecretName"], username)
                       attributes = [{"Name": "email", "Value": username}, {"Name": "email_verified", "Value": "true"}, {"Name": "custom:tenant_id", "Value": properties["TenantId"]}]
                       try:
                           cognito.admin_create_user(UserPoolId=pool, Username=username, UserAttributes=attributes, MessageAction="SUPPRESS")
                       except cognito.exceptions.UsernameExistsException:
                           cognito.admin_update_user_attributes(UserPoolId=pool, Username=username, UserAttributes=attributes)
-                      cognito.admin_set_user_password(UserPoolId=pool, Username=username, Password=properties["Password"], Permanent=True)
+                      cognito.admin_set_user_password(UserPoolId=pool, Username=username, Password=password, Permanent=True)
                       cognito.admin_add_user_to_group(UserPoolId=pool, Username=username, GroupName=properties["Group"])
                   respond(event, context, "SUCCESS")
               except Exception as error:
@@ -231,7 +264,7 @@ Resources:
       ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
       UserPoolId: !Ref UserPool
       Username: !Ref JudgeOperatorEmail
-      Password: !Ref JudgeOperatorPassword
+      CredentialSecretName: !Sub '${AWS::StackName}/judge/operator'
       Group: operator
       TenantId: demo
   JudgeReviewer:
@@ -241,7 +274,7 @@ Resources:
       ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
       UserPoolId: !Ref UserPool
       Username: !Ref JudgeReviewerEmail
-      Password: !Ref JudgeReviewerPassword
+      CredentialSecretName: !Sub '${AWS::StackName}/judge/reviewer'
       Group: reviewer
       TenantId: demo
   UserPoolDomain:

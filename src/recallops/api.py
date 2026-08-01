@@ -1,11 +1,12 @@
 import asyncio
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Awaitable, Callable
 from contextlib import asynccontextmanager, suppress
 from pathlib import Path
 from typing import Annotated
+from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, Header, HTTPException, status
+from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -123,6 +124,32 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs", lifespan=lifespan)
     app.state.store = store
     app.state.service = service
+
+    token_origin = ""
+    if settings.oidc_token_url:
+        parsed_token_url = urlsplit(settings.oidc_token_url)
+        token_origin = f" {parsed_token_url.scheme}://{parsed_token_url.netloc}"
+
+    @app.middleware("http")
+    async def security_headers(
+        request: Request, call_next: Callable[[Request], Awaitable[Response]]
+    ) -> Response:
+        response = await call_next(request)
+        response.headers["Content-Security-Policy"] = (
+            "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
+            f"connect-src 'self'{token_origin}; form-action 'self'; img-src 'self' data:; "
+            "object-src 'none'; script-src 'self'; style-src 'self'"
+        )
+        response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+        response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Referrer-Policy"] = "no-referrer"
+        response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        if request.url.path.startswith("/v1/"):
+            response.headers["Cache-Control"] = "no-store"
+        return response
 
     def principal(
         authorization: str | None = Header(default=None),
