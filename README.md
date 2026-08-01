@@ -65,7 +65,12 @@ RecallOps does not execute infrastructure mutations in this milestone. It propos
 ruff check .
 mypy
 pytest --cov=recallops --cov-report=term-missing
+recallops-eval
 ```
+
+`recallops-eval` runs a versioned, deterministic safety benchmark against a similarity-only RAG
+baseline. CI fails unless RecallOps selects the labeled safe action in every case, abstains when no
+successful compatible memory exists, and produces no tenant or validity isolation violations.
 
 ## License
 

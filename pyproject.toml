@@ -29,6 +29,7 @@ dev = [
 
 [project.scripts]
 recallops = "recallops.main:run"
+recallops-eval = "recallops.evaluation:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recallops"]

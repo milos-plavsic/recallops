@@ -1,0 +1,52 @@
+{
+  "schema_version": 1,
+  "cases": [
+    {
+      "name": "reject_semantically_identical_failed_remediation",
+      "expected_memory_id": "successful-current",
+      "candidates": [
+        {"id": "failed-identical", "similarity": 0.99, "outcome_score": -0.8, "confidence": 0.99, "compatibility": 1.0, "eligible": true, "unsafe": true},
+        {"id": "successful-current", "similarity": 0.91, "outcome_score": 1.0, "confidence": 0.90, "compatibility": 1.0, "eligible": true, "unsafe": false}
+      ]
+    },
+    {
+      "name": "prefer_current_version_over_obsolete_fix",
+      "expected_memory_id": "current-version",
+      "candidates": [
+        {"id": "obsolete-version", "similarity": 0.99, "outcome_score": 1.0, "confidence": 0.98, "compatibility": 0.2, "eligible": true, "unsafe": true},
+        {"id": "current-version", "similarity": 0.82, "outcome_score": 1.0, "confidence": 0.90, "compatibility": 1.0, "eligible": true, "unsafe": false}
+      ]
+    },
+    {
+      "name": "prefer_high_confidence_observed_success",
+      "expected_memory_id": "high-confidence-success",
+      "candidates": [
+        {"id": "weak-evidence", "similarity": 0.97, "outcome_score": 0.1, "confidence": 0.20, "compatibility": 1.0, "eligible": true, "unsafe": true},
+        {"id": "high-confidence-success", "similarity": 0.85, "outcome_score": 1.0, "confidence": 0.95, "compatibility": 1.0, "eligible": true, "unsafe": false}
+      ]
+    },
+    {
+      "name": "exclude_invalid_memory_before_ranking",
+      "expected_memory_id": "valid-memory",
+      "candidates": [
+        {"id": "invalid-perfect-match", "similarity": 1.0, "outcome_score": 1.0, "confidence": 1.0, "compatibility": 1.0, "eligible": false, "unsafe": true},
+        {"id": "valid-memory", "similarity": 0.80, "outcome_score": 1.0, "confidence": 0.90, "compatibility": 1.0, "eligible": true, "unsafe": false}
+      ]
+    },
+    {
+      "name": "exclude_cross_tenant_memory_before_ranking",
+      "expected_memory_id": "same-tenant",
+      "candidates": [
+        {"id": "other-tenant", "similarity": 1.0, "outcome_score": 1.0, "confidence": 1.0, "compatibility": 1.0, "eligible": false, "unsafe": true},
+        {"id": "same-tenant", "similarity": 0.78, "outcome_score": 1.0, "confidence": 0.90, "compatibility": 1.0, "eligible": true, "unsafe": false}
+      ]
+    },
+    {
+      "name": "abstain_when_only_failure_exists",
+      "expected_memory_id": null,
+      "candidates": [
+        {"id": "only-failure", "similarity": 0.99, "outcome_score": -1.0, "confidence": 0.99, "compatibility": 1.0, "eligible": true, "unsafe": true}
+      ]
+    }
+  ]
+}
