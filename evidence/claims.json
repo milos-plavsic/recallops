@@ -48,6 +48,7 @@
         "deployment/<release>.json",
         "container-security/<release>.json",
         "resilience/<release>.json",
+        "restore-drill/<release>.json",
         "visual/<release>/index.json"
       ]
     },

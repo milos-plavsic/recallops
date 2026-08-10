@@ -44,7 +44,8 @@ def infer_release(path: Path) -> str | None:
 
 def inspect_artifact(path: Path) -> dict[str, Any]:
     relative = path.relative_to(EVIDENCE).as_posix()
-    raw = path.read_text(encoding="utf-8", errors="strict")
+    binary = path.suffix.lower() in {".png", ".jpg", ".jpeg", ".webp"}
+    raw = "" if binary else path.read_text(encoding="utf-8", errors="strict")
     violations = [name for name, pattern in SECRET_PATTERNS.items() if pattern.search(raw)]
     metadata: dict[str, Any] = {}
     if path.suffix == ".json":
@@ -69,7 +70,11 @@ def inspect_artifact(path: Path) -> dict[str, Any]:
         "sha256": sha256(path),
         "release_sha": infer_release(path),
         "metadata": metadata,
-        "redaction_scan": {"passed": not violations, "violations": violations},
+        "redaction_scan": {
+            "passed": not violations,
+            "violations": violations,
+            "method": "not_applicable_binary" if binary else "high_signal_text_patterns",
+        },
     }
 
 

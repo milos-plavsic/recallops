@@ -157,9 +157,7 @@ test.describe("judge console", () => {
     await expect(page.getByText("API and memory ready")).toBeVisible();
     expect(consoleErrors).toEqual([]);
 
-    const results = await new AxeBuilder({ page })
-      .disableRules(["color-contrast"])
-      .analyze();
+    const results = await new AxeBuilder({ page }).analyze();
     const serious = results.violations.filter((violation) =>
       violation.impact === "critical" || violation.impact === "serious",
     );
