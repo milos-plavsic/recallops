@@ -42,11 +42,24 @@ procedure; do not edit payloads or reset attempts in-place without recording the
 
 ## Reproduce
 
-Run the automated failure and concurrency suite:
+Run the automated failure and concurrency suite and capture its release-keyed summary:
 
-```powershell
-./.venv/Scripts/pytest.exe tests/test_resilience.py -q
+```bash
+uv run pytest tests/test_resilience.py -q
+uv run python scripts/capture-resilience.py --output /tmp/resilience.json
 ```
+
+The capture covers provider degradation, embedding fail-closed behavior, concurrent
+idempotency, bounded AWS retries, outbox retry release, dead-letter limits, payload-free status,
+and encrypted archival. It uses controlled test doubles and therefore complements rather than
+replaces a managed dependency outage drill.
+
+`scripts/capture-data-restore.py` performs the stronger data-path drill against a disposable
+CockroachDB database: it creates a passphrase-encrypted native backup, restores the full database
+under a temporary name, compares every table by row count and deterministic content digest, then
+drops the restored database. It proves same-cluster recoverability for that snapshot; it does not
+prove cross-cluster or regional disaster recovery. The backup collection remains governed by the
+configured CockroachDB userfile retention.
 
 For a local database outage drill, start the demo, stop only the CockroachDB
 container, and confirm incident creation fails within the configured deadline:

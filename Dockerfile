@@ -4,11 +4,18 @@ ENV PIP_DISABLE_PIP_VERSION_CHECK=1 \
     PIP_NO_CACHE_DIR=1 \
     PYTHONDONTWRITEBYTECODE=1
 WORKDIR /build
+COPY requirements.lock ./
+RUN pip install --no-compile --requirement requirements.lock
 COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
-RUN pip install --no-compile .
+RUN pip install --no-compile --no-deps .
 
 FROM gcr.io/distroless/cc-debian13@sha256:d97bc0a941b8d4be647dc0ee75b264ddbb772f1ac5ba690a4309c00723b23775 AS runtime
+
+ARG BUILD_SHA=unknown
+LABEL org.opencontainers.image.source="https://github.com/milos-plavsic/recallops" \
+      org.opencontainers.image.revision="$BUILD_SHA" \
+      org.opencontainers.image.licenses="MIT"
 
 ENV PATH=/usr/local/bin \
     PYTHONDONTWRITEBYTECODE=1 \

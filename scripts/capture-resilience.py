@@ -22,6 +22,25 @@ DRILLS = {
     "bounded_aws_retries": (
         "tests/test_resilience.py::test_aws_policy_has_finite_timeouts_and_bounded_standard_retries"
     ),
+    "outbox_retry_release": "tests/test_outbox.py::test_delivery_releases_failed_message",
+    "outbox_dead_letter_budget": (
+        "tests/test_outbox.py::test_outbox_dead_letters_after_retry_budget"
+    ),
+    "payload_free_failure_status": "tests/test_outbox.py::test_outbox_status_is_payload_free",
+    "encrypted_archive_write": (
+        "tests/test_archive.py::test_s3_archive_uses_deterministic_encrypted_object"
+    ),
+}
+
+EXPECTED_BEHAVIOR = {
+    "dependency_degradation": "abstain and emit read-only degraded trace",
+    "embedding_fail_closed": "never persist a fallback vector",
+    "idempotency_concurrency_64": "return one incident identity",
+    "bounded_aws_retries": "finite timeouts and bounded SDK attempts",
+    "outbox_retry_release": "release lease and schedule bounded retry",
+    "outbox_dead_letter_budget": "terminally dead-letter after retry budget",
+    "payload_free_failure_status": "expose status without evidence payload",
+    "encrypted_archive_write": "write deterministic server-side-encrypted object",
 }
 
 
@@ -44,6 +63,7 @@ def main() -> None:
             {
                 "name": name,
                 "test": test,
+                "expected_behavior": EXPECTED_BEHAVIOR[name],
                 "duration_ms": round((time.perf_counter() - started) * 1000, 3),
                 "passed": run.returncode == 0,
             }

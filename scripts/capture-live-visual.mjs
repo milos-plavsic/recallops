@@ -22,17 +22,32 @@ try {
   await page.locator('input[name="signInSubmitButton"]:visible, button[type="submit"]:visible').click();
   await page.waitForURL(`${process.env.RECALLOPS_LIVE_URL}/**`, { timeout: 60_000 });
   await page.getByText("API and memory ready").waitFor({ timeout: 60_000 });
+  await page.getByRole("heading", { name: /Similarity recalls/ }).click();
   await page.screenshot({ path: `${output}/01-authenticated-console.png`, fullPage: true });
 
   await page.getByRole("button", { name: "Analyze incident" }).click();
   await page.locator("#result h3").waitFor({ timeout: 60_000 });
   await page.screenshot({ path: `${output}/02-governed-analysis.png`, fullPage: true });
+
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: `${output}/03-mobile-analysis.png`, fullPage: true });
+  await page.emulateMedia({ reducedMotion: "reduce", colorScheme: "dark" });
+  await page.screenshot({ path: `${output}/04-reduced-motion.png`, fullPage: false });
+  await page.keyboard.press("Home");
+  await page.keyboard.press("Tab");
+  await page.screenshot({ path: `${output}/05-keyboard-focus.png`, fullPage: false });
 } finally {
   await browser.close();
 }
 
 const artifacts = [];
-for (const file of ["01-authenticated-console.png", "02-governed-analysis.png"]) {
+for (const file of [
+  "01-authenticated-console.png",
+  "02-governed-analysis.png",
+  "03-mobile-analysis.png",
+  "04-reduced-motion.png",
+  "05-keyboard-focus.png",
+]) {
   const data = await readFile(`${output}/${file}`);
   artifacts.push({ file, bytes: data.length, sha256: createHash("sha256").update(data).digest("hex") });
 }
@@ -43,7 +58,13 @@ const report = {
   environment_class: "aws-public-judge-demo-authenticated-browser",
   command: "scripts/capture-live-visual.mjs",
   artifacts,
-  assertions: { authenticated_console_rendered: true, governed_analysis_rendered: true },
+  assertions: {
+    authenticated_console_rendered: true,
+    governed_analysis_rendered: true,
+    responsive_mobile_rendered: true,
+    reduced_motion_rendered: true,
+    keyboard_focus_rendered: true,
+  },
   passed: true,
   redaction: "Credentials and tokens are never rendered or persisted; identifiers shown are opaque.",
   limitations: "Point-in-time Chromium screenshots; independent reviewer activation is covered separately.",

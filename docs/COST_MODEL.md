@@ -1,36 +1,39 @@
 # Cost and sustainability model
 
-Estimate date: 2026-08-01. Region: `us-east-1`. Prices vary; verify in the
-[AWS Pricing Calculator](https://calculator.aws/) before deployment. The model assumes
-one continuously running 0.5-vCPU/1-GB Linux/x86 Fargate task, one low-traffic ALB, one
-WAF web ACL with one custom rule, one NAT gateway, 730 hours/month, and negligible S3,
-logs, and data transfer. CockroachDB Cloud and Bedrock are usage-dependent and excluded
-from the fixed subtotal.
+The release evidence uses live AWS Price List API results and deployed dimensions rather than a
+hand-maintained estimate. Reproduce it with:
 
-| Component | Approximate monthly cost | Driver |
-| --- | ---: | --- |
-| ECS Fargate task | $18 | 0.5 vCPU + 1 GB continuously |
-| Application Load Balancer | $22+ | ALB hours plus low LCU consumption |
-| AWS WAF | $6+ | one web ACL + one rule, then request charges |
-| One NAT gateway | $33+ | hourly charge, before processed data |
-| S3 and CloudWatch | <$5 at demo volume | stored bytes, requests, and log ingestion |
-| **Fixed demo baseline** | **about $79–$85/month** | excludes Bedrock, CockroachDB, DNS, transfer, tax |
+```bash
+uv run python scripts/capture-cost-evidence.py --release-sha "$(git rev-parse HEAD)" \
+  --stack-name recallops-production --region us-east-1
+```
 
-Two NAT gateways across Availability Zones add roughly another $33/month but remove a
-single-AZ egress dependency. A judging environment should be created shortly before
-evaluation and removed afterward; the retained S3 bucket must be deleted separately
-when evidence is no longer needed. For production, compare NAT processing cost with
-gateway/interface VPC endpoints. S3 gateway endpoints have no hourly or processing
-charge, while interface endpoints add hourly ENI cost.
+The capture combines three different classes of data and keeps them distinct:
 
-Bedrock cost scales with input/output tokens and embedding volume. RecallOps bounds
-reasoning output to 300 tokens, retrieves at most five memories by default, and uses a
-small Nova model. Measure real prompt tokens before forecasting. Fargate Spot is not
-used for the single judging task because interruption risk outweighs its discount;
-horizontal production workers with redundancy can revisit that choice.
+1. deployed dimensions from CloudFormation/ECS;
+2. the previous 24 hours of API Gateway request and ALB consumed-LCU metrics; and
+3. current public on-demand prices returned by the AWS Price List API.
 
-Primary pricing references: [Fargate](https://aws.amazon.com/fargate/pricing/),
-[Elastic Load Balancing](https://aws.amazon.com/elasticloadbalancing/pricing/),
-[AWS WAF](https://aws.amazon.com/waf/pricing/),
-[Amazon VPC/NAT](https://aws.amazon.com/vpc/pricing/), and
-[Amazon Bedrock](https://aws.amazon.com/bedrock/pricing/).
+For the August 10, 2026 capture, the deployed task is 0.5 vCPU and 1 GB. The measured monthly
+subset is approximately `$34.45`: `$18.02` for one continuously running Fargate task, `$16.43`
+for ALB hours, and less than one cent for the observed HTTP API request/LCU projection. This is a
+low-traffic evidence environment, not a production forecast.
+
+The deployed public-demo topology does **not** contain a NAT gateway or WAF. API Gateway provides
+bounded route throttling, and the task currently receives a public IP for outbound managed-service
+access. Earlier estimates that included NAT and WAF were structurally incorrect for this stack.
+
+## Exclusions and decision use
+
+The measured subset deliberately excludes CockroachDB Cloud, S3, CloudWatch Logs and alarms, data
+transfer, support, tax, and optional Bedrock. Those costs must be added from actual bills or a
+workload-specific forecast before a production decision. A 24-hour request sample is extrapolated
+only to make assumptions inspectable; it is not represented as a bill.
+
+At larger scale, compare the current always-on Fargate/ALB floor with a serverless ingress/runtime
+design, but include cold-start, connection-pool, and long-running worker requirements. Do not use
+Fargate Spot for the single judging task because there is no redundant task to absorb interruption.
+
+Primary pricing sources are the AWS Price List API product terms for Amazon ECS/Fargate, Elastic
+Load Balancing, and API Gateway. See the release-keyed `evidence/cost/` artifact for exact rates,
+metric coverage, calculations, capture time, and exclusions.

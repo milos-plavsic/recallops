@@ -16,9 +16,21 @@ Before submission, add artifacts named with the deployed Git SHA:
   request IDs after the account gate clears;
 - `end-to-end-cockroach/<sha>.json`: raw-text benchmark report from a disposable
   migrated CockroachDB database;
+- `ablation/<sha>.json`: five-policy ablation with paired bootstrap intervals and
+  explicit small-corpus limitations;
+- `managed-load/<sha>.json`: bounded managed-database concurrency steps, errors,
+  throughput and latency percentiles;
 - `deployment/<sha>.json`: deployed image digest, ECS task definition, migration
   checksums, provider model IDs, and smoke-test timestamp; and
-- `restore-drill/<sha>.md`: bounded backup/restore drill result and recovery timing.
+- `data-restore/<sha>.json`: encrypted native backup, full restore, and per-table
+  content-integrity comparison;
+- `resilience/<sha>.json`: controlled degradation, retry, idempotency and dead-letter
+  assertions;
+- `cost/<sha>.json`: deployed dimensions, observed usage, retrieved unit prices and
+  explicit estimate exclusions;
+- `supply-chain/<sha>.json`: lockfile, SBOM, scan, managed-signature and OCI-label
+  verification; and
+- `restore-drill/<sha>.md`: bounded infrastructure recovery drill result and timing.
 
 Every artifact must identify its command, UTC timestamp, build SHA, tool version,
 environment class, redaction method, and pass/fail criteria. Evidence generated from

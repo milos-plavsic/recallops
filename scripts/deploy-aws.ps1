@@ -58,7 +58,7 @@ if ($LASTEXITCODE -ne 0) { throw "ECR immutability configuration failed" }
 
 aws ecr get-login-password --region $Region | docker login --username AWS --password-stdin $registry
 if ($LASTEXITCODE -ne 0) { throw "ECR login failed" }
-docker build --pull --tag "${repositoryUri}:${gitSha}" .
+docker build --pull --build-arg "BUILD_SHA=$gitSha" --tag "${repositoryUri}:${gitSha}" .
 if ($LASTEXITCODE -ne 0) { throw "Container build failed" }
 docker push "${repositoryUri}:${gitSha}"
 if ($LASTEXITCODE -ne 0) { throw "Container push failed" }

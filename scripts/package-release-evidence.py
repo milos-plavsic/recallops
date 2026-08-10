@@ -41,6 +41,11 @@ def main() -> None:
     parser.add_argument("--resilience", type=Path, required=True)
     parser.add_argument("--restore", type=Path, required=True)
     parser.add_argument("--ccloud", type=Path, required=True)
+    parser.add_argument("--ablation", type=Path)
+    parser.add_argument("--managed-load", type=Path)
+    parser.add_argument("--data-restore", type=Path)
+    parser.add_argument("--cost", type=Path)
+    parser.add_argument("--supply-chain", type=Path)
     parser.add_argument("--image-digest", required=True)
     parser.add_argument("--output-root", type=Path, default=Path("evidence"))
     args = parser.parse_args()
@@ -70,6 +75,17 @@ def main() -> None:
     ccloud = load(args.ccloud)
     ccloud["build_sha"] = release
     write(args.output_root, "ccloud", release, ccloud)
+    for category, source in (
+        ("ablation", args.ablation),
+        ("managed-load", args.managed_load),
+        ("data-restore", args.data_restore),
+        ("cost", args.cost),
+        ("supply-chain", args.supply_chain),
+    ):
+        if source is not None:
+            optional = load(source)
+            optional["build_sha"] = release
+            write(args.output_root, category, release, optional)
 
     metrics = statistical["metrics"]
     performance = {

@@ -38,6 +38,11 @@ The suite also reports selection coverage and correct-abstention rate. MRR is
 computed only for cases with an expected memory; it is `0.0` rather than undefined
 when no such cases exist.
 
+`scripts/capture-ablation-evidence.py` reproduces all five policy variants and adds a
+deterministic paired bootstrap over cases. The release artifact records the random seed,
+sample count, confidence intervals, exact case count, and limitations. With only six authored
+cases, even a passing interval is regression evidence rather than population-level efficacy.
+
 ## 2. Raw-text end-to-end retrieval suite
 
 `evaluation/end_to_end_cases.json` contains raw incident and memory text rather than
@@ -86,6 +91,11 @@ uv run recallops-eval --mode end-to-end --candidate-multiplier 8 \
 Never point this command at a production database. The output is the immutable
 artifact to retain with a build SHA, database version, cluster class, corpus size
 and `EXPLAIN ANALYZE` output. Compare latency only across equivalent environments.
+
+`scripts/capture-managed-load.py` exercises the managed CockroachDB path at bounded concurrency
+levels against an explicitly disposable database. It reports completed requests, errors,
+throughput and percentile latency. This is an integration/load-step check, not a saturation,
+soak, capacity, or multi-region benchmark.
 
 ## Retrieval architecture under test
 

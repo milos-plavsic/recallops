@@ -18,7 +18,8 @@
       "artifacts": [
         "cockroach-query-plan/<release>.json",
         "database-boundaries/<release>.json",
-        "ccloud/<release>.json"
+        "ccloud/<release>.json",
+        "managed-load/<release>.json"
       ]
     },
     {
@@ -37,7 +38,8 @@
       "claim": "Outcome and governance policy reduces unsafe selections relative to similarity-only retrieval on the disclosed benchmark.",
       "artifacts": [
         "evaluation/statistical/<release>.json",
-        "performance/<release>.json"
+        "performance/<release>.json",
+        "ablation/<release>.json"
       ]
     },
     {
@@ -47,8 +49,10 @@
       "artifacts": [
         "deployment/<release>.json",
         "container-security/<release>.json",
+        "supply-chain/<release>.json",
         "resilience/<release>.json",
         "restore-drill/<release>.json",
+        "data-restore/<release>.json",
         "visual/<release>/index.json"
       ]
     },
@@ -60,6 +64,15 @@
         "deployment/<release>.json",
         "visual/<release>/index.json",
         "agent-skills/<release>.md"
+      ]
+    },
+    {
+      "id": "efficiency.measured-cost",
+      "criterion": "Readiness",
+      "claim": "The deployed AWS cost floor is based on live dimensions, observed usage, and current public prices with explicit exclusions.",
+      "artifacts": [
+        "cost/<release>.json",
+        "deployment/<release>.json"
       ]
     }
   ]
