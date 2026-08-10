@@ -166,9 +166,20 @@ class IncidentService:
             reasons.append("service_version_incompatible")
         if best.memory.outcome_score <= 0:
             reasons.append("outcome_not_positive")
-        if len(memories) > 1 and best.rank_score - memories[1].rank_score < self._min_margin:
+        if self._top_candidates_conflict(memories):
             reasons.append("top_candidates_ambiguous")
         return reasons
+
+    def _top_candidates_conflict(self, memories: list[RetrievedMemory]) -> bool:
+        if len(memories) < 2:
+            return False
+        best, runner_up = memories[:2]
+        scores_are_close = best.rank_score - runner_up.rank_score < self._min_margin
+        actions_differ = (
+            best.memory.action.strip().casefold()
+            != runner_up.memory.action.strip().casefold()
+        )
+        return scores_are_close and actions_differ
 
     def analyze(self, incident: IncidentCreate) -> IncidentAnalysis:
         degraded: list[str] = []
@@ -454,8 +465,7 @@ class IncidentService:
                 reasons.append("outcome_not_positive")
             if (
                 index == 0
-                and len(memories) > 1
-                and (candidate.rank_score - memories[1].rank_score < self._min_margin)
+                and self._top_candidates_conflict(memories)
             ):
                 reasons.append("top_candidates_ambiguous")
             disposition = (

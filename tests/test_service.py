@@ -232,6 +232,18 @@ def test_retrieval_abstains_when_top_candidates_are_ambiguous() -> None:
     assert result.proposed_action.risk is ActionRisk.READ_ONLY
 
 
+def test_retrieval_accepts_equally_ranked_memories_with_the_same_action() -> None:
+    embedder = DeterministicEmbedder()
+    first = memory(embedder, "2026.07.31", 1.0, "reduce worker concurrency to 24")
+    second = memory(embedder, "2026.07.31", 1.0, "  REDUCE WORKER CONCURRENCY TO 24  ")
+    result = IncidentService(
+        InMemoryStore([first, second]), embedder, DeterministicReasoner()
+    ).analyze(incident())
+
+    assert "top_candidates_ambiguous" not in result.retrieval_abstention_reasons
+    assert result.proposed_action.risk is ActionRisk.MUTATING
+
+
 def test_idempotency_returns_original_analysis() -> None:
     embedder = DeterministicEmbedder()
     service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
