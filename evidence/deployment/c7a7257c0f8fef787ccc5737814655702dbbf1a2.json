@@ -1,0 +1,80 @@
+{
+  "evidence_version": 2,
+  "generated_at": "2026-08-10T17:45:00Z",
+  "build_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+  "environment_class": "aws-public-judge-demo",
+  "service_url": "https://ltfrottcxj.execute-api.us-east-1.amazonaws.com",
+  "image_digest": "sha256:60aa75961069e357f95a655d8973663a8ca4ecc8f6877e845b02b0c1f3318276",
+  "stack_status": "UPDATE_COMPLETE",
+  "ecs": {
+    "task_definition_revision": 4,
+    "desired": 1,
+    "running": 1,
+    "deployment": "COMPLETED",
+    "migrate_exit": 0,
+    "seed_exit": 0,
+    "api_running": true,
+    "outbox_running": true
+  },
+  "container_security": {
+    "runtime": "digest-pinned distroless cc Debian 13",
+    "user": "65532",
+    "read_only_root_filesystem": true,
+    "init_process_enabled": true,
+    "linux_capabilities_added": [],
+    "linux_capabilities_dropped": ["ALL"],
+    "shell_or_package_manager_present": false
+  },
+  "runtime": {
+    "store": "postgres",
+    "reasoning_provider": "deterministic",
+    "embedding_space": "deterministic:sha256-feature-hash-1024:v1",
+    "evidence_archive_configured": true,
+    "auth_mode": "oidc",
+    "bedrock_runtime_verified": null
+  },
+  "smoke": {
+    "/health": "200 ok",
+    "/ready": "200 ready",
+    "/v1/system/status": "200; build SHA and providers match",
+    "/v1/evaluation": "200; passed=true; case_count=6"
+  },
+  "authenticated_browser_flow": {
+    "operator_login": "pass",
+    "governed_analysis": "pass",
+    "approval": "pass",
+    "execution_attestation": "pass",
+    "outcome_pending_review": "pass",
+    "reviewer_login": "pass",
+    "independent_activation": "pass",
+    "future_recall": "pass"
+  },
+  "outbox": {
+    "total": 20,
+    "delivered": 20,
+    "pending": 0,
+    "dead_lettered": 0,
+    "s3_objects": 20
+  },
+  "s3": {
+    "versioning": "Enabled",
+    "public_access_block": true
+  },
+  "ecr_scan": {
+    "status": "COMPLETE",
+    "critical": 0,
+    "high": 0,
+    "medium": 0,
+    "low": 0,
+    "finding_count": 0,
+    "note": "The exact deployed digest was scanned after push; no findings were suppressed. Results are point-in-time and require continued rescanning."
+  },
+  "sbom": {
+    "format": "CycloneDX 1.7",
+    "generator": "Syft",
+    "generator_digest": "sha256:678bfa565b60f747aac0f8e964fe5588a24445b8d0a480e91f6efd70020dfbb0"
+  },
+  "redaction": "account, Cognito, bucket, task, credential, token, incident, memory, and embedding values omitted",
+  "passed": true,
+  "limitations": "Scanner feeds evolve; long-running availability, representative load, restore timing, video, and Devpost submission remain separate gates."
+}

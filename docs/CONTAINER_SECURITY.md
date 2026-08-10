@@ -23,8 +23,8 @@ passed the unit, type, lint, policy-evaluation, end-to-end retrieval, browser, C
 CloudFormation validation gates. Native imports for Psycopg, Cryptography, Pydantic, and uvloop
 were exercised in the final runtime image.
 
-Amazon ECR basic scanning reported zero findings for candidate digest
-`sha256:75e7bf8d16ba9fedff3e887050570b04aedf032ba69cecfcb7018b947a2ee729` on
+Amazon ECR basic scanning reported zero findings for deployed digest
+`sha256:60aa75961069e357f95a655d8973663a8ca4ecc8f6877e845b02b0c1f3318276` on
 2026-08-10. The preceding Debian slim runtime reported 4 critical, 8 high, and 5 medium
 findings. Those findings were eliminated by removing unused runtime packages, not by deleting
 package metadata or suppressing scanner results.
