@@ -193,4 +193,19 @@ test.describe("judge console", () => {
     await expect(page.getByText("read only")).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeDisabled();
   });
+
+  test("contains long analysis evidence within a mobile viewport", async ({ page }) => {
+    const longAnalysis = {
+      ...successfulAnalysis,
+      diagnosis: `${successfulAnalysis.diagnosis} ${"unbroken-evidence-token".repeat(40)}`,
+    };
+    await page.setViewportSize({ width: 390, height: 844 });
+    await mockApi(page, longAnalysis);
+    await page.goto("/");
+    await page.getByRole("button", { name: "Analyze incident" }).click();
+    await expect(page.getByRole("heading", { name: longAnalysis.diagnosis })).toBeVisible();
+
+    const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
+    expect(overflow).toBeLessThanOrEqual(0);
+  });
 });

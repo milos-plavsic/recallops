@@ -63,7 +63,7 @@ h2 { margin-bottom: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; lett
 .method { max-width: 62rem; margin: 1.4rem 0 0; color: var(--muted); font-size: .84rem; }
 
 .demo-grid { display: grid; grid-template-columns: minmax(17rem, .72fr) minmax(0, 1.5fr); gap: 1rem; align-items: start; }
-.panel { border: 1px solid var(--line); border-radius: .45rem; padding: 1.4rem; background: #101620e8; }
+.panel { min-width: 0; border: 1px solid var(--line); border-radius: .45rem; padding: 1.4rem; background: #101620e8; }
 label { display: grid; gap: .35rem; margin-bottom: 1rem; color: var(--muted); font-size: .8rem; font-weight: 700; }
 input, textarea { width: 100%; border: 1px solid #354256; border-radius: .3rem; padding: .65rem .75rem; background: #090e15; color: var(--text); }
 textarea { resize: vertical; }
@@ -76,10 +76,10 @@ textarea { resize: vertical; }
 .timeline span.active { border-color: var(--acid); color: var(--text); }
 .provider-status { border: 1px solid var(--line); padding: .65rem .8rem; color: var(--muted); font: 600 .72rem ui-monospace, monospace; margin-top: 1rem; }
 .result { padding-block: 1.5rem; }
-.result h3 { font-size: 1.4rem; line-height: 1.25; }
+.result h3 { overflow-wrap: anywhere; font-size: 1.4rem; line-height: 1.25; }
 .result dl { display: grid; grid-template-columns: 9rem 1fr; gap: .45rem 1rem; }
 .result dt { color: var(--muted); font-size: .78rem; }
-.result dd { margin: 0; }
+.result dd { min-width: 0; margin: 0; overflow-wrap: anywhere; }
 .confidence { display: inline-block; margin-bottom: .75rem; color: var(--acid); font: 700 .72rem ui-monospace, monospace; }
 .risk { color: var(--danger); }
 .muted, .empty { color: var(--muted); }
