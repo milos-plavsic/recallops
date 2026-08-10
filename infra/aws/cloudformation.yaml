@@ -191,6 +191,10 @@ Resources:
           Image: !Ref ImageUri
           Essential: false
           ReadonlyRootFilesystem: true
+          User: '65532'
+          LinuxParameters:
+            InitProcessEnabled: true
+            Capabilities: { Drop: [ALL] }
           Command: [recallops-migrate]
           Secrets:
             - Name: RECALLOPS_DATABASE_URL
@@ -208,6 +212,10 @@ Resources:
           Image: !Ref ImageUri
           Essential: true
           ReadonlyRootFilesystem: true
+          User: '65532'
+          LinuxParameters:
+            InitProcessEnabled: true
+            Capabilities: { Drop: [ALL] }
           DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
           Command: [uvicorn, recallops.main:app, --host, 0.0.0.0, --port, '8080']
           PortMappings: [{ ContainerPort: 8080, Protocol: tcp }]
@@ -233,7 +241,11 @@ Resources:
               Value: !Ref EvidenceBucket
             - { Name: RECALLOPS_EVIDENCE_VERIFIER, Value: aws }
           HealthCheck:
-            Command: [CMD-SHELL, !Sub "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080${HealthCheckPath}', timeout=2)\""]
+            Command:
+              - CMD
+              - python
+              - -c
+              - !Sub "import urllib.request; urllib.request.urlopen('http://localhost:8080${HealthCheckPath}', timeout=2)"
             Interval: 30
             Timeout: 5
             Retries: 3
@@ -248,6 +260,10 @@ Resources:
           Image: !Ref ImageUri
           Essential: true
           ReadonlyRootFilesystem: true
+          User: '65532'
+          LinuxParameters:
+            InitProcessEnabled: true
+            Capabilities: { Drop: [ALL] }
           DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
           Command: [recallops-outbox, --watch, --limit, '25', --poll-seconds, '5']
           Secrets:

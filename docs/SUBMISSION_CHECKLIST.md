@@ -22,7 +22,7 @@ immediately before final submission because the organizer may amend them.
 | Architecture diagram | Console and `docs/ARCHITECTURE.md` Mermaid | Ready |
 | Testing access/instructions | `docs/JUDGE_GUIDE.md`; credentials supplied separately from Git | **Verified with operator/reviewer browser flow** |
 | No unauthorized copyrighted assets or secrets | Original HTML/CSS diagram, no music/assets, secret scanning checklist | Ready subject to final video review |
-| Dependency vulnerability audit and SBOM | CI run artifact from release commit | **Verify on release commit** |
+| Dependency vulnerability audit and SBOM | CI artifact plus zero-finding ECR scan and `docs/CONTAINER_SECURITY.md` | Ready; rescan at submission time |
 
 ## Final human gates
 

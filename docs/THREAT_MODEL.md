@@ -30,7 +30,7 @@ host is outside the preventive scope and must be addressed by organizational con
 | Secret disclosure | No static AWS credentials; Secrets Manager injection; secret omitted from outputs and source | ECS task/environment access exposes the database URL; restrict IAM and administrative access |
 | Compromised database credential | Migration owner, API, and outbox identities are separated; runtime roles have exact grants and cannot mutate schema, delete rows, administer roles, or read unrelated tables | The shared API credential is not a per-tenant database identity; rotate it immediately and inspect tenant audit trails |
 | Supply-chain compromise | Bounded dependencies, immutable-pinned GitHub Actions, CI lint/type/test/evaluation, dependency audit, CloudFormation lint, SBOM, Dependabot, MIT license | Transitive dependencies are not hermetic; review updates and sign release artifacts in production |
-| Malicious deployment | Clean-tree release, immutable Git-SHA ECR tag and digest, scan-on-push, CloudFormation, ECS rollback | Deployment principal can still publish authorized malicious code; require protected branch/review in production |
+| Malicious deployment | Clean-tree release, immutable Git-SHA ECR tag and digest, scan-on-push, pinned distroless runtime, non-root read-only containers with all capabilities dropped, CloudFormation, ECS rollback | Deployment principal can still publish authorized malicious code; require protected branch/review in production |
 | Evidence deletion | S3 versioning, retain policies, public-access block, TLS-only bucket policy | Account-level deletion remains possible; production should add Object Lock and separate backup account |
 
 ## Privacy and retention

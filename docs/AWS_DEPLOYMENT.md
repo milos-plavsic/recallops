@@ -69,6 +69,10 @@ every file commits separately so schema changes become public before a later fil
 them. Applied migration checksums are immutable, and changing an
 already-applied file fails startup instead of silently drifting the schema.
 
+The final runtime is a digest-pinned distroless image. Every container uses numeric non-root user
+`65532`, a read-only root filesystem, a minimal init process, and an empty Linux capability set.
+See `docs/CONTAINER_SECURITY.md` for the image composition, scan evidence, and SBOM process.
+
 ## Operational checks
 
 To enable bounded read-only diagnostics, set `RECALLOPS_DIAGNOSTIC_PROVIDER=aws` plus
