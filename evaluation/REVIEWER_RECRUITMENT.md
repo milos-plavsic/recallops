@@ -11,7 +11,7 @@ independently submitted blinded labels do.
 | Route | Destination | Suggested channel | Status |
 | --- | --- | --- | --- |
 | Local cloud-native | [Kubernetes Belgrade](https://www.meetup.com/kubernetes-belgrade/) / [Telegram](https://t.me/kubernetes_belgrade) | Group chat or organizer-approved announcement | Awaiting authenticated account |
-| CNCF | [CNCF Slack](https://slack.cncf.io/) | `#tag-operational-resilience` or a moderator-recommended SRE/end-user channel | Awaiting authenticated account and channel approval |
+| CNCF | [CNCF Slack](https://slack.cncf.io/) | [`#ai-sre`](https://cloud-native.slack.com/archives/C0B0KLC08VC/p1786400420820499) | Posted 2026-08-11; monitor replies |
 | CockroachDB | [Community Slack](https://cockroa.ch/slack) / [forum](https://forum.cockroachlabs.com/) | General/community channel or moderator-selected forum category | Awaiting authenticated account and channel approval |
 | Hackathon | [Devpost Discussions](https://cockroachdb-ai.devpost.com/forum_topics) | New discussion topic | Awaiting a Devpost web session with discussion-write access |
 | Local DevOps | [DevOps Meetup Belgrade](https://www.meetup.com/belgrade-devops-meetup-group/) | Group discussion | No current organizer; low-priority fallback |
