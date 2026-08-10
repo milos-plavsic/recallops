@@ -43,7 +43,8 @@ def main() -> None:
     )[0]
     labels = inspection.get("Config", {}).get("Labels", {})
     counts = scan.get("imageScanFindings", {}).get("findingSeverityCounts", {})
-    signature_status = signing.get("signingStatus", {}).get("status")
+    signing_statuses = signing.get("signingStatuses", [])
+    signature_status = signing_statuses[0].get("status") if signing_statuses else None
     assertions = {
         "production_lock_present": Path("requirements.lock").is_file(),
         "development_lock_present": Path("requirements-dev.lock").is_file(),
@@ -51,7 +52,7 @@ def main() -> None:
         "exact_digest_scan_complete": scan["imageScanStatus"]["status"] == "COMPLETE",
         "exact_digest_zero_scan_findings": sum(counts.values()) == 0,
         "managed_signing_rule_present": len(configuration.get("rules", [])) > 0,
-        "exact_digest_signature_successful": signature_status == "SUCCESS",
+        "exact_digest_signature_successful": signature_status == "COMPLETE",
         "oci_revision_matches_release": labels.get("org.opencontainers.image.revision")
         == args.release_sha,
         "oci_source_matches_repository": labels.get("org.opencontainers.image.source")
