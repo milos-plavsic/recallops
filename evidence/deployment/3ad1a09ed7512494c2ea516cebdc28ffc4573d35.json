@@ -1,0 +1,52 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T17:03:00Z",
+  "build_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+  "environment_class": "aws-public-judge-demo",
+  "command": "aws cloudformation deploy + ECS/ECR/S3/API smoke inspection",
+  "region": "us-east-1",
+  "stack_status": "CREATE_COMPLETE",
+  "service_url": "https://ltfrottcxj.execute-api.us-east-1.amazonaws.com",
+  "image_digest": "sha256:6c13803251af5b777d9a0f8850d48dc3fba62b72f97ec065dcfd3f071d1f865f",
+  "providers": {
+    "reasoning": "deterministic",
+    "embedding": "deterministic:sha256-feature-hash-1024:v1",
+    "bedrock_runtime_verified": null
+  },
+  "ecs": {
+    "desired": 1,
+    "running": 1,
+    "pending": 0,
+    "deployment": "COMPLETED",
+    "migrate_exit": 0,
+    "seed_exit": 0,
+    "api_running": true,
+    "outbox_running": true
+  },
+  "smoke": {
+    "/health": "200 ok",
+    "/ready": "200 ready",
+    "/v1/system/status": "200; SHA and providers match",
+    "/v1/evaluation": "200; passed=true; case_count=6"
+  },
+  "s3": {
+    "versioning": "Enabled",
+    "public_access_block": true
+  },
+  "identity": {
+    "mode": "oidc",
+    "judge_roles": ["operator", "reviewer"],
+    "credentials": "separate Secrets Manager records; values not captured"
+  },
+  "ecr_scan": {
+    "status": "COMPLETE",
+    "critical": 4,
+    "high": 8,
+    "medium": 5,
+    "note": "Findings are in Debian base packages and reported no fixed version at capture time; do not claim a vulnerability-free image."
+  },
+  "redaction": "account IDs, user pool IDs, client IDs, bucket name, task ARN, secrets, URLs containing credentials, and incident data omitted",
+  "passed": false,
+  "failure": "Authenticated incident creation returned 500 because CockroachDB requires SELECT on an INSERT ON CONFLICT target; release superseded before submission.",
+  "limitations": "Infrastructure health passed, but this release failed the core authenticated loop and must not be submitted."
+}

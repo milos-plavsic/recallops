@@ -1,6 +1,6 @@
 # Judge guide
 
-Live demo: https://c1mmwo9632.execute-api.us-east-1.amazonaws.com
+Live demo: https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
 
 Use the separately supplied operator and reviewer credentials. Sign in as the
 operator for analysis and outcome capture, then select **Switch identity** and sign

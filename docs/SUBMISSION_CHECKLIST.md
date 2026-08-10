@@ -8,12 +8,12 @@ immediately before final submission because the organizer may amend them.
 | --- | --- | --- |
 | New agentic application built during submission period | Git history and `docs/PROVENANCE.md` | Ready |
 | CockroachDB is the persistent memory layer | `migrations/`, `store.py`, architecture ADR | Ready |
-| At least two CockroachDB tools | Distributed Vector Indexing in application; pinned official `designing-application-transactions` Agent Skill attestation under `evidence/agent-skills/` | **Provisional until attestation is renamed to the release SHA** |
+| At least two CockroachDB tools | Distributed Vector Indexing in application; pinned official `designing-application-transactions` Agent Skill attestation under `evidence/agent-skills/` | Ready; managed CockroachDB and source-review evidence captured |
 | At least one AWS service meaningfully integrated | ECS agent runtime, versioned S3 evidence, API Gateway, Cognito, and CloudWatch | Ready; Bedrock is optional |
 | Functional, consistently installable project | Docker one-command demo, checksum migrations, CI | Ready |
 | Public open-source repository and visible license | `https://github.com/milos-plavsic/recallops`, MIT | Ready |
 | Source, README, dependencies, examples, dataset, setup/run instructions | Repository root, `.env.example`, evaluation dataset, judge guide | Ready |
-| Functional demo URL free for judges through judging | https://c1mmwo9632.execute-api.us-east-1.amazonaws.com | **Verify deterministic-provider deployment at release** |
+| Functional demo URL free for judges through judging | https://ltfrottcxj.execute-api.us-east-1.amazonaws.com | Ready; `/health`, `/ready`, build SHA, providers, and policy gate verified |
 | English project description | `docs/JUDGE_GUIDE.md` submission narrative | Ready |
 | Public YouTube/Vimeo demo under three minutes | `docs/JUDGE_GUIDE.md` video plan | **Pending recording/upload** |
 | Video shows functioning project and CockroachDB memory | Shot plan explicitly includes live loop and memory layer | Pending video |

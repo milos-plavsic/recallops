@@ -7,6 +7,7 @@ from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 from uuid import UUID
 
+from psycopg.errors import UniqueViolation
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
@@ -535,19 +536,26 @@ class PostgresStore:
             row = dict(raw_row)
             saved = IncidentAnalysis.model_validate(row["analysis"])
             payload = evidence_payload(incident, saved)
-            cursor.execute(
-                """INSERT INTO evidence_outbox
-                (id, incident_id, tenant_id, service, service_version, payload)
-                VALUES (gen_random_uuid(),%s,%s,%s,%s,%s::JSONB)
-                ON CONFLICT (incident_id) DO NOTHING""",
-                (
-                    saved.incident_id,
-                    incident.tenant_id,
-                    incident.service,
-                    incident.service_version,
-                    json.dumps(payload, separators=(",", ":")),
-                ),
-            )
+            try:
+                # CockroachDB requires SELECT on the conflict target for
+                # INSERT ... ON CONFLICT. Keep the API role insert-only instead:
+                # a nested transaction creates a savepoint so an idempotent replay
+                # rolls back only the duplicate outbox insert, not the incident.
+                with connection.transaction():
+                    cursor.execute(
+                        """INSERT INTO evidence_outbox
+                        (id, incident_id, tenant_id, service, service_version, payload)
+                        VALUES (gen_random_uuid(),%s,%s,%s,%s,%s::JSONB)""",
+                        (
+                            saved.incident_id,
+                            incident.tenant_id,
+                            incident.service,
+                            incident.service_version,
+                            json.dumps(payload, separators=(",", ":")),
+                        ),
+                    )
+            except UniqueViolation:
+                pass
         return saved
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
