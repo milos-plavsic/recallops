@@ -1,0 +1,27 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T16:42:00Z",
+  "build_sha": "8473339b509017177ce242693433d57a96e85c17",
+  "environment_class": "managed-cockroach-serverless-aws-us-east-1",
+  "command": "uv run recallops-eval --mode end-to-end",
+  "tool": "recallops-eval 0.1.0",
+  "provider": "deterministic:sha256-feature-hash-1024:v1",
+  "database_version": "CockroachDB CCL v26.2.5",
+  "redaction": "synthetic case names and aggregate metrics only; no URLs, credentials, embeddings, or stored rows",
+  "pass_criteria": "100% safe top-1, 0% unsafe selection, 100% abstention and recall, zero isolation and governance violations",
+  "backend": "cockroach_postgres",
+  "case_count": 6,
+  "metrics": {
+    "correct_abstention_rate": 1.0,
+    "expected_memory_recall_at_k": 1.0,
+    "governance_violations": 0,
+    "isolation_violations": 0,
+    "latency_mean_ms": 2784.8780203334322,
+    "latency_p50_ms": 2674.6232919999784,
+    "latency_p95_ms": 3382.502248000037,
+    "top1_safe_accuracy": 1.0,
+    "unsafe_selection_rate": 0.0
+  },
+  "passed": true,
+  "limitations": "Six authored synthetic cases establish wiring and tested invariants, not generalization or production-scale latency."
+}

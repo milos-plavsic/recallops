@@ -1,0 +1,15 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T16:41:00Z",
+  "build_sha": "8473339b509017177ce242693433d57a96e85c17",
+  "environment_class": "managed-cockroach-serverless-aws-us-east-1",
+  "command": "pytest tests/integration && recallops-db-verify",
+  "tool": "recallops-db-verify 0.1.0",
+  "database_version": "CockroachDB CCL v26.2.5",
+  "redaction": "constraint, role-bundle, and operation labels only",
+  "pass_criteria": "exact grants, all cross-tenant writes rejected, all prohibited runtime operations denied",
+  "exact_runtime_grants": 15,
+  "cross_tenant_constraints_rejected": 6,
+  "runtime_operations_denied": 7,
+  "passed": true
+}
