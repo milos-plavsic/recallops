@@ -1,0 +1,63 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T17:17:15Z",
+  "build_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+  "environment_class": "aws-public-judge-demo",
+  "service_url": "https://ltfrottcxj.execute-api.us-east-1.amazonaws.com",
+  "image_digest": "sha256:cee797121cffd11ea99b94e36db98598b584399c6c9422b2b3311cdeafaaa15a",
+  "stack_status": "UPDATE_COMPLETE",
+  "ecs": {
+    "desired": 1,
+    "running": 1,
+    "deployment": "COMPLETED",
+    "migrate_exit": 0,
+    "seed_exit": 0,
+    "api_running": true,
+    "outbox_running": true
+  },
+  "runtime": {
+    "store": "postgres",
+    "reasoning_provider": "deterministic",
+    "embedding_space": "deterministic:sha256-feature-hash-1024:v1",
+    "evidence_archive_configured": true,
+    "auth_mode": "oidc",
+    "bedrock_runtime_verified": null
+  },
+  "smoke": {
+    "/health": "200 ok",
+    "/ready": "200 ready",
+    "/v1/system/status": "200; build SHA and providers match",
+    "/v1/evaluation": "200; passed=true; case_count=6"
+  },
+  "authenticated_browser_flow": {
+    "operator_login": "pass",
+    "governed_analysis": "pass",
+    "approval": "pass",
+    "execution_attestation": "pass",
+    "outcome_pending_review": "pass",
+    "reviewer_login": "pass",
+    "independent_activation": "pass",
+    "future_recall": "pass"
+  },
+  "outbox": {
+    "total": 14,
+    "delivered": 14,
+    "pending": 0,
+    "dead_lettered": 0,
+    "s3_objects": 14
+  },
+  "s3": {
+    "versioning": "Enabled",
+    "public_access_block": true
+  },
+  "ecr_scan": {
+    "status": "COMPLETE",
+    "critical": 4,
+    "high": 8,
+    "medium": 5,
+    "note": "Findings are in Debian base packages and reported no fixed version at capture time; the submission does not claim a vulnerability-free image."
+  },
+  "redaction": "account, Cognito, bucket, task, credential, token, incident, and embedding values omitted",
+  "passed": true,
+  "limitations": "Long-running availability, representative load, restore timing, generalization, video, and Devpost submission remain separate gates."
+}
