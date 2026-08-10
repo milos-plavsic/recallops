@@ -13,7 +13,7 @@ independently submitted blinded labels do.
 | Local cloud-native | [Kubernetes Belgrade](https://www.meetup.com/kubernetes-belgrade/) / [Telegram](https://t.me/kubernetes_belgrade/82) | Group chat | Posted 2026-08-11; monitor replies |
 | CNCF | [CNCF Slack](https://slack.cncf.io/) | [`#ai-sre`](https://cloud-native.slack.com/archives/C0B0KLC08VC/p1786400420820499) | Posted 2026-08-11; monitor replies |
 | CockroachDB | [Community Slack](https://cockroa.ch/slack) / [forum](https://forum.cockroachlabs.com/) | [`#hackathons`](https://cockroachdb.slack.com/archives/C0BGAEBTK1Q/p1786400751481369) | Posted 2026-08-11; monitor replies |
-| Hackathon | [Devpost Discussions](https://cockroachdb-ai.devpost.com/forum_topics) | New discussion topic | Awaiting a Devpost web session with discussion-write access |
+| Hackathon | [Devpost Discussions](https://cockroachdb-ai.devpost.com/forum_topics/44757-independent-sre-reviewers-wanted-for-blinded-safety-evaluation) | New discussion topic | Posted 2026-08-11; monitor replies |
 | Local DevOps | [DevOps Meetup Belgrade](https://www.meetup.com/belgrade-devops-meetup-group/) | Group discussion | No current organizer; low-priority fallback |
 
 Do not post repeatedly, direct-message scraped member lists, or use technical support and project
