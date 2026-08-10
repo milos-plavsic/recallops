@@ -179,6 +179,12 @@ def test_postgres_retrieval_unions_safe_compatibility_and_semantic_lanes() -> No
     policy_query, policy_parameters = cursor.executions[1]
     assert "compatibility_policy IN ('semver_patch', 'semver_minor')" in policy_query
     assert policy_parameters is not None and policy_parameters[-1] == 8
+    semantic_query, semantic_parameters = cursor.executions[2]
+    assert "FROM memories@memories_embedding_v2" in semantic_query
+    assert "JOIN nearest USING (id)" in semantic_query
+    assert semantic_parameters is not None
+    assert semantic_parameters[5] == 32
+    assert semantic_parameters[-1] == 8
 
 
 def test_postgres_retrieval_deduplicates_lane_overlap() -> None:

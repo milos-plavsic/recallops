@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "claims": [
+    {
+      "id": "agentic-memory.outcome-governance",
+      "criterion": "Agentic Memory",
+      "claim": "RecallOps retrieves only tenant-scoped, reviewed, compatible, successful memory and safely abstains otherwise.",
+      "artifacts": [
+        "evaluation/statistical/<release>.json",
+        "end-to-end-cockroach/<release>.json",
+        "database-boundaries/<release>.json"
+      ]
+    },
+    {
+      "id": "technical.cockroach-essential",
+      "criterion": "Technical Implementation",
+      "claim": "CockroachDB is the transactional system of record, vector memory index, governance boundary, and outbox source.",
+      "artifacts": [
+        "cockroach-query-plan/<release>.json",
+        "database-boundaries/<release>.json",
+        "ccloud/<release>.json"
+      ]
+    },
+    {
+      "id": "technical.aws-essential",
+      "criterion": "Technical Implementation",
+      "claim": "The public judge runtime meaningfully uses ECS, throttled API Gateway, Cognito, S3, CloudWatch, and Secrets Manager.",
+      "artifacts": [
+        "deployment/<release>.json",
+        "aws-security/<release>.json",
+        "resilience/<release>.json"
+      ]
+    },
+    {
+      "id": "impact.safer-reuse",
+      "criterion": "Potential Impact",
+      "claim": "Outcome and governance policy reduces unsafe selections relative to similarity-only retrieval on the disclosed benchmark.",
+      "artifacts": [
+        "evaluation/statistical/<release>.json",
+        "performance/<release>.json"
+      ]
+    },
+    {
+      "id": "readiness.deployable",
+      "criterion": "Readiness",
+      "claim": "The immutable public release is authenticated, observable, least-privileged, recoverable, and reproducibly tested.",
+      "artifacts": [
+        "deployment/<release>.json",
+        "container-security/<release>.json",
+        "resilience/<release>.json",
+        "visual/<release>/index.json"
+      ]
+    },
+    {
+      "id": "originality.closed-loop-memory",
+      "criterion": "Originality",
+      "claim": "The product closes the loop from retrieval through approval, execution evidence, observed outcome, independent review, and future recall.",
+      "artifacts": [
+        "deployment/<release>.json",
+        "visual/<release>/index.json",
+        "agent-skills/<release>.md"
+      ]
+    }
+  ]
+}

@@ -21,6 +21,7 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+  "botocore[crt]>=1.40,<2",
   "hypothesis>=6.138,<7",
   "httpx>=0.28,<1",
   "mypy>=1.17,<3",

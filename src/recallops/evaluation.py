@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import random
 import time
 from collections.abc import Callable
 from pathlib import Path
@@ -215,6 +216,7 @@ class BenchmarkMemory(BaseModel):
 
 class EndToEndCase(BaseModel):
     name: str
+    category: str = "unspecified"
     service: str
     service_version: str
     symptom: str
@@ -227,35 +229,61 @@ class EndToEndDataset(BaseModel):
     schema_version: Literal[1]
     suite_kind: Literal["end_to_end_retrieval"]
     cases: list[EndToEndCase] = Field(min_length=1)
+    provenance: dict[str, str] = Field(default_factory=dict)
 
 
 class EndToEndCaseResult(BaseModel):
     name: str
+    category: str
     expected_memory_name: str | None
     selected_memory_name: str | None
     retrieved_memory_names: list[str]
     abstention_reasons: list[str]
     safe: bool
     correct: bool
+    expected_abstention: bool
+    selected_unsafe: bool
+    decision_confidence: float = Field(ge=0, le=1)
     latency_ms: float
+
+
+class ConfidenceInterval(BaseModel):
+    lower: float
+    upper: float
+
+
+class CalibrationBin(BaseModel):
+    lower: float
+    upper: float
+    count: int
+    mean_confidence: float
+    empirical_accuracy: float
 
 
 class EndToEndMetrics(BaseModel):
     top1_safe_accuracy: float
     unsafe_selection_rate: float
     correct_abstention_rate: float
+    abstention_precision: float
+    abstention_recall: float
     expected_memory_recall_at_k: float
     isolation_violations: int
     governance_violations: int
     latency_mean_ms: float
     latency_p50_ms: float
     latency_p95_ms: float
+    latency_p99_ms: float
+    brier_score: float
+    expected_calibration_error: float
+    calibration_bins: list[CalibrationBin]
+    bootstrap_95pct: dict[str, ConfidenceInterval]
 
 
 class EndToEndReport(BaseModel):
     dataset_schema_version: int
     suite_kind: str
     backend: str
+    provenance: dict[str, str]
     case_count: int
     metrics: EndToEndMetrics
     cases: list[EndToEndCaseResult]
@@ -268,6 +296,62 @@ def _percentile(values: list[float], percentile: float) -> float:
         return 0.0
     index = round((len(ordered) - 1) * percentile)
     return ordered[index]
+
+
+def _calibration(results: list[EndToEndCaseResult]) -> tuple[float, list[CalibrationBin]]:
+    bins: list[CalibrationBin] = []
+    weighted_gap = 0.0
+    for index in range(10):
+        lower = index / 10
+        upper = (index + 1) / 10
+        members = [
+            result
+            for result in results
+            if lower <= result.decision_confidence <= upper
+            and (index == 9 or result.decision_confidence < upper)
+        ]
+        if not members:
+            continue
+        mean_confidence = fmean(result.decision_confidence for result in members)
+        empirical_accuracy = fmean(float(result.correct) for result in members)
+        weighted_gap += len(members) * abs(mean_confidence - empirical_accuracy)
+        bins.append(
+            CalibrationBin(
+                lower=lower,
+                upper=upper,
+                count=len(members),
+                mean_confidence=mean_confidence,
+                empirical_accuracy=empirical_accuracy,
+            )
+        )
+    return weighted_gap / len(results), bins
+
+
+def _bootstrap_intervals(
+    results: list[EndToEndCaseResult], *, samples: int = 2000, seed: int = 20260810
+) -> dict[str, ConfidenceInterval]:
+    rng = random.Random(seed)
+    estimates: dict[str, list[float]] = {
+        "top1_safe_accuracy": [],
+        "unsafe_selection_rate": [],
+        "latency_p95_ms": [],
+    }
+    for _ in range(samples):
+        sample = [rng.choice(results) for _ in results]
+        estimates["top1_safe_accuracy"].append(fmean(float(item.correct) for item in sample))
+        estimates["unsafe_selection_rate"].append(
+            fmean(float(item.selected_unsafe) for item in sample)
+        )
+        estimates["latency_p95_ms"].append(
+            _percentile([item.latency_ms for item in sample], 0.95)
+        )
+    return {
+        name: ConfidenceInterval(
+            lower=_percentile(values, 0.025),
+            upper=_percentile(values, 0.975),
+        )
+        for name, values in estimates.items()
+    }
 
 
 def run_end_to_end(
@@ -362,23 +446,40 @@ def run_end_to_end(
         results.append(
             EndToEndCaseResult(
                 name=case.name,
+                category=case.category,
                 expected_memory_name=case.expected_memory_name,
                 selected_memory_name=selected_name,
                 retrieved_memory_names=retrieved_names,
                 abstention_reasons=analysis.retrieval_abstention_reasons,
                 safe=not unsafe,
                 correct=correct,
+                expected_abstention=case.expected_memory_name is None,
+                selected_unsafe=unsafe,
+                decision_confidence=(
+                    analysis.confidence if selected_name is not None else 1 - analysis.confidence
+                ),
                 latency_ms=latency_ms,
             )
         )
 
     latencies = [result.latency_ms for result in results]
     count = len(results)
+    predicted_abstentions = sum(result.selected_memory_name is None for result in results)
+    true_positive_abstentions = sum(
+        result.expected_abstention and result.selected_memory_name is None for result in results
+    )
+    calibration_error, calibration_bins = _calibration(results)
     metrics = EndToEndMetrics(
         top1_safe_accuracy=sum(result.correct for result in results) / count,
         unsafe_selection_rate=unsafe_selections / count,
         correct_abstention_rate=(
             correct_abstentions / abstention_count if abstention_count else 1.0
+        ),
+        abstention_precision=(
+            true_positive_abstentions / predicted_abstentions if predicted_abstentions else 1.0
+        ),
+        abstention_recall=(
+            true_positive_abstentions / abstention_count if abstention_count else 1.0
         ),
         expected_memory_recall_at_k=(
             expected_retrieved / expected_count if expected_count else 1.0
@@ -388,11 +489,19 @@ def run_end_to_end(
         latency_mean_ms=fmean(latencies),
         latency_p50_ms=_percentile(latencies, 0.50),
         latency_p95_ms=_percentile(latencies, 0.95),
+        latency_p99_ms=_percentile(latencies, 0.99),
+        brier_score=fmean(
+            (result.decision_confidence - float(result.correct)) ** 2 for result in results
+        ),
+        expected_calibration_error=calibration_error,
+        calibration_bins=calibration_bins,
+        bootstrap_95pct=_bootstrap_intervals(results),
     )
     return EndToEndReport(
         dataset_schema_version=dataset.schema_version,
         suite_kind=dataset.suite_kind,
         backend=backend,
+        provenance=dataset.provenance,
         case_count=count,
         metrics=metrics,
         cases=results,
@@ -439,6 +548,18 @@ def main() -> None:
         help="migrated disposable Cockroach/Postgres URL for end-to-end mode",
     )
     parser.add_argument("--candidate-multiplier", type=int, default=8)
+    parser.add_argument(
+        "--connect-timeout",
+        type=int,
+        default=30,
+        help="database pool acquisition/connect timeout for evidence runs",
+    )
+    parser.add_argument(
+        "--statement-timeout",
+        type=int,
+        default=60,
+        help="database statement timeout for evidence runs",
+    )
     args = parser.parse_args()
     if args.mode == "policy":
         report: EvaluationReport | EndToEndReport = evaluate(load_dataset(args.dataset))
@@ -446,6 +567,8 @@ def main() -> None:
         database_store = (
             PostgresStore(
                 args.database_url,
+                connect_timeout_seconds=args.connect_timeout,
+                statement_timeout_seconds=args.statement_timeout,
                 retrieval_candidate_multiplier=args.candidate_multiplier,
             )
             if args.database_url

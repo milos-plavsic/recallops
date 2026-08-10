@@ -423,6 +423,7 @@ class PostgresStore:
             return []
         vector = self._vector(embedding)
         candidate_limit = limit * self._retrieval_candidate_multiplier
+        semantic_pool_limit = candidate_limit * 4
         columns = """id, tenant_id, service, service_version, compatibility_policy,
                    compatibility_policy_version, symptom, action, outcome,
                    outcome_score, confidence, valid, state, superseded_by, source_incident_id,
@@ -468,14 +469,27 @@ class PostgresStore:
             )
             policy_compatible_success_rows = cursor.fetchall()
             cursor.execute(  # nosec B608  # nosemgrep
-                f"""SELECT {columns} FROM memories WHERE {predicates}
-                   ORDER BY embedding <=> %s::VECTOR LIMIT %s""",  # nosec B608
+                f"""WITH nearest AS MATERIALIZED (
+                       SELECT id, embedding <=> %s::VECTOR AS distance
+                       FROM memories@memories_embedding_v2
+                       WHERE tenant_id = %s AND service = %s AND embedding_space = %s
+                       ORDER BY embedding <=> %s::VECTOR
+                       LIMIT %s
+                   )
+                   SELECT {columns} FROM memories JOIN nearest USING (id)
+                   WHERE {predicates}
+                   ORDER BY nearest.distance LIMIT %s""",  # nosec B608
                 (
                     vector,
                     incident.tenant_id,
                     incident.service,
                     embedding_space,
                     vector,
+                    semantic_pool_limit,
+                    vector,
+                    incident.tenant_id,
+                    incident.service,
+                    embedding_space,
                     candidate_limit,
                 ),
             )
