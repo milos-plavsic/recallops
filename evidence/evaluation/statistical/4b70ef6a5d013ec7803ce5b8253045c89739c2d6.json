@@ -1,0 +1,2190 @@
+{
+  "backend": "cockroach_postgres",
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "case_count": 120,
+  "cases": [
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v01",
+      "latency_ms": 2719.313413999771,
+      "name": "successful_outcome_beats_identical_failure__v01",
+      "retrieved_memory_names": [
+        "successful-current__v01",
+        "failed-identical__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v01",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v01",
+      "latency_ms": 2398.1558779996703,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v01",
+      "retrieved_memory_names": [
+        "current-version__v01",
+        "obsolete-version__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v01",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2088.9565649995347,
+      "name": "failure_only_forces_abstention__v01",
+      "retrieved_memory_names": [
+        "failed-remediation__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v01",
+      "latency_ms": 2449.387751999893,
+      "name": "tenant_and_governance_filters_execute_in_store__v01",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v01",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2008.14972200169,
+      "name": "ambiguous_successes_force_abstention__v01",
+      "retrieved_memory_names": [
+        "success-b__v01",
+        "success-a__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2160.9675280014926,
+      "name": "weak_evidence_forces_abstention__v01",
+      "retrieved_memory_names": [
+        "weak-success__v01"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v02",
+      "latency_ms": 2429.900382998312,
+      "name": "successful_outcome_beats_identical_failure__v02",
+      "retrieved_memory_names": [
+        "successful-current__v02",
+        "failed-identical__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v02",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v02",
+      "latency_ms": 2411.269178999646,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v02",
+      "retrieved_memory_names": [
+        "current-version__v02",
+        "obsolete-version__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v02",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2095.1534930027265,
+      "name": "failure_only_forces_abstention__v02",
+      "retrieved_memory_names": [
+        "failed-remediation__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v02",
+      "latency_ms": 2537.949811001454,
+      "name": "tenant_and_governance_filters_execute_in_store__v02",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v02",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 3232.878024002275,
+      "name": "ambiguous_successes_force_abstention__v02",
+      "retrieved_memory_names": [
+        "success-b__v02",
+        "success-a__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 3365.403634001268,
+      "name": "weak_evidence_forces_abstention__v02",
+      "retrieved_memory_names": [
+        "weak-success__v02"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v03",
+      "latency_ms": 2456.950243002211,
+      "name": "successful_outcome_beats_identical_failure__v03",
+      "retrieved_memory_names": [
+        "successful-current__v03",
+        "failed-identical__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v03",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v03",
+      "latency_ms": 2648.086728000635,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v03",
+      "retrieved_memory_names": [
+        "current-version__v03",
+        "obsolete-version__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v03",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2306.8676859984407,
+      "name": "failure_only_forces_abstention__v03",
+      "retrieved_memory_names": [
+        "failed-remediation__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v03",
+      "latency_ms": 2355.020765997324,
+      "name": "tenant_and_governance_filters_execute_in_store__v03",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v03",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2434.9685320012213,
+      "name": "ambiguous_successes_force_abstention__v03",
+      "retrieved_memory_names": [
+        "success-b__v03",
+        "success-a__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2255.458028001158,
+      "name": "weak_evidence_forces_abstention__v03",
+      "retrieved_memory_names": [
+        "weak-success__v03"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v04",
+      "latency_ms": 2178.1679910018283,
+      "name": "successful_outcome_beats_identical_failure__v04",
+      "retrieved_memory_names": [
+        "successful-current__v04",
+        "failed-identical__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v04",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.9495789466088077,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v04",
+      "latency_ms": 2662.278981999407,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v04",
+      "retrieved_memory_names": [
+        "current-version__v04",
+        "obsolete-version__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v04",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2353.8658569996187,
+      "name": "failure_only_forces_abstention__v04",
+      "retrieved_memory_names": [
+        "failed-remediation__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v04",
+      "latency_ms": 2247.4557440000353,
+      "name": "tenant_and_governance_filters_execute_in_store__v04",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v04",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2560.217248999834,
+      "name": "ambiguous_successes_force_abstention__v04",
+      "retrieved_memory_names": [
+        "success-b__v04",
+        "success-a__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2356.2952949978353,
+      "name": "weak_evidence_forces_abstention__v04",
+      "retrieved_memory_names": [
+        "weak-success__v04"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v05",
+      "latency_ms": 2662.4607909980114,
+      "name": "successful_outcome_beats_identical_failure__v05",
+      "retrieved_memory_names": [
+        "successful-current__v05",
+        "failed-identical__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v05",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v05",
+      "latency_ms": 2957.8978000026837,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v05",
+      "retrieved_memory_names": [
+        "current-version__v05",
+        "obsolete-version__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v05",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2431.665370000701,
+      "name": "failure_only_forces_abstention__v05",
+      "retrieved_memory_names": [
+        "failed-remediation__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v05",
+      "latency_ms": 2240.933794000739,
+      "name": "tenant_and_governance_filters_execute_in_store__v05",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v05",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2356.141034997563,
+      "name": "ambiguous_successes_force_abstention__v05",
+      "retrieved_memory_names": [
+        "success-b__v05",
+        "success-a__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2560.2260129999195,
+      "name": "weak_evidence_forces_abstention__v05",
+      "retrieved_memory_names": [
+        "weak-success__v05"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v06",
+      "latency_ms": 2571.089375000156,
+      "name": "successful_outcome_beats_identical_failure__v06",
+      "retrieved_memory_names": [
+        "successful-current__v06",
+        "failed-identical__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v06",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v06",
+      "latency_ms": 2385.766549999971,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v06",
+      "retrieved_memory_names": [
+        "current-version__v06",
+        "obsolete-version__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v06",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2119.365815000492,
+      "name": "failure_only_forces_abstention__v06",
+      "retrieved_memory_names": [
+        "failed-remediation__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v06",
+      "latency_ms": 2959.3381640006555,
+      "name": "tenant_and_governance_filters_execute_in_store__v06",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v06",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2652.2515940014273,
+      "name": "ambiguous_successes_force_abstention__v06",
+      "retrieved_memory_names": [
+        "success-b__v06",
+        "success-a__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2218.1211819988675,
+      "name": "weak_evidence_forces_abstention__v06",
+      "retrieved_memory_names": [
+        "weak-success__v06"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v07",
+      "latency_ms": 2238.6881450001965,
+      "name": "successful_outcome_beats_identical_failure__v07",
+      "retrieved_memory_names": [
+        "successful-current__v07",
+        "failed-identical__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v07",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v07",
+      "latency_ms": 1961.36763100003,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v07",
+      "retrieved_memory_names": [
+        "current-version__v07",
+        "obsolete-version__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v07",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2577.568421998876,
+      "name": "failure_only_forces_abstention__v07",
+      "retrieved_memory_names": [
+        "failed-remediation__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v07",
+      "latency_ms": 2518.470331997378,
+      "name": "tenant_and_governance_filters_execute_in_store__v07",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v07",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2356.895892000466,
+      "name": "ambiguous_successes_force_abstention__v07",
+      "retrieved_memory_names": [
+        "success-b__v07",
+        "success-a__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2567.106734000845,
+      "name": "weak_evidence_forces_abstention__v07",
+      "retrieved_memory_names": [
+        "weak-success__v07"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v08",
+      "latency_ms": 3174.5080489999964,
+      "name": "successful_outcome_beats_identical_failure__v08",
+      "retrieved_memory_names": [
+        "successful-current__v08",
+        "failed-identical__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v08",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v08",
+      "latency_ms": 2612.102324001171,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v08",
+      "retrieved_memory_names": [
+        "current-version__v08",
+        "obsolete-version__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v08",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2573.646919001476,
+      "name": "failure_only_forces_abstention__v08",
+      "retrieved_memory_names": [
+        "failed-remediation__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v08",
+      "latency_ms": 2865.0479249990894,
+      "name": "tenant_and_governance_filters_execute_in_store__v08",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v08",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 1798.1487890028802,
+      "name": "ambiguous_successes_force_abstention__v08",
+      "retrieved_memory_names": [
+        "success-b__v08",
+        "success-a__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2765.098613999726,
+      "name": "weak_evidence_forces_abstention__v08",
+      "retrieved_memory_names": [
+        "weak-success__v08"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v09",
+      "latency_ms": 2867.6555060010287,
+      "name": "successful_outcome_beats_identical_failure__v09",
+      "retrieved_memory_names": [
+        "successful-current__v09",
+        "failed-identical__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v09",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v09",
+      "latency_ms": 2269.401484998525,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v09",
+      "retrieved_memory_names": [
+        "current-version__v09",
+        "obsolete-version__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v09",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2662.760672999866,
+      "name": "failure_only_forces_abstention__v09",
+      "retrieved_memory_names": [
+        "failed-remediation__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v09",
+      "latency_ms": 2339.1556440001295,
+      "name": "tenant_and_governance_filters_execute_in_store__v09",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v09",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2497.95945599908,
+      "name": "ambiguous_successes_force_abstention__v09",
+      "retrieved_memory_names": [
+        "success-b__v09",
+        "success-a__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2253.9169269984995,
+      "name": "weak_evidence_forces_abstention__v09",
+      "retrieved_memory_names": [
+        "weak-success__v09"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v10",
+      "latency_ms": 2872.9989970015595,
+      "name": "successful_outcome_beats_identical_failure__v10",
+      "retrieved_memory_names": [
+        "successful-current__v10",
+        "failed-identical__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v10",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v10",
+      "latency_ms": 1960.5094340004143,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v10",
+      "retrieved_memory_names": [
+        "current-version__v10",
+        "obsolete-version__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v10",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2458.808475999831,
+      "name": "failure_only_forces_abstention__v10",
+      "retrieved_memory_names": [
+        "failed-remediation__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v10",
+      "latency_ms": 3292.059342998982,
+      "name": "tenant_and_governance_filters_execute_in_store__v10",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v10",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2666.4594800022314,
+      "name": "ambiguous_successes_force_abstention__v10",
+      "retrieved_memory_names": [
+        "success-b__v10",
+        "success-a__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2360.8768679987406,
+      "name": "weak_evidence_forces_abstention__v10",
+      "retrieved_memory_names": [
+        "weak-success__v10"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v11",
+      "latency_ms": 2251.737693000905,
+      "name": "successful_outcome_beats_identical_failure__v11",
+      "retrieved_memory_names": [
+        "successful-current__v11",
+        "failed-identical__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v11",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v11",
+      "latency_ms": 2869.831869000336,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v11",
+      "retrieved_memory_names": [
+        "current-version__v11",
+        "obsolete-version__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v11",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2438.8298079975357,
+      "name": "failure_only_forces_abstention__v11",
+      "retrieved_memory_names": [
+        "failed-remediation__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v11",
+      "latency_ms": 2355.389918000583,
+      "name": "tenant_and_governance_filters_execute_in_store__v11",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v11",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2300.4239949987095,
+      "name": "ambiguous_successes_force_abstention__v11",
+      "retrieved_memory_names": [
+        "success-b__v11",
+        "success-a__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2718.185140998685,
+      "name": "weak_evidence_forces_abstention__v11",
+      "retrieved_memory_names": [
+        "weak-success__v11"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v12",
+      "latency_ms": 2625.2694460017665,
+      "name": "successful_outcome_beats_identical_failure__v12",
+      "retrieved_memory_names": [
+        "successful-current__v12",
+        "failed-identical__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v12",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v12",
+      "latency_ms": 2376.4234330010368,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v12",
+      "retrieved_memory_names": [
+        "current-version__v12",
+        "obsolete-version__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v12",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2030.8671839993622,
+      "name": "failure_only_forces_abstention__v12",
+      "retrieved_memory_names": [
+        "failed-remediation__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v12",
+      "latency_ms": 2458.0312940015574,
+      "name": "tenant_and_governance_filters_execute_in_store__v12",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v12",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2844.573174999823,
+      "name": "ambiguous_successes_force_abstention__v12",
+      "retrieved_memory_names": [
+        "success-b__v12",
+        "success-a__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2560.10957000035,
+      "name": "weak_evidence_forces_abstention__v12",
+      "retrieved_memory_names": [
+        "weak-success__v12"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v13",
+      "latency_ms": 2662.202174000413,
+      "name": "successful_outcome_beats_identical_failure__v13",
+      "retrieved_memory_names": [
+        "successful-current__v13",
+        "failed-identical__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v13",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v13",
+      "latency_ms": 2474.079036001058,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v13",
+      "retrieved_memory_names": [
+        "current-version__v13",
+        "obsolete-version__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v13",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2383.7375119983335,
+      "name": "failure_only_forces_abstention__v13",
+      "retrieved_memory_names": [
+        "failed-remediation__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v13",
+      "latency_ms": 2546.125082000799,
+      "name": "tenant_and_governance_filters_execute_in_store__v13",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v13",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2565.202917998249,
+      "name": "ambiguous_successes_force_abstention__v13",
+      "retrieved_memory_names": [
+        "success-b__v13",
+        "success-a__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2092.7919130008377,
+      "name": "weak_evidence_forces_abstention__v13",
+      "retrieved_memory_names": [
+        "weak-success__v13"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v14",
+      "latency_ms": 2583.881092003139,
+      "name": "successful_outcome_beats_identical_failure__v14",
+      "retrieved_memory_names": [
+        "successful-current__v14",
+        "failed-identical__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v14",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v14",
+      "latency_ms": 2662.913144999038,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v14",
+      "retrieved_memory_names": [
+        "current-version__v14",
+        "obsolete-version__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v14",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2355.273467997904,
+      "name": "failure_only_forces_abstention__v14",
+      "retrieved_memory_names": [
+        "failed-remediation__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v14",
+      "latency_ms": 2457.877961998747,
+      "name": "tenant_and_governance_filters_execute_in_store__v14",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v14",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2006.1241439980222,
+      "name": "ambiguous_successes_force_abstention__v14",
+      "retrieved_memory_names": [
+        "success-b__v14",
+        "success-a__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2560.018305997801,
+      "name": "weak_evidence_forces_abstention__v14",
+      "retrieved_memory_names": [
+        "weak-success__v14"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v15",
+      "latency_ms": 2560.5658829990716,
+      "name": "successful_outcome_beats_identical_failure__v15",
+      "retrieved_memory_names": [
+        "successful-current__v15",
+        "failed-identical__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v15",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v15",
+      "latency_ms": 2745.8902679973107,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v15",
+      "retrieved_memory_names": [
+        "current-version__v15",
+        "obsolete-version__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v15",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2653.9462840009946,
+      "name": "failure_only_forces_abstention__v15",
+      "retrieved_memory_names": [
+        "failed-remediation__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v15",
+      "latency_ms": 2329.282359998615,
+      "name": "tenant_and_governance_filters_execute_in_store__v15",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v15",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2353.9500679980847,
+      "name": "ambiguous_successes_force_abstention__v15",
+      "retrieved_memory_names": [
+        "success-b__v15",
+        "success-a__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2559.7526130004553,
+      "name": "weak_evidence_forces_abstention__v15",
+      "retrieved_memory_names": [
+        "weak-success__v15"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v16",
+      "latency_ms": 2765.0124520005193,
+      "name": "successful_outcome_beats_identical_failure__v16",
+      "retrieved_memory_names": [
+        "successful-current__v16",
+        "failed-identical__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v16",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v16",
+      "latency_ms": 2143.946865999169,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v16",
+      "retrieved_memory_names": [
+        "current-version__v16",
+        "obsolete-version__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v16",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2354.2435169983946,
+      "name": "failure_only_forces_abstention__v16",
+      "retrieved_memory_names": [
+        "failed-remediation__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v16",
+      "latency_ms": 2891.294076001941,
+      "name": "tenant_and_governance_filters_execute_in_store__v16",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v16",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2583.7405349993787,
+      "name": "ambiguous_successes_force_abstention__v16",
+      "retrieved_memory_names": [
+        "success-b__v16",
+        "success-a__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2383.7440850002167,
+      "name": "weak_evidence_forces_abstention__v16",
+      "retrieved_memory_names": [
+        "weak-success__v16"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v17",
+      "latency_ms": 2457.730360001733,
+      "name": "successful_outcome_beats_identical_failure__v17",
+      "retrieved_memory_names": [
+        "successful-current__v17",
+        "failed-identical__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v17",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v17",
+      "latency_ms": 2309.2447340022773,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v17",
+      "retrieved_memory_names": [
+        "current-version__v17",
+        "obsolete-version__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v17",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2457.784824000555,
+      "name": "failure_only_forces_abstention__v17",
+      "retrieved_memory_names": [
+        "failed-remediation__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v17",
+      "latency_ms": 2559.8545290013135,
+      "name": "tenant_and_governance_filters_execute_in_store__v17",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v17",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2355.5420320008125,
+      "name": "ambiguous_successes_force_abstention__v17",
+      "retrieved_memory_names": [
+        "success-b__v17",
+        "success-a__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2207.192933001352,
+      "name": "weak_evidence_forces_abstention__v17",
+      "retrieved_memory_names": [
+        "weak-success__v17"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v18",
+      "latency_ms": 2355.613079002069,
+      "name": "successful_outcome_beats_identical_failure__v18",
+      "retrieved_memory_names": [
+        "successful-current__v18",
+        "failed-identical__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v18",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v18",
+      "latency_ms": 2457.796094000514,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v18",
+      "retrieved_memory_names": [
+        "current-version__v18",
+        "obsolete-version__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v18",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2413.9148510002997,
+      "name": "failure_only_forces_abstention__v18",
+      "retrieved_memory_names": [
+        "failed-remediation__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v18",
+      "latency_ms": 2465.1765180024086,
+      "name": "tenant_and_governance_filters_execute_in_store__v18",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v18",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2457.3957309985417,
+      "name": "ambiguous_successes_force_abstention__v18",
+      "retrieved_memory_names": [
+        "success-b__v18",
+        "success-a__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2249.521743000514,
+      "name": "weak_evidence_forces_abstention__v18",
+      "retrieved_memory_names": [
+        "weak-success__v18"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v19",
+      "latency_ms": 2867.582908998884,
+      "name": "successful_outcome_beats_identical_failure__v19",
+      "retrieved_memory_names": [
+        "successful-current__v19",
+        "failed-identical__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v19",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v19",
+      "latency_ms": 2560.4207040014444,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v19",
+      "retrieved_memory_names": [
+        "current-version__v19",
+        "obsolete-version__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v19",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2247.293231997901,
+      "name": "failure_only_forces_abstention__v19",
+      "retrieved_memory_names": [
+        "failed-remediation__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v19",
+      "latency_ms": 2561.8760579964146,
+      "name": "tenant_and_governance_filters_execute_in_store__v19",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v19",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2252.3673819996475,
+      "name": "ambiguous_successes_force_abstention__v19",
+      "retrieved_memory_names": [
+        "success-b__v19",
+        "success-a__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2441.0655530009535,
+      "name": "weak_evidence_forces_abstention__v19",
+      "retrieved_memory_names": [
+        "weak-success__v19"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "successful_outcome_beats_identical_failure",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "successful-current__v20",
+      "latency_ms": 2458.5116480011493,
+      "name": "successful_outcome_beats_identical_failure__v20",
+      "retrieved_memory_names": [
+        "successful-current__v20",
+        "failed-identical__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": "successful-current__v20",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "exact_version_lane_survives_obsolete_neighbours",
+      "correct": true,
+      "decision_confidence": 0.94499373587176,
+      "expected_abstention": false,
+      "expected_memory_name": "current-version__v20",
+      "latency_ms": 2538.850968998304,
+      "name": "exact_version_lane_survives_obsolete_neighbours__v20",
+      "retrieved_memory_names": [
+        "current-version__v20",
+        "obsolete-version__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": "current-version__v20",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "rank_score_below_threshold",
+        "outcome_not_positive"
+      ],
+      "category": "failure_only_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2414.885332000267,
+      "name": "failure_only_forces_abstention__v20",
+      "retrieved_memory_names": [
+        "failed-remediation__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [],
+      "category": "tenant_and_governance_filters_execute_in_store",
+      "correct": true,
+      "decision_confidence": 0.95,
+      "expected_abstention": false,
+      "expected_memory_name": "governed-same-tenant__v20",
+      "latency_ms": 2510.5323450006836,
+      "name": "tenant_and_governance_filters_execute_in_store__v20",
+      "retrieved_memory_names": [
+        "governed-same-tenant__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": "governed-same-tenant__v20",
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "top_candidates_ambiguous"
+      ],
+      "category": "ambiguous_successes_force_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 2481.219623998186,
+      "name": "ambiguous_successes_force_abstention__v20",
+      "retrieved_memory_names": [
+        "success-b__v20",
+        "success-a__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    },
+    {
+      "abstention_reasons": [
+        "evidence_confidence_below_threshold"
+      ],
+      "category": "weak_evidence_forces_abstention",
+      "correct": true,
+      "decision_confidence": 0.75,
+      "expected_abstention": true,
+      "expected_memory_name": null,
+      "latency_ms": 1989.6294979989761,
+      "name": "weak_evidence_forces_abstention__v20",
+      "retrieved_memory_names": [
+        "weak-success__v20"
+      ],
+      "safe": true,
+      "selected_memory_name": null,
+      "selected_unsafe": false
+    }
+  ],
+  "command": "recallops-eval",
+  "dataset_schema_version": 1,
+  "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:54:56.111661+00:00",
+  "limitations": "Lexical variants are generated and are not production incident records.",
+  "metrics": {
+    "abstention_precision": 1.0,
+    "abstention_recall": 1.0,
+    "bootstrap_95pct": {
+      "latency_p95_ms": {
+        "lower": 2765.098613999726,
+        "upper": 3232.878024002275
+      },
+      "top1_safe_accuracy": {
+        "lower": 1.0,
+        "upper": 1.0
+      },
+      "unsafe_selection_rate": {
+        "lower": 0.0,
+        "upper": 0.0
+      }
+    },
+    "brier_score": 0.03250473309765353,
+    "calibration_bins": [
+      {
+        "count": 60,
+        "empirical_accuracy": 1.0,
+        "lower": 0.7,
+        "mean_confidence": 0.75,
+        "upper": 0.8
+      },
+      {
+        "count": 60,
+        "empirical_accuracy": 1.0,
+        "lower": 0.9,
+        "mean_confidence": 0.9499095447080095,
+        "upper": 1.0
+      }
+    ],
+    "correct_abstention_rate": 1.0,
+    "expected_calibration_error": 0.15004522764599526,
+    "expected_memory_recall_at_k": 1.0,
+    "governance_violations": 0,
+    "isolation_violations": 0,
+    "latency_mean_ms": 2474.2988249916984,
+    "latency_p50_ms": 2457.784824000555,
+    "latency_p95_ms": 2891.294076001941,
+    "latency_p99_ms": 3292.059342998982,
+    "top1_safe_accuracy": 1.0,
+    "unsafe_selection_rate": 0.0
+  },
+  "passed": true,
+  "provenance": {
+    "generator": "scripts/generate-statistical-dataset.py",
+    "generator_version": "1",
+    "independent_labels": "false",
+    "kind": "synthetic_adversarial",
+    "label_source": "deterministic policy oracle derived from six reviewed invariants",
+    "limitations": "Lexical variants are generated and are not production incident records.",
+    "seed": "not-random"
+  },
+  "suite_kind": "end_to_end_retrieval"
+}

@@ -1,0 +1,140 @@
+{
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-ablation-evidence.py",
+  "dataset": {
+    "case_count": 6,
+    "independent_labels": false,
+    "kind": "synthetic_policy_invariants",
+    "path": "evaluation/memory_cases.json"
+  },
+  "environment_class": "local-deterministic-synthetic-policy-ablation",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:46:09.150956+00:00",
+  "limitations": "Six authored synthetic invariant cases; confidence intervals describe this corpus and do not establish population efficacy.",
+  "paired_bootstrap": {
+    "confidence_level": 0.95,
+    "intervals": {
+      "governed_similarity": {
+        "accuracy": {
+          "lower": 0.0,
+          "upper": 0.6666666666666666
+        },
+        "accuracy_delta_vs_governed_similarity": {
+          "lower": 0.0,
+          "upper": 0.0
+        },
+        "unsafe": {
+          "lower": 0.3333333333333333,
+          "upper": 1.0
+        }
+      },
+      "outcome_aware": {
+        "accuracy": {
+          "lower": 0.5,
+          "upper": 1.0
+        },
+        "accuracy_delta_vs_governed_similarity": {
+          "lower": 0.16666666666666663,
+          "upper": 0.8333333333333334
+        },
+        "unsafe": {
+          "lower": 0.0,
+          "upper": 0.5
+        }
+      },
+      "outcome_compatibility": {
+        "accuracy": {
+          "lower": 1.0,
+          "upper": 1.0
+        },
+        "accuracy_delta_vs_governed_similarity": {
+          "lower": 0.33333333333333337,
+          "upper": 1.0
+        },
+        "unsafe": {
+          "lower": 0.0,
+          "upper": 0.0
+        }
+      },
+      "recallops": {
+        "accuracy": {
+          "lower": 1.0,
+          "upper": 1.0
+        },
+        "accuracy_delta_vs_governed_similarity": {
+          "lower": 0.33333333333333337,
+          "upper": 1.0
+        },
+        "unsafe": {
+          "lower": 0.0,
+          "upper": 0.0
+        }
+      },
+      "similarity": {
+        "accuracy": {
+          "lower": 0.0,
+          "upper": 0.0
+        },
+        "accuracy_delta_vs_governed_similarity": {
+          "lower": -0.6666666666666666,
+          "upper": 0.0
+        },
+        "unsafe": {
+          "lower": 1.0,
+          "upper": 1.0
+        }
+      }
+    },
+    "samples": 10000,
+    "seed": 20260810
+  },
+  "passed": true,
+  "point_estimates": {
+    "governed_similarity": {
+      "correct_abstention_rate": 0.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 0.7,
+      "selection_coverage": 1.0,
+      "top1_safe_accuracy": 0.3333333333333333,
+      "unsafe_selection_rate": 0.6666666666666666
+    },
+    "outcome_aware": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 0.9,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 0.8333333333333334,
+      "unsafe_selection_rate": 0.16666666666666666
+    },
+    "outcome_compatibility": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 1.0,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 1.0,
+      "unsafe_selection_rate": 0.0
+    },
+    "recallops": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 1.0,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 1.0,
+      "unsafe_selection_rate": 0.0
+    },
+    "similarity": {
+      "correct_abstention_rate": 0.0,
+      "eligibility_violations": 2,
+      "isolation_violations": 1,
+      "mean_reciprocal_rank": 0.5,
+      "selection_coverage": 1.0,
+      "top1_safe_accuracy": 0.0,
+      "unsafe_selection_rate": 1.0
+    }
+  },
+  "redaction": "No credentials, tenant data, production incidents, or embeddings are used"
+}

@@ -1,0 +1,71 @@
+{
+  "assertions": {
+    "all_requests_completed": true,
+    "bounded_p95_under_10_seconds": true,
+    "zero_request_errors": true
+  },
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-managed-load.py",
+  "corpus": {
+    "service_count": 1,
+    "synthetic_memories": 200,
+    "tenant_count": 1
+  },
+  "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:49:28.630009+00:00",
+  "limitations": "Short bounded synthetic workload on a disposable database; not a saturation, soak, multi-region, or production-capacity claim.",
+  "passed": true,
+  "profiles": [
+    {
+      "concurrency": 1,
+      "elapsed_seconds": 46.182584,
+      "error_classes": [],
+      "errors": 0,
+      "latency_ms": {
+        "mean": 3848.4454398336916,
+        "p50": 3787.2012319967325,
+        "p95": 4553.921447000903,
+        "p99": 5222.317670999473
+      },
+      "requests": 12,
+      "successes": 12,
+      "throughput_requests_per_second": 0.259838
+    },
+    {
+      "concurrency": 4,
+      "elapsed_seconds": 8.604253,
+      "error_classes": [],
+      "errors": 0,
+      "latency_ms": {
+        "mean": 2660.850674833758,
+        "p50": 2098.1613399999333,
+        "p95": 4453.656279001734,
+        "p99": 4455.130567999731
+      },
+      "requests": 12,
+      "successes": 12,
+      "throughput_requests_per_second": 1.394659
+    },
+    {
+      "concurrency": 8,
+      "elapsed_seconds": 5.93768,
+      "error_classes": [],
+      "errors": 0,
+      "latency_ms": {
+        "mean": 3159.6620922503766,
+        "p50": 3118.5893359979673,
+        "p95": 4029.134950000298,
+        "p99": 4388.376424001763
+      },
+      "requests": 12,
+      "successes": 12,
+      "throughput_requests_per_second": 2.020991
+    }
+  ],
+  "redaction": "Database URL, credentials, tenant ID, rows, incident IDs, and vectors omitted",
+  "runtime": {
+    "client_pool_max": 10,
+    "python": "3.12.13"
+  }
+}

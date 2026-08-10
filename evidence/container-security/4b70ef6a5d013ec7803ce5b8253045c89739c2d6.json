@@ -1,0 +1,17 @@
+{
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "capture AWS/ECR control planes",
+  "environment_class": "aws-ecr-and-ecs-runtime",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:54:56.116382+00:00",
+  "image_digest": "sha256:e6d14e9d8a080cb8b9ada9c80000becfd7e103ed2015effb2402115e24dc4b5e",
+  "limitations": "ECR vulnerability findings are captured separately after scan completion.",
+  "passed": true,
+  "redaction": "Registry account and task identifiers omitted",
+  "runtime_assertions": {
+    "release_image_digest_pinned": true,
+    "runtime_drops_all_linux_capabilities": true,
+    "runtime_non_root": true,
+    "runtime_read_only_root": true
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "assertions": {
+    "all_table_content_digests_match": true,
+    "all_table_row_counts_match": true,
+    "encrypted_backup_created": true,
+    "full_restore_completed": true,
+    "restored_database_removed": true
+  },
+  "backup": {
+    "collection_count": 1,
+    "duration_seconds": 2.067204,
+    "encryption": "passphrase-protected CockroachDB backup"
+  },
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-data-restore.py",
+  "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:50:15.901508+00:00",
+  "limitations": "Disposable single-database encrypted userfile backup and full same-cluster restore; not a cross-cluster or regional disaster-recovery test. The encrypted backup collection remains subject to CockroachDB userfile retention.",
+  "passed": true,
+  "redaction": "Database, table, collection, credentials, passphrase, rows, and identifiers omitted; table names replaced by SHA-256 digests",
+  "restore": {
+    "duration_seconds": 23.242302,
+    "row_count": 1026,
+    "table_count": 8,
+    "tables": {
+      "22513b3c15fe788a23f7326e9a30e2ef7db075db6c2e1236aa335ab21c807113": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "2457c7dfd7ea2a0f11f94ab48c511f1604f939f839015ed053ab546df9eb9831": {
+        "rows": 1,
+        "sha256": "037c9214eef74cc3887f3a4f085b4e17d76280dafd273b0ee160c09c4ba1cfd4"
+      },
+      "26bec784c2bd47ab6e266c0452cf9c680bf3b1c1edb4e819cb09dcdba62fb85d": {
+        "rows": 21,
+        "sha256": "61bc8a90161f80bbfca654fbdaae6d277b2645582cf2a4f1e8c2a942d963ea4e"
+      },
+      "4481c86dedce107c35e02434b9b0bbcf75b6e9dd531f770f26ce66ae7d6dcfd2": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "75c374cb4cf3cb2dd5f9db26beccf098e7c170f02d11b429c10366d3ad383bb6": {
+        "rows": 620,
+        "sha256": "b473f609b34f0a9c2998f59cb3689253d7a1442883347a7b20ff145288e29d14"
+      },
+      "a6d1765ab64d82a7ac0698ae7cc91063acfd0b50e9e54f2bfc34f6ff75e57253": {
+        "rows": 192,
+        "sha256": "9da74c9aea56d2e0c799970bbc774490784ce5c7d03ba352605f55b2741b5e9e"
+      },
+      "dbc4122ab917352e98ee29a33c0d8168883ecb70e19bbf57a204f6e69002070e": {
+        "rows": 0,
+        "sha256": "e3b0c44298fc1c149afbf4c8996fb92427ae41e4649b934ca495991b7852b855"
+      },
+      "fa64b46171fdd1377fd211ee4b605ea8cac7dda4d5ce01d378aa8ef35e1bc12d": {
+        "rows": 192,
+        "sha256": "ae39fbdce258f54350025eba57e87f25451085121f6d30a5fc1284f06d3ab1e9"
+      }
+    },
+    "total_drill_seconds": 38.050217
+  }
+}

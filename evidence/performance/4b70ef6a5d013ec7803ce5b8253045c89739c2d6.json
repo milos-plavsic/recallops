@@ -1,0 +1,38 @@
+{
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "recallops-eval",
+  "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:54:56.116195+00:00",
+  "latency_ms": {
+    "mean_ms": 2474.2988249916984,
+    "p50_ms": 2457.784824000555,
+    "p95_ms": 2891.294076001941,
+    "p99_ms": 3292.059342998982
+  },
+  "limitations": "Sequential synthetic workload; this is not a saturation or capacity benchmark.",
+  "passed": true,
+  "quality": {
+    "bootstrap_95pct": {
+      "latency_p95_ms": {
+        "lower": 2765.098613999726,
+        "upper": 3232.878024002275
+      },
+      "top1_safe_accuracy": {
+        "lower": 1.0,
+        "upper": 1.0
+      },
+      "unsafe_selection_rate": {
+        "lower": 0.0,
+        "upper": 0.0
+      }
+    },
+    "top1_safe_accuracy": 1.0,
+    "unsafe_selection_rate": 0.0
+  },
+  "redaction": "Raw cases, database identifiers, credentials, embeddings, and rows omitted",
+  "workload": {
+    "cases": 120,
+    "kind": "sequential raw-text retrieval"
+  }
+}

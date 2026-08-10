@@ -1,0 +1,33 @@
+{
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-cost-evidence.py",
+  "current_public_prices_usd": {
+    "application_lcu_hour": 0.008,
+    "application_load_balancer_hour": 0.0225,
+    "fargate_gb_hour": 0.004445,
+    "fargate_vcpu_hour": 0.04048,
+    "http_api_request": 1e-06
+  },
+  "deployed_dimensions": {
+    "fargate_memory_gb": 1.0,
+    "fargate_vcpu": 0.5
+  },
+  "environment_class": "aws-public-judge-demo-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:46:16.964703+00:00",
+  "limitations": "Measured subset only. Excludes CockroachDB Cloud, S3, CloudWatch Logs/alarms, data transfer, tax, support, and optional Bedrock. The 24-hour request/LCU sample is extrapolated and is not a bill.",
+  "monthly_projection_usd": {
+    "application_load_balancer": 16.425,
+    "fargate": 18.02005,
+    "http_api_request_projection": 0.007908341999999999,
+    "measured_subset_total": 34.45303350496297,
+    "observed_lcu_projection": 7.516296296296297e-05
+  },
+  "observed_24h": {
+    "application_lcu_hourly_mean": 1.2870370370370371e-05,
+    "http_api_requests": 260.0,
+    "metric_hours_present": 5
+  },
+  "passed": true,
+  "redaction": "Account, API, load balancer, task, tenant, and request identifiers omitted"
+}

@@ -1,0 +1,27 @@
+{
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "cluster": {
+    "cloud_provider": "AWS",
+    "cockroach_version": "v26.2.5",
+    "id_digest": "2057c5df9f186580fd5221943c636f8c7f608706342c04415782c0d1e98e673b",
+    "name_digest": "1164719b897c13fb09e3504fe49894330ecdffb60b65a97106756f23b1d9c424",
+    "plan": "SERVERLESS",
+    "regions": [
+      "us-east-1"
+    ],
+    "state": "CREATED"
+  },
+  "command": "ccloud cluster info + ccloud cluster user list",
+  "environment_class": "managed-cockroach-read-only",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T19:47:54.5378219+00:00",
+  "pass_criteria": "cluster is ready, cloud provider is AWS, and runtime SQL identities exist",
+  "passed": true,
+  "redaction": "cluster ID, cluster name, and SQL identities replaced with SHA-256 digests",
+  "sql_identity_digests": [
+    "085c229fb8ee9ee236af62145208c400af8df120edc073a15354d3c5e368c8a1",
+    "6af77ef4ad4006584f2505840190bcad27662cf1e0a093b99c6bea4ef0aad54b",
+    "824d063d802bf37547526ef893f02e2822b339930e0e6e2d78d0f5a3579a0357"
+  ],
+  "tool": "ccloud 0.6.12"
+}

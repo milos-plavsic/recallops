@@ -1,0 +1,51 @@
+{
+  "assertions": {
+    "cyclonedx_sbom_present": true,
+    "development_lock_present": true,
+    "exact_digest_scan_complete": true,
+    "exact_digest_signature_successful": true,
+    "exact_digest_zero_scan_findings": true,
+    "managed_signing_rule_present": true,
+    "oci_license_is_mit": true,
+    "oci_revision_matches_release": true,
+    "oci_source_matches_repository": true,
+    "production_lock_present": true
+  },
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-supply-chain.py",
+  "environment_class": "aws-ecr-signed-release-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:32:44.835301+00:00",
+  "limitations": "Registry signature and point-in-time vulnerability scan do not replace admission policy, continuous rescanning, or hermetic reproducible-build verification.",
+  "materials": {
+    "development_lock_sha256": "a8d9dc85c71a30c814931afcf705b408f036e46c518ce89deaceb39d08cbe421",
+    "dockerfile_sha256": "13bf9c957f7747d819a28ff825102593faa1a42747ff5bac4fb7d305d20781cb",
+    "requirements_lock_sha256": "41872865fb7b3dd1805f582520a8c08ea6ecc824cccaf8434468cb09b295fd5b",
+    "sbom_sha256": "d09d5dd1d0739e01d948ef2569b0e45df41026350cba99d4421d4521172834ef",
+    "uv_lock_sha256": "bb69e15005d38d8eb1eae5942a6bec33b31831c30d31bfc2530a613ae7db890a"
+  },
+  "oci_labels": {
+    "org.opencontainers.image.licenses": "MIT",
+    "org.opencontainers.image.revision": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+    "org.opencontainers.image.source": "https://github.com/milos-plavsic/recallops"
+  },
+  "passed": true,
+  "redaction": "Account, registry, repository URI, signing profile ARN, task, and credential values omitted",
+  "sbom": {
+    "format": "CycloneDX JSON",
+    "source": "pip-audit against production lock"
+  },
+  "scan": {
+    "finding_count": 0,
+    "severity_counts": {},
+    "status": "COMPLETE"
+  },
+  "signature": {
+    "method": "Amazon ECR managed signing with AWS Signer and Notation OCI platform",
+    "rule_count": 1,
+    "status": "COMPLETE"
+  },
+  "subject": {
+    "image_digest": "sha256:e6d14e9d8a080cb8b9ada9c80000becfd7e103ed2015effb2402115e24dc4b5e"
+  }
+}

@@ -1,0 +1,44 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:36:49.434Z",
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "environment_class": "aws-public-judge-demo-authenticated-browser",
+  "command": "scripts/capture-live-visual.mjs",
+  "artifacts": [
+    {
+      "file": "01-authenticated-console.png",
+      "bytes": 514648,
+      "sha256": "65fb1162a7353a034832041f61f1af49d7d64a73d7da91cefa685cf679656ec0"
+    },
+    {
+      "file": "02-governed-analysis.png",
+      "bytes": 773371,
+      "sha256": "b7c9345f7287fbcdd5fa68bfa9e31fbc96603e2350040c072116727f9d9305d1"
+    },
+    {
+      "file": "03-mobile-analysis.png",
+      "bytes": 590583,
+      "sha256": "76f2bb7e48f45bc4365d058b605ef4f5855a5fcfa4d970e5932b2cb6ca5f8132"
+    },
+    {
+      "file": "04-reduced-motion.png",
+      "bytes": 42207,
+      "sha256": "79da6fb08401cdd4907ccb56e7e0790e2d52bd94f3093f5862fccab29e2be624"
+    },
+    {
+      "file": "05-keyboard-focus.png",
+      "bytes": 57621,
+      "sha256": "25248b3713beea7d2efe0fc6fda3bb99f7ae77258c368c889bbaeba61c456b3f"
+    }
+  ],
+  "assertions": {
+    "authenticated_console_rendered": true,
+    "governed_analysis_rendered": true,
+    "responsive_mobile_rendered": true,
+    "reduced_motion_rendered": true,
+    "keyboard_focus_rendered": true
+  },
+  "passed": true,
+  "redaction": "Credentials and tokens are never rendered or persisted; identifiers shown are opaque.",
+  "limitations": "Point-in-time Chromium screenshots; independent reviewer activation is covered separately."
+}

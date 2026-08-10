@@ -1,0 +1,63 @@
+{
+  "assertions": {
+    "alarms_configured": true,
+    "api_detailed_metrics_enabled": true,
+    "api_throttling_enabled": true,
+    "exact_image_scan_complete": true,
+    "exact_image_scan_zero_findings": true,
+    "logs_have_finite_retention": true,
+    "release_image_digest_pinned": true,
+    "runtime_drops_all_linux_capabilities": true,
+    "runtime_non_root": true,
+    "runtime_read_only_root": true,
+    "s3_default_encryption_enabled": true,
+    "s3_public_access_fully_blocked": true,
+    "s3_versioning_enabled": true,
+    "task_and_execution_roles_separated": true
+  },
+  "build_sha": "4b70ef6a5d013ec7803ce5b8253045c89739c2d6",
+  "command": "scripts/capture-aws-security.py",
+  "controls": {
+    "alarm_count": 3,
+    "alarm_states": [
+      "OK",
+      "OK",
+      "OK"
+    ],
+    "api_throttling_burst": 50,
+    "api_throttling_rate_per_second": 25.0,
+    "container_count": 4,
+    "ecr_scan": {
+      "finding_count": 0,
+      "severity_counts": {},
+      "status": "COMPLETE"
+    },
+    "iam_roles": [
+      {
+        "attached_policy_count": 0,
+        "inline_policy_count": 1,
+        "kind": "task"
+      },
+      {
+        "attached_policy_count": 0,
+        "inline_policy_count": 1,
+        "kind": "execution"
+      }
+    ],
+    "log_retention_days": [
+      30,
+      30
+    ],
+    "runtime_containers": [
+      "api",
+      "outbox"
+    ],
+    "s3_encryption": "AES256"
+  },
+  "environment_class": "aws-public-judge-demo-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T21:36:39.156816+00:00",
+  "limitations": "Point-in-time control-plane inspection; it does not prove long-duration availability.",
+  "passed": true,
+  "redaction": "Account, ARN, resource name, bucket, role, network, and credential values omitted"
+}
