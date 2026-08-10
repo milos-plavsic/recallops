@@ -1,0 +1,664 @@
+{
+  "artifacts": [
+    {
+      "bytes": 1789,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "README.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": null,
+      "sha256": "bf2849073c47e5ac104a5903803415e21f2e3ba5dd65b12443617bff76853af3"
+    },
+    {
+      "bytes": 1150,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "agent-skills/3ad1a09ed7512494c2ea516cebdc28ffc4573d35.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+      "sha256": "90857172de2a4e89e3da3b0b4a850dd3c6cc6cbe2550dc9022954229eab9ffd3"
+    },
+    {
+      "bytes": 4115,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "agent-skills/8473339b509017177ce242693433d57a96e85c17.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "8473339b509017177ce242693433d57a96e85c17",
+      "sha256": "e4f92792495d7fd3f4da55f93573508449e069bd4f084ac0f4d275b8fb5be320"
+    },
+    {
+      "bytes": 1641,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "agent-skills/87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+      "sha256": "7d72acda98c5014f0c9d33719fa86af50c8a28afb354adc86539df362f5b9e1e"
+    },
+    {
+      "bytes": 2031,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "agent-skills/c7a7257c0f8fef787ccc5737814655702dbbf1a2.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+      "sha256": "6ce66bbe5017458acdc1b95c4e26d811e447b9d5dfe73ed48c0b39080625a811"
+    },
+    {
+      "bytes": 2020,
+      "media_type": "text/markdown",
+      "metadata": {},
+      "path": "agent-skills/fc638214e07ce244973ba41ecfefb9bde25ceea3.md",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "17d1f6f6161f0ac7cd435a70575703930dcb1d92babee3f55fc17a86d4f4b24e"
+    },
+    {
+      "bytes": 1765,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "aws-public-judge-demo-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:52:27.006384+00:00",
+        "limitations": "Point-in-time control-plane inspection; it does not prove long-duration availability.",
+        "passed": true
+      },
+      "path": "aws-security/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "6f2c3f82a97eb95a1b31c4c3441e3b1b0f472b64cc9b15022e9ecbbbd99982ff"
+    },
+    {
+      "bytes": 1077,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+        "environment_class": "managed-cockroach-read-only",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T17:03:01.3330230+00:00",
+        "passed": true
+      },
+      "path": "ccloud/3ad1a09ed7512494c2ea516cebdc28ffc4573d35.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+      "sha256": "aa29004512035a9ef0b1e5a165aef14a99a88362cebb53f0e206c6ca238178b7"
+    },
+    {
+      "bytes": 1077,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "8473339b509017177ce242693433d57a96e85c17",
+        "environment_class": "managed-cockroach-read-only",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T16:43:36.1468879+00:00",
+        "passed": true
+      },
+      "path": "ccloud/8473339b509017177ce242693433d57a96e85c17.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "8473339b509017177ce242693433d57a96e85c17",
+      "sha256": "2c409a604265547fc47a4224ef20d2390e0ca9869f84ad5b97e5b6581015b85d"
+    },
+    {
+      "bytes": 1077,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+        "environment_class": "managed-cockroach-read-only",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T17:17:19.6448541+00:00",
+        "passed": true
+      },
+      "path": "ccloud/87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+      "sha256": "ab91a2465c5175a938beac273efc4423580b5b965d05b3ab65951d706d66382c"
+    },
+    {
+      "bytes": 1073,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+        "environment_class": "managed-cockroach-read-only",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T18:17:30Z",
+        "passed": true
+      },
+      "path": "ccloud/c7a7257c0f8fef787ccc5737814655702dbbf1a2.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+      "sha256": "08f5047080a85fc4bc68e6f893fe55e38cc43d638f053a6237666d65fa148ab9"
+    },
+    {
+      "bytes": 1089,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "managed-cockroach-read-only",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:47:54.5378219+00:00",
+        "passed": true
+      },
+      "path": "ccloud/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "3d693d796531f608777681e3b520ba26c26bc0d0f83546c3e4ee28eeffa60366"
+    },
+    {
+      "bytes": 2377,
+      "media_type": "application/json",
+      "metadata": {},
+      "path": "claims.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": null,
+      "sha256": "bc6c7af7c1a614fa3bd758fa803a11bd56455bbe697aa6cdfcfcbfd22d521c92"
+    },
+    {
+      "bytes": 4054,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:48:00.517244+00:00",
+        "limitations": "The plan uses synthetic rows in a disposable database; optimizer choices vary with cardinality and statistics.",
+        "passed": true
+      },
+      "path": "cockroach-query-plan/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "0caa040bba122ab068b51906a29507ad6139b1335868bd2bfbd4e0005daec030"
+    },
+    {
+      "bytes": 694,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "aws-ecr-and-ecs-runtime",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.327198+00:00",
+        "limitations": "ECR vulnerability findings are captured separately after scan completion.",
+        "passed": true
+      },
+      "path": "container-security/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "dba3a7d3980cbd442b41c7537727c49207cd9c0bcda9f5e5e7461b0f1ca70b27"
+    },
+    {
+      "bytes": 654,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "8473339b509017177ce242693433d57a96e85c17",
+        "environment_class": "managed-cockroach-serverless-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T16:41:00Z",
+        "passed": true
+      },
+      "path": "database-boundaries/8473339b509017177ce242693433d57a96e85c17.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "8473339b509017177ce242693433d57a96e85c17",
+      "sha256": "2242da97c0631d9c38fef38052263126de26324710fbe000f31635f6ee89402f"
+    },
+    {
+      "bytes": 2157,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "managed-cockroach-production-schema",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.326185+00:00",
+        "limitations": "Point-in-time authorization boundary verification.",
+        "passed": true
+      },
+      "path": "database-boundaries/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "970227a46b4621ea67fe723df8cca58cbf0f265e67141d4675d51cd2eef5c4ab"
+    },
+    {
+      "bytes": 1951,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+        "environment_class": "aws-public-judge-demo",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T17:03:00Z",
+        "limitations": "Infrastructure health passed, but this release failed the core authenticated loop and must not be submitted.",
+        "passed": false
+      },
+      "path": "deployment/3ad1a09ed7512494c2ea516cebdc28ffc4573d35.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "3ad1a09ed7512494c2ea516cebdc28ffc4573d35",
+      "sha256": "ece50614c2f5e3772b06805aad7fe4a8fea74e56159d356cdafc153816bd461a"
+    },
+    {
+      "bytes": 2033,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+        "environment_class": "aws-public-judge-demo",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T17:17:15Z",
+        "limitations": "Long-running availability, representative load, restore timing, generalization, video, and Devpost submission remain separate gates.",
+        "passed": true
+      },
+      "path": "deployment/87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "87cb8ab608e1720dbc1b97cfb59b8ef9cd45ba4e",
+      "sha256": "a3b402850a99aea210b2b9fbad63451ae321a645f5cbea322f0a359b526f27c4"
+    },
+    {
+      "bytes": 2594,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+        "environment_class": "aws-public-judge-demo",
+        "evidence_version": 2,
+        "generated_at": "2026-08-10T17:45:00Z",
+        "limitations": "Scanner feeds evolve; long-running availability, representative load, restore timing, video, and Devpost submission remain separate gates.",
+        "passed": true
+      },
+      "path": "deployment/c7a7257c0f8fef787ccc5737814655702dbbf1a2.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "c7a7257c0f8fef787ccc5737814655702dbbf1a2",
+      "sha256": "329111308f88bbfbfac13f066591a6867eefa4b8b6c95b336f74a396f3465d49"
+    },
+    {
+      "bytes": 1251,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "aws-public-judge-demo",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.327309+00:00",
+        "limitations": "Point-in-time deployment evidence; long-duration availability is not claimed.",
+        "passed": true
+      },
+      "path": "deployment/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "02840b06b44fbdb6b814537efac73d3ad18ed1b7d3329eef2921c6999246aef2"
+    },
+    {
+      "bytes": 1199,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "8473339b509017177ce242693433d57a96e85c17",
+        "environment_class": "managed-cockroach-serverless-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T16:42:00Z",
+        "limitations": "Six authored synthetic cases establish wiring and tested invariants, not generalization or production-scale latency.",
+        "passed": true
+      },
+      "path": "end-to-end-cockroach/8473339b509017177ce242693433d57a96e85c17.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "8473339b509017177ce242693433d57a96e85c17",
+      "sha256": "8a19f052729a0e41e131447a9a83e22201394dca61201c1626cd3a28bfaa547f"
+    },
+    {
+      "bytes": 69582,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.323363+00:00",
+        "limitations": "Lexical variants are generated and are not production incident records.",
+        "passed": true
+      },
+      "path": "end-to-end-cockroach/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "d69c0116ac2c2deebf1ca9efcf4bee30c2c11ace5aebae0ba9c166afcb98e9a9"
+    },
+    {
+      "bytes": 69582,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.323363+00:00",
+        "limitations": "Lexical variants are generated and are not production incident records.",
+        "passed": true
+      },
+      "path": "evaluation/statistical/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "d69c0116ac2c2deebf1ca9efcf4bee30c2c11ace5aebae0ba9c166afcb98e9a9"
+    },
+    {
+      "bytes": 1082,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:53:38.327052+00:00",
+        "limitations": "Sequential synthetic workload; this is not a saturation or capacity benchmark.",
+        "passed": true
+      },
+      "path": "performance/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "5dd3f3f435c6e890aa35e2eb52020ada399cc4f23825b3d0fedf52af59cc9122"
+    },
+    {
+      "bytes": 1359,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "local-isolated-deterministic-failure-injection",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:47:51.428037+00:00",
+        "limitations": "Isolated component drills validate safety behavior, not regional AWS or managed CockroachDB disaster recovery. No production failure was injected.",
+        "passed": true
+      },
+      "path": "resilience/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "a4a97bfe80fd0101c9314f840bd68e889c2d9cb1523463345de62add005ff09d"
+    },
+    {
+      "bytes": 709,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:46:10.188351+00:00",
+        "limitations": "Schema reconstruction drill on an empty disposable database; data backup restore and regional disaster recovery are not claimed.",
+        "passed": true
+      },
+      "path": "restore-drill/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "d5b5bedbccc6f4164c0fe2bed5c139024bf24c280b7662af2c3d3600b0f0a74b"
+    },
+    {
+      "bytes": 514648,
+      "media_type": "image/png",
+      "metadata": {},
+      "path": "visual/fc638214e07ce244973ba41ecfefb9bde25ceea3/01-authenticated-console.png",
+      "redaction_scan": {
+        "method": "not_applicable_binary",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "65fb1162a7353a034832041f61f1af49d7d64a73d7da91cefa685cf679656ec0"
+    },
+    {
+      "bytes": 791721,
+      "media_type": "image/png",
+      "metadata": {},
+      "path": "visual/fc638214e07ce244973ba41ecfefb9bde25ceea3/02-governed-analysis.png",
+      "redaction_scan": {
+        "method": "not_applicable_binary",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "06a7fcd17655630deed4f0c0800e4872cd5cb5303cde5f1fd60d14e64b473422"
+    },
+    {
+      "bytes": 937,
+      "media_type": "application/json",
+      "metadata": {
+        "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+        "environment_class": "aws-public-judge-demo-authenticated-browser",
+        "evidence_version": 1,
+        "generated_at": "2026-08-10T19:52:37.303Z",
+        "limitations": "Point-in-time Chromium screenshots; independent reviewer activation is covered separately.",
+        "passed": true
+      },
+      "path": "visual/fc638214e07ce244973ba41ecfefb9bde25ceea3/index.json",
+      "redaction_scan": {
+        "method": "high_signal_text_patterns",
+        "passed": true,
+        "violations": []
+      },
+      "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+      "sha256": "369d57a666e185fd161b9a9c40afb520f415594ff3f6c049894acc52aba4dcf4"
+    }
+  ],
+  "claims": [
+    {
+      "artifacts": [
+        "evaluation/statistical/<release>.json",
+        "end-to-end-cockroach/<release>.json",
+        "database-boundaries/<release>.json"
+      ],
+      "claim": "RecallOps retrieves only tenant-scoped, reviewed, compatible, successful memory and safely abstains otherwise.",
+      "criterion": "Agentic Memory",
+      "id": "agentic-memory.outcome-governance",
+      "missing": [],
+      "resolved_artifacts": [
+        "evaluation/statistical/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "end-to-end-cockroach/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "database-boundaries/fc638214e07ce244973ba41ecfefb9bde25ceea3.json"
+      ]
+    },
+    {
+      "artifacts": [
+        "cockroach-query-plan/<release>.json",
+        "database-boundaries/<release>.json",
+        "ccloud/<release>.json"
+      ],
+      "claim": "CockroachDB is the transactional system of record, vector memory index, governance boundary, and outbox source.",
+      "criterion": "Technical Implementation",
+      "id": "technical.cockroach-essential",
+      "missing": [],
+      "resolved_artifacts": [
+        "cockroach-query-plan/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "database-boundaries/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "ccloud/fc638214e07ce244973ba41ecfefb9bde25ceea3.json"
+      ]
+    },
+    {
+      "artifacts": [
+        "deployment/<release>.json",
+        "aws-security/<release>.json",
+        "resilience/<release>.json"
+      ],
+      "claim": "The public judge runtime meaningfully uses ECS, throttled API Gateway, Cognito, S3, CloudWatch, and Secrets Manager.",
+      "criterion": "Technical Implementation",
+      "id": "technical.aws-essential",
+      "missing": [],
+      "resolved_artifacts": [
+        "deployment/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "aws-security/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "resilience/fc638214e07ce244973ba41ecfefb9bde25ceea3.json"
+      ]
+    },
+    {
+      "artifacts": [
+        "evaluation/statistical/<release>.json",
+        "performance/<release>.json"
+      ],
+      "claim": "Outcome and governance policy reduces unsafe selections relative to similarity-only retrieval on the disclosed benchmark.",
+      "criterion": "Potential Impact",
+      "id": "impact.safer-reuse",
+      "missing": [],
+      "resolved_artifacts": [
+        "evaluation/statistical/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "performance/fc638214e07ce244973ba41ecfefb9bde25ceea3.json"
+      ]
+    },
+    {
+      "artifacts": [
+        "deployment/<release>.json",
+        "container-security/<release>.json",
+        "resilience/<release>.json",
+        "restore-drill/<release>.json",
+        "visual/<release>/index.json"
+      ],
+      "claim": "The immutable public release is authenticated, observable, least-privileged, recoverable, and reproducibly tested.",
+      "criterion": "Readiness",
+      "id": "readiness.deployable",
+      "missing": [],
+      "resolved_artifacts": [
+        "deployment/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "container-security/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "resilience/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "restore-drill/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "visual/fc638214e07ce244973ba41ecfefb9bde25ceea3/index.json"
+      ]
+    },
+    {
+      "artifacts": [
+        "deployment/<release>.json",
+        "visual/<release>/index.json",
+        "agent-skills/<release>.md"
+      ],
+      "claim": "The product closes the loop from retrieval through approval, execution evidence, observed outcome, independent review, and future recall.",
+      "criterion": "Originality",
+      "id": "originality.closed-loop-memory",
+      "missing": [],
+      "resolved_artifacts": [
+        "deployment/fc638214e07ce244973ba41ecfefb9bde25ceea3.json",
+        "visual/fc638214e07ce244973ba41ecfefb9bde25ceea3/index.json",
+        "agent-skills/fc638214e07ce244973ba41ecfefb9bde25ceea3.md"
+      ]
+    }
+  ],
+  "generated_at": "2026-08-10T19:53:38.387257+00:00",
+  "methodology": {
+    "inspiration": [
+      "SLSA provenance",
+      "CycloneDX",
+      "AWS Well-Architected"
+    ],
+    "integrity": "SHA-256 content digests over every catalogued artifact",
+    "provenance": "release SHA, capture time, environment class, command, pass criteria",
+    "redaction": "automated high-signal secret scan plus artifact-specific sanitization"
+  },
+  "schema_version": 1,
+  "subject": {
+    "name": "RecallOps",
+    "release_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+    "repository": "https://github.com/milos-plavsic/recallops.git",
+    "repository_head": "fc638214e07ce244973ba41ecfefb9bde25ceea3"
+  },
+  "summary": {
+    "artifact_count": 30,
+    "claim_count": 6,
+    "complete_claim_count": 6,
+    "redaction_violations": 0,
+    "release_artifact_count": 15
+  },
+  "validation": {
+    "passed": true,
+    "redaction_violations": []
+  }
+}

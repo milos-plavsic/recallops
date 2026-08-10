@@ -1,0 +1,17 @@
+{
+  "assertions": {
+    "database_ready": true,
+    "migration_ledger_matches_source": true,
+    "migration_process_succeeded": true
+  },
+  "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+  "command": "scripts/capture-restore-drill.py",
+  "environment_class": "disposable-managed-cockroach-aws-us-east-1",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T19:46:10.188351+00:00",
+  "limitations": "Schema reconstruction drill on an empty disposable database; data backup restore and regional disaster recovery are not claimed.",
+  "migration_count": 21,
+  "passed": true,
+  "recovery_time_seconds": 148.746,
+  "redaction": "Database name, URL, credentials, cluster, account, and rows omitted"
+}

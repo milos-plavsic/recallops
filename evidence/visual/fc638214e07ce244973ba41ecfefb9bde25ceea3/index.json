@@ -1,0 +1,26 @@
+{
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T19:52:37.303Z",
+  "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+  "environment_class": "aws-public-judge-demo-authenticated-browser",
+  "command": "scripts/capture-live-visual.mjs",
+  "artifacts": [
+    {
+      "file": "01-authenticated-console.png",
+      "bytes": 514648,
+      "sha256": "65fb1162a7353a034832041f61f1af49d7d64a73d7da91cefa685cf679656ec0"
+    },
+    {
+      "file": "02-governed-analysis.png",
+      "bytes": 791721,
+      "sha256": "06a7fcd17655630deed4f0c0800e4872cd5cb5303cde5f1fd60d14e64b473422"
+    }
+  ],
+  "assertions": {
+    "authenticated_console_rendered": true,
+    "governed_analysis_rendered": true
+  },
+  "passed": true,
+  "redaction": "Credentials and tokens are never rendered or persisted; identifiers shown are opaque.",
+  "limitations": "Point-in-time Chromium screenshots; independent reviewer activation is covered separately."
+}

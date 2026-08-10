@@ -1,0 +1,36 @@
+{
+  "build_sha": "fc638214e07ce244973ba41ecfefb9bde25ceea3",
+  "command": "scripts/capture-resilience.py",
+  "drills": [
+    {
+      "duration_ms": 730.359,
+      "name": "dependency_degradation",
+      "passed": true,
+      "test": "tests/test_resilience.py::test_provider_failures_degrade_without_inventing_action"
+    },
+    {
+      "duration_ms": 741.59,
+      "name": "embedding_fail_closed",
+      "passed": true,
+      "test": "tests/test_resilience.py::test_embedding_failure_never_persists_fallback_vector"
+    },
+    {
+      "duration_ms": 754.837,
+      "name": "idempotency_concurrency_64",
+      "passed": true,
+      "test": "tests/test_resilience.py::test_concurrent_idempotent_requests_return_one_incident"
+    },
+    {
+      "duration_ms": 763.64,
+      "name": "bounded_aws_retries",
+      "passed": true,
+      "test": "tests/test_resilience.py::test_aws_policy_has_finite_timeouts_and_bounded_standard_retries"
+    }
+  ],
+  "environment_class": "local-isolated-deterministic-failure-injection",
+  "evidence_version": 1,
+  "generated_at": "2026-08-10T19:47:51.428037+00:00",
+  "limitations": "Isolated component drills validate safety behavior, not regional AWS or managed CockroachDB disaster recovery. No production failure was injected.",
+  "passed": true,
+  "redaction": "pytest output omitted; test identifiers and timings retained"
+}

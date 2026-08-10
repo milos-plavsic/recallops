@@ -10,7 +10,9 @@ from typing import Any
 import boto3
 
 
-def capture(stack_name: str, region: str, release_sha: str) -> dict[str, Any]:
+def capture(
+    stack_name: str, region: str, release_sha: str, repository: str, image_digest: str
+) -> dict[str, Any]:
     cf = boto3.client("cloudformation", region_name=region)
     resources = cf.describe_stack_resources(StackName=stack_name)["StackResources"]
     by_type: dict[str, list[str]] = {}
@@ -65,6 +67,13 @@ def capture(stack_name: str, region: str, release_sha: str) -> dict[str, Any]:
             }
         )
 
+    ecr = boto3.client("ecr", region_name=region)
+    scan = ecr.describe_image_scan_findings(
+        repositoryName=repository, imageId={"imageDigest": image_digest}
+    )
+    scan_status = scan["imageScanStatus"]["status"]
+    scan_counts = scan.get("imageScanFindings", {}).get("findingSeverityCounts", {})
+
     assertions = {
         "release_image_digest_pinned": all("@sha256:" in item["image"] for item in containers),
         "runtime_non_root": all(item.get("user") == "65532" for item in runtime),
@@ -82,6 +91,8 @@ def capture(stack_name: str, region: str, release_sha: str) -> dict[str, Any]:
         "api_detailed_metrics_enabled": route_settings.get("DetailedMetricsEnabled") is True,
         "alarms_configured": len(alarms) >= 3,
         "task_and_execution_roles_separated": task["taskRoleArn"] != task["executionRoleArn"],
+        "exact_image_scan_complete": scan_status == "COMPLETE",
+        "exact_image_scan_zero_findings": sum(scan_counts.values()) == 0,
     }
     return {
         "evidence_version": 1,
@@ -99,6 +110,11 @@ def capture(stack_name: str, region: str, release_sha: str) -> dict[str, Any]:
             "alarm_count": len(alarms),
             "alarm_states": sorted(alarm["StateValue"] for alarm in alarms),
             "iam_roles": role_summaries,
+            "ecr_scan": {
+                "status": scan_status,
+                "finding_count": sum(scan_counts.values()),
+                "severity_counts": scan_counts,
+            },
         },
         "assertions": assertions,
         "passed": all(assertions.values()),
@@ -118,9 +134,13 @@ def main() -> None:
     parser.add_argument("--stack-name", required=True)
     parser.add_argument("--region", default="us-east-1")
     parser.add_argument("--release-sha", required=True)
+    parser.add_argument("--repository", default="recallops")
+    parser.add_argument("--image-digest", required=True)
     parser.add_argument("--output", type=Path)
     args = parser.parse_args()
-    report = capture(args.stack_name, args.region, args.release_sha)
+    report = capture(
+        args.stack_name, args.region, args.release_sha, args.repository, args.image_digest
+    )
     encoded = json.dumps(report, indent=2, sort_keys=True) + "\n"
     if args.output:
         args.output.parent.mkdir(parents=True, exist_ok=True)

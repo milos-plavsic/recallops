@@ -64,8 +64,12 @@ def main() -> None:
     write(args.output_root, "aws-security", release, aws_security)
     resilience = load(args.resilience)
     write(args.output_root, "resilience", release, resilience)
-    write(args.output_root, "restore-drill", release, load(args.restore))
-    write(args.output_root, "ccloud", release, load(args.ccloud))
+    restore = load(args.restore)
+    restore["build_sha"] = release
+    write(args.output_root, "restore-drill", release, restore)
+    ccloud = load(args.ccloud)
+    ccloud["build_sha"] = release
+    write(args.output_root, "ccloud", release, ccloud)
 
     metrics = statistical["metrics"]
     performance = {
