@@ -50,14 +50,40 @@ def test_outbox_claim_acknowledgement_and_failure_release(monkeypatch: pytest.Mo
         "attempts": 1,
     }
     assert outbox.mark_delivered("postgresql://test", message_id, "worker-1")
-    outbox.release_failed(
-        "postgresql://test", message_id, "worker-1", 20, "x" * 1200
-    )
+    assert not outbox.release_failed("postgresql://test", message_id, "worker-1", 1, "x" * 1200)
 
     assert len(cursor.executions) == 3
-    assert "INTERVAL '2 minutes'" in cursor.executions[0][0]
+    assert "INTERVAL '1 second'" in cursor.executions[0][0]
     assert "delivered_at=now()" in cursor.executions[1][0]
     assert len(cursor.executions[2][1][1]) == 1000
+
+
+def test_outbox_dead_letters_after_retry_budget(monkeypatch: pytest.MonkeyPatch) -> None:
+    message_id = uuid4()
+    cursor = FakeCursor()
+    monkeypatch.setattr(outbox.psycopg, "connect", lambda *args, **kwargs: FakeConnection(cursor))
+
+    assert outbox.release_failed("postgresql://test", message_id, "worker-1", 8, "failed", 8)
+    assert "dead_lettered_at=now()" in cursor.executions[0][0]
+
+
+def test_outbox_status_is_payload_free(monkeypatch: pytest.MonkeyPatch) -> None:
+    cursor = FakeCursor(
+        {
+            "pending": 2,
+            "dead_lettered": 1,
+            "max_pending_attempts": 3,
+            "oldest_pending_age_seconds": 12.5,
+        }
+    )
+    monkeypatch.setattr(outbox.psycopg, "connect", lambda *args, **kwargs: FakeConnection(cursor))
+
+    assert outbox.status("postgresql://test") == {
+        "pending": 2,
+        "dead_lettered": 1,
+        "max_pending_attempts": 3,
+        "oldest_pending_age_seconds": 12.5,
+    }
 
 
 class RecordingArchive:
@@ -105,7 +131,9 @@ def test_delivery_releases_failed_message(monkeypatch: pytest.MonkeyPatch) -> No
     monkeypatch.setattr(
         outbox,
         "release_failed",
-        lambda database_url, message_id, worker_id, attempts, error: released.append(message_id),
+        lambda database_url, message_id, worker_id, attempts, error, max_attempts: (
+            released.append(message_id) or False
+        ),
     )
 
     assert outbox.deliver_available(

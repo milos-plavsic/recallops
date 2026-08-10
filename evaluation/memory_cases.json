@@ -1,5 +1,6 @@
 {
-  "schema_version": 1,
+  "schema_version": 2,
+  "suite_kind": "synthetic_policy_invariants",
   "cases": [
     {
       "name": "reject_semantically_identical_failed_remediation",
@@ -37,7 +38,7 @@
       "name": "exclude_cross_tenant_memory_before_ranking",
       "expected_memory_id": "same-tenant",
       "candidates": [
-        {"id": "other-tenant", "similarity": 1.0, "outcome_score": 1.0, "confidence": 1.0, "compatibility": 1.0, "eligible": false, "unsafe": true},
+        {"id": "other-tenant", "similarity": 1.0, "outcome_score": 1.0, "confidence": 1.0, "compatibility": 1.0, "eligible": false, "unsafe": true, "boundary_violation": true},
         {"id": "same-tenant", "similarity": 0.78, "outcome_score": 1.0, "confidence": 0.90, "compatibility": 1.0, "eligible": true, "unsafe": false}
       ]
     },

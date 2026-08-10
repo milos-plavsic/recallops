@@ -36,6 +36,24 @@ class ToolStatus(StrEnum):
     SKIPPED = "skipped"
 
 
+class EvidenceVerification(StrEnum):
+    MANUAL_ATTESTATION = "manual_attestation"
+    SYSTEM_OBSERVED = "system_observed"
+    EXTERNALLY_VERIFIED = "externally_verified"
+
+
+class CandidateDisposition(StrEnum):
+    SELECTED = "selected"
+    ELIGIBLE_NOT_SELECTED = "eligible_not_selected"
+    REJECTED = "rejected"
+
+
+class CompatibilityPolicy(StrEnum):
+    EXACT = "exact"
+    SEMVER_PATCH = "semver_patch"
+    SEMVER_MINOR = "semver_minor"
+
+
 class IncidentCreate(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
     service: str = Field(min_length=1, max_length=120)
@@ -49,6 +67,8 @@ class Memory(BaseModel):
     tenant_id: str
     service: str
     service_version: str
+    compatibility_policy: CompatibilityPolicy = CompatibilityPolicy.EXACT
+    compatibility_policy_version: str = Field(default="semver-v1", min_length=3, max_length=80)
     symptom: str
     action: str
     outcome: str
@@ -59,6 +79,10 @@ class Memory(BaseModel):
     superseded_by: UUID | None = None
     source_incident_id: UUID | None = None
     observed_by: str | None = None
+    evidence_verification: EvidenceVerification = EvidenceVerification.MANUAL_ATTESTATION
+    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
+    observation_window_seconds: int | None = Field(default=None, ge=1, le=2_592_000)
+    postconditions: list[str] = Field(default_factory=list, max_length=20)
     reviewed_by: str | None = None
     reviewed_at: datetime | None = None
     embedding_space: str = Field(
@@ -75,6 +99,21 @@ class RetrievedMemory(BaseModel):
     freshness: float = Field(ge=0, le=1)
     effective_confidence: float = Field(ge=0, le=1)
     rank_score: float
+
+
+class CandidateDecision(BaseModel):
+    memory_id: UUID
+    disposition: CandidateDisposition
+    reasons: list[str] = Field(default_factory=list, max_length=20)
+    rank_score: float
+
+
+class AgentPlanStep(BaseModel):
+    sequence: int = Field(ge=1)
+    objective: str = Field(min_length=3, max_length=300)
+    tool: str = Field(min_length=3, max_length=80, pattern=r"^[a-z0-9_]+$")
+    risk: ActionRisk = ActionRisk.READ_ONLY
+    stop_condition: str = Field(min_length=3, max_length=300)
 
 
 class ProposedAction(BaseModel):
@@ -106,8 +145,11 @@ class IncidentAnalysis(BaseModel):
     memories: list[RetrievedMemory]
     proposed_action: ProposedAction
     agent_trace: list[AgentToolTrace] = Field(default_factory=list, max_length=20)
+    plan: list[AgentPlanStep] = Field(default_factory=list, max_length=10)
+    candidate_decisions: list[CandidateDecision] = Field(default_factory=list, max_length=100)
     retrieval_abstention_reasons: list[str] = Field(default_factory=list)
     degraded_dependencies: list[str] = Field(default_factory=list)
+    retrieval_policy_version: str = Field(default="outcome-governance-v2", max_length=80)
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -129,6 +171,7 @@ class ExecutionAttestationRequest(BaseModel):
     action_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     action_taken: str = Field(min_length=3, max_length=2000)
     evidence_refs: list[str] = Field(min_length=1, max_length=20)
+    evidence_verification: EvidenceVerification = EvidenceVerification.MANUAL_ATTESTATION
 
 
 class ExecutionAttestation(ExecutionAttestationRequest):
@@ -143,6 +186,10 @@ class OutcomeObservation(BaseModel):
     outcome_score: float = Field(ge=-1, le=1)
     confidence: float = Field(ge=0, le=1)
     actor_id: str = Field(min_length=1, max_length=120)
+    evidence_verification: EvidenceVerification = EvidenceVerification.MANUAL_ATTESTATION
+    evidence_refs: list[str] = Field(default_factory=list, max_length=20)
+    observation_window_seconds: int | None = Field(default=None, ge=1, le=2_592_000)
+    postconditions: list[str] = Field(default_factory=list, max_length=20)
 
 
 class MemoryGovernanceRequest(BaseModel):

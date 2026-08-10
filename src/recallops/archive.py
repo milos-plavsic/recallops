@@ -18,9 +18,7 @@ class NullEvidenceArchive:
         return None
 
 
-def evidence_payload(
-    incident: IncidentCreate, analysis: IncidentAnalysis
-) -> dict[str, Any]:
+def evidence_payload(incident: IncidentCreate, analysis: IncidentAnalysis) -> dict[str, Any]:
     return {
         "schema_version": 1,
         "incident": incident.model_dump(mode="json"),
@@ -68,9 +66,7 @@ class S3EvidenceArchive:
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
-                Body=json.dumps(
-                    payload, separators=(",", ":")
-                ).encode(),
+                Body=json.dumps(payload, separators=(",", ":")).encode(),
                 ContentType="application/json",
                 ServerSideEncryption="AES256",
                 Metadata={

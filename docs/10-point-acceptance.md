@@ -19,7 +19,8 @@ externally blocked submission actions remain explicit.
 
 ## AWS integration
 
-- Bedrock participates in bounded reasoning and embedding with auditable model provenance.
+- ECS runs the agent, S3 stores versioned evidence, and CloudWatch provides observable runtime
+  signals; the configured reasoning and embedding provider has auditable provenance.
 - HTTPS/OIDC, ECS, S3, CloudWatch, Secrets Manager, networking, and least-privilege IAM are
   reproducibly deployed and verified.
 - Dependency outages fail safely; no fallback crosses semantic spaces or invents evidence.
@@ -33,7 +34,7 @@ externally blocked submission actions remain explicit.
 
 ## Evidence quality
 
-- At least 100 real-text cases exercise live Titan embeddings and CockroachDB queries.
+- At least 100 real-text cases exercise the release embedding provider and live CockroachDB queries.
 - Independent labels, a held-out split, confidence intervals, ablations, calibration, latency,
   cost, and error analysis are published with reproducible commands.
 - Reports never substitute hand-authored candidate scores for end-to-end measurements.

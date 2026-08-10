@@ -1,5 +1,6 @@
 import hmac
 from collections.abc import Callable, Mapping
+from datetime import UTC, datetime
 from typing import Any, Protocol
 
 import jwt
@@ -75,6 +76,8 @@ class OidcAuthenticator:
         self._audience = settings.oidc_audience
         self._tenant_claim = settings.oidc_tenant_claim
         self._roles_claim = settings.oidc_roles_claim
+        self._leeway = settings.oidc_leeway_seconds
+        self._max_token_age_seconds = settings.oidc_max_token_age_seconds
         factory = key_client_factory or (
             lambda uri: jwt.PyJWKClient(uri, cache_jwk_set=True, lifespan=300, timeout=5)
         )
@@ -101,6 +104,7 @@ class OidcAuthenticator:
                 signing_key.key,
                 algorithms=["RS256"],
                 issuer=self._issuer,
+                leeway=self._leeway,
                 options={
                     "require": ["exp", "iat", "iss", "sub", "token_use"],
                     "verify_aud": False,
@@ -115,6 +119,7 @@ class OidcAuthenticator:
         subject = claims.get("sub")
         if not isinstance(tenant_id, str) or not isinstance(subject, str):
             raise AuthenticationError("required identity claims missing")
+        self._validate_token_age(claims)
         return Principal(
             subject=subject,
             tenant_id=tenant_id,
@@ -129,6 +134,14 @@ class OidcAuthenticator:
             for candidate in audiences
         ):
             raise AuthenticationError("token audience does not match this application")
+
+    def _validate_token_age(self, claims: Mapping[str, Any]) -> None:
+        issued_at = claims.get("iat")
+        if not isinstance(issued_at, (int, float)) or isinstance(issued_at, bool):
+            raise AuthenticationError("token issued-at claim is invalid")
+        age = datetime.now(UTC).timestamp() - issued_at
+        if age > self._max_token_age_seconds + self._leeway:
+            raise AuthenticationError("access token is older than the allowed lifetime")
 
     @staticmethod
     def _roles(value: object) -> frozenset[str]:

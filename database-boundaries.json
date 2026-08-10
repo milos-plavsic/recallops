@@ -1,0 +1,87 @@
+{
+  "cross_tenant_constraints": [
+    {
+      "constraint": "approvals_incident_tenant_fk",
+      "result": "rejected"
+    },
+    {
+      "constraint": "executions_incident_tenant_fk",
+      "result": "rejected"
+    },
+    {
+      "constraint": "outbox_incident_tenant_fk",
+      "result": "rejected"
+    },
+    {
+      "constraint": "memory_events_memory_tenant_fk",
+      "result": "rejected"
+    },
+    {
+      "constraint": "memories_source_incident_tenant_fk",
+      "result": "rejected"
+    },
+    {
+      "constraint": "memories_supersession_tenant_fk",
+      "result": "rejected"
+    }
+  ],
+  "database": "recallops_ci",
+  "database_version": "CockroachDB CCL v26.2.1",
+  "exact_runtime_grants": 15,
+  "generated_at": "2026-08-10T14:45:47.661744+00:00",
+  "passed": true,
+  "runtime_denials": [
+    {
+      "operation": "DELETE",
+      "result": "denied",
+      "role": "recallops_api"
+    },
+    {
+      "operation": "SELECT",
+      "result": "denied",
+      "role": "recallops_api"
+    },
+    {
+      "operation": "UPDATE",
+      "result": "denied",
+      "role": "recallops_api"
+    },
+    {
+      "operation": "CREATE",
+      "result": "denied",
+      "role": "recallops_api"
+    },
+    {
+      "operation": "SELECT",
+      "result": "denied",
+      "role": "recallops_outbox"
+    },
+    {
+      "operation": "INSERT",
+      "result": "denied",
+      "role": "recallops_outbox"
+    },
+    {
+      "operation": "CREATE",
+      "result": "denied",
+      "role": "recallops_outbox"
+    }
+  ],
+  "runtime_roles": [
+    {
+      "bypass_rls": false,
+      "create_database": false,
+      "create_role": false,
+      "login": false,
+      "role": "recallops_api"
+    },
+    {
+      "bypass_rls": false,
+      "create_database": false,
+      "create_role": false,
+      "login": false,
+      "role": "recallops_outbox"
+    }
+  ],
+  "schema": "recallops.database-boundary-evidence.v1"
+}

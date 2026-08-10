@@ -1,7 +1,8 @@
 [CmdletBinding()]
 param(
     [string]$DemoUrl = $env:RECALLOPS_DEMO_URL,
-    [string]$VideoUrl = $env:RECALLOPS_VIDEO_URL
+    [string]$VideoUrl = $env:RECALLOPS_VIDEO_URL,
+    [string]$ReleaseSha = $env:RECALLOPS_RELEASE_SHA
 )
 
 $ErrorActionPreference = "Stop"
@@ -23,15 +24,34 @@ $requiredFiles = @(
     "README.md", "LICENSE", "Dockerfile", "compose.yaml", ".env.example",
     "evaluation/memory_cases.json", "docs/JUDGE_GUIDE.md", "docs/ARCHITECTURE.md",
     "docs/COCKROACH_TOOLS.md", "docs/AWS_DEPLOYMENT.md", "docs/THREAT_MODEL.md",
-    "docs/BENCHMARK.md", "docs/COST_MODEL.md", "docs/PROVENANCE.md",
-    "docs/AWS_ACCOUNT_BLOCKER.md", "scripts/bedrock-readiness.ps1"
+    "docs/BENCHMARK.md", "docs/COST_MODEL.md", "docs/PROVENANCE.md"
 )
 $missing = @($requiredFiles | Where-Object { -not (Test-Path -LiteralPath $_) })
 Add-Check "evidence-package" ($missing.Count -eq 0) $(if ($missing) { $missing -join ", " } else { "all required files present" })
 
-& .\.venv\Scripts\recallops-eval.exe *> $null
-Add-Check "safety-benchmark" ($LASTEXITCODE -eq 0) "recallops-eval exit=$LASTEXITCODE"
+$headSha = (git rev-parse HEAD).Trim()
+if (-not $ReleaseSha) { $ReleaseSha = $headSha }
+if ($ReleaseSha -notmatch '^[a-f0-9]{40}$') { throw "ReleaseSha must be a full Git SHA" }
+git merge-base --is-ancestor $ReleaseSha HEAD
+Add-Check "release-sha-is-published-history" ($LASTEXITCODE -eq 0) "release=$ReleaseSha head=$headSha"
+$agentSkillEvidence = "evidence/agent-skills/$ReleaseSha.md"
+Add-Check "official-agent-skill-evidence" (Test-Path -LiteralPath $agentSkillEvidence) $agentSkillEvidence
+
+& uv run recallops-eval *> $null
+Add-Check "policy-benchmark" ($LASTEXITCODE -eq 0) "uv run recallops-eval exit=$LASTEXITCODE"
+& uv run recallops-eval --mode end-to-end *> $null
+Add-Check "end-to-end-benchmark" ($LASTEXITCODE -eq 0) "uv run recallops-eval --mode end-to-end exit=$LASTEXITCODE"
 Add-Check "functional-demo-url" ($DemoUrl -match '^https://[^\s]+$') $(if ($DemoUrl) { $DemoUrl } else { "missing" })
+if ($DemoUrl -match '^https://[^\s]+$') {
+    try {
+        $health = Invoke-RestMethod -Uri "$($DemoUrl.TrimEnd('/'))/health" -TimeoutSec 20
+        Add-Check "live-demo-health" ($health.status -eq 'ok') "status=$($health.status)"
+    } catch {
+        Add-Check "live-demo-health" $false $_.Exception.Message
+    }
+} else {
+    Add-Check "live-demo-health" $false "demo URL missing"
+}
 Add-Check "public-video-url" ($VideoUrl -match '^https://(www\.)?(youtube\.com|youtu\.be|vimeo\.com)/') $(if ($VideoUrl) { $VideoUrl } else { "missing" })
 
 $passed = @($checks | Where-Object passed).Count

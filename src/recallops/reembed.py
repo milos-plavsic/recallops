@@ -44,11 +44,10 @@ def reembed_batch(
 
 def count_legacy(database_url: str) -> int:
     with psycopg.connect(database_url) as connection, connection.cursor() as cursor:
-        cursor.execute(
-            "SELECT count(*) FROM memories WHERE embedding_space='legacy:unknown:v0'"
-        )
+        cursor.execute("SELECT count(*) FROM memories WHERE embedding_space='legacy:unknown:v0'")
         row = cursor.fetchone()
-    assert row is not None
+    if row is None:
+        raise RuntimeError("legacy memory count returned no row")
     return int(row[0])
 
 

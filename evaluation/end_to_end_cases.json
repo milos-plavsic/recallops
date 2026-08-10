@@ -1,0 +1,171 @@
+{
+  "schema_version": 1,
+  "suite_kind": "end_to_end_retrieval",
+  "cases": [
+    {
+      "name": "successful_outcome_beats_identical_failure",
+      "service": "checkout",
+      "service_version": "2.4.1",
+      "symptom": "latency spike after connection pool exhaustion",
+      "expected_memory_name": "successful-current",
+      "memories": [
+        {
+          "name": "failed-identical",
+          "service_version": "2.4.1",
+          "symptom": "latency spike after connection pool exhaustion",
+          "action": "increase retries without a limit",
+          "outcome": "retry storm increased latency",
+          "outcome_score": -1.0,
+          "confidence": 0.99,
+          "unsafe": true
+        },
+        {
+          "name": "successful-current",
+          "service_version": "2.4.1",
+          "symptom": "latency spike after connection pool exhaustion",
+          "action": "reduce worker concurrency to the reviewed limit",
+          "outcome": "latency and error rate returned to baseline",
+          "outcome_score": 1.0,
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "name": "exact_version_lane_survives_obsolete_neighbours",
+      "service": "ledger",
+      "service_version": "4.8.2",
+      "symptom": "write latency after schema rollout",
+      "expected_memory_name": "current-version",
+      "memories": [
+        {
+          "name": "obsolete-version",
+          "service_version": "3.1.0",
+          "symptom": "write latency after schema rollout",
+          "action": "restore the removed legacy index",
+          "outcome": "worked only before the storage engine migration",
+          "outcome_score": 1.0,
+          "confidence": 0.99,
+          "unsafe": true
+        },
+        {
+          "name": "current-version",
+          "service_version": "4.8.2",
+          "symptom": "write latency after schema rollout on ledger",
+          "action": "pause backfill and verify range health",
+          "outcome": "write latency recovered without rollback",
+          "outcome_score": 1.0,
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "name": "failure_only_forces_abstention",
+      "service": "search",
+      "service_version": "1.9.0",
+      "symptom": "timeouts while shards rebalance",
+      "expected_memory_name": null,
+      "expected_abstention_reasons": ["outcome_not_positive"],
+      "memories": [
+        {
+          "name": "failed-remediation",
+          "service_version": "1.9.0",
+          "symptom": "timeouts while shards rebalance",
+          "action": "restart every shard simultaneously",
+          "outcome": "availability fell further",
+          "outcome_score": -1.0,
+          "confidence": 0.98,
+          "unsafe": true
+        }
+      ]
+    },
+    {
+      "name": "tenant_and_governance_filters_execute_in_store",
+      "service": "identity",
+      "service_version": "6.2.0",
+      "symptom": "token validation latency after key rotation",
+      "expected_memory_name": "governed-same-tenant",
+      "memories": [
+        {
+          "name": "cross-tenant-perfect-match",
+          "tenant_scope": "other",
+          "service_version": "6.2.0",
+          "symptom": "token validation latency after key rotation",
+          "action": "use another tenant signing key",
+          "outcome": "unrelated tenant recovered",
+          "outcome_score": 1.0,
+          "confidence": 1.0,
+          "unsafe": true
+        },
+        {
+          "name": "pending-perfect-match",
+          "service_version": "6.2.0",
+          "symptom": "token validation latency after key rotation",
+          "action": "apply unreviewed key cache change",
+          "outcome": "observation awaits independent review",
+          "outcome_score": 1.0,
+          "confidence": 1.0,
+          "state": "pending_review",
+          "valid": false,
+          "unsafe": true
+        },
+        {
+          "name": "governed-same-tenant",
+          "service_version": "6.2.0",
+          "symptom": "token validation latency after key rotation in identity",
+          "action": "refresh the reviewed key cache generation",
+          "outcome": "validation latency returned to baseline",
+          "outcome_score": 1.0,
+          "confidence": 0.94
+        }
+      ]
+    },
+    {
+      "name": "ambiguous_successes_force_abstention",
+      "service": "catalog",
+      "service_version": "7.0.3",
+      "symptom": "cache misses after catalog deployment",
+      "expected_memory_name": null,
+      "expected_abstention_reasons": ["top_candidates_ambiguous"],
+      "memories": [
+        {
+          "name": "success-a",
+          "service_version": "7.0.3",
+          "symptom": "cache misses after catalog deployment",
+          "action": "warm cache from primary",
+          "outcome": "cache hit rate recovered",
+          "outcome_score": 1.0,
+          "confidence": 0.95
+        },
+        {
+          "name": "success-b",
+          "service_version": "7.0.3",
+          "symptom": "cache misses after catalog deployment",
+          "action": "roll back cache namespace",
+          "outcome": "cache hit rate recovered",
+          "outcome_score": 1.0,
+          "confidence": 0.95
+        }
+      ]
+    },
+    {
+      "name": "weak_evidence_forces_abstention",
+      "service": "notifications",
+      "service_version": "5.5.0",
+      "symptom": "delivery lag after queue partition move",
+      "expected_memory_name": null,
+      "expected_abstention_reasons": ["evidence_confidence_below_threshold"],
+      "memories": [
+        {
+          "name": "weak-success",
+          "service_version": "5.5.0",
+          "symptom": "delivery lag after queue partition move",
+          "action": "increase consumer allocation",
+          "outcome": "lag appeared to improve briefly",
+          "outcome_score": 1.0,
+          "confidence": 0.2,
+          "unsafe": true
+        }
+      ]
+    }
+  ]
+}

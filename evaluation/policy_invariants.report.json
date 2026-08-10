@@ -1,0 +1,73 @@
+{
+  "ablations": {
+    "governed_similarity": {
+      "correct_abstention_rate": 0.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 0.7,
+      "selection_coverage": 1.0,
+      "top1_safe_accuracy": 0.3333333333333333,
+      "unsafe_selection_rate": 0.6666666666666666
+    },
+    "outcome_aware": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 0.9,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 0.8333333333333334,
+      "unsafe_selection_rate": 0.16666666666666666
+    },
+    "outcome_compatibility": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 1.0,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 1.0,
+      "unsafe_selection_rate": 0.0
+    },
+    "recallops": {
+      "correct_abstention_rate": 1.0,
+      "eligibility_violations": 0,
+      "isolation_violations": 0,
+      "mean_reciprocal_rank": 1.0,
+      "selection_coverage": 0.8333333333333334,
+      "top1_safe_accuracy": 1.0,
+      "unsafe_selection_rate": 0.0
+    },
+    "similarity": {
+      "correct_abstention_rate": 0.0,
+      "eligibility_violations": 2,
+      "isolation_violations": 1,
+      "mean_reciprocal_rank": 0.5,
+      "selection_coverage": 1.0,
+      "top1_safe_accuracy": 0.0,
+      "unsafe_selection_rate": 1.0
+    }
+  },
+  "accuracy_improvement": 1.0,
+  "case_count": 6,
+  "dataset_schema_version": 2,
+  "passed": true,
+  "recallops": {
+    "correct_abstention_rate": 1.0,
+    "eligibility_violations": 0,
+    "isolation_violations": 0,
+    "mean_reciprocal_rank": 1.0,
+    "selection_coverage": 0.8333333333333334,
+    "top1_safe_accuracy": 1.0,
+    "unsafe_selection_rate": 0.0
+  },
+  "similarity_only": {
+    "correct_abstention_rate": 0.0,
+    "eligibility_violations": 2,
+    "isolation_violations": 1,
+    "mean_reciprocal_rank": 0.5,
+    "selection_coverage": 1.0,
+    "top1_safe_accuracy": 0.0,
+    "unsafe_selection_rate": 1.0
+  },
+  "suite_kind": "synthetic_policy_invariants",
+  "unsafe_selection_reduction": 1.0
+}

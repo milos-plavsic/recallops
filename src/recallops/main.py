@@ -6,4 +6,6 @@ app = create_app()
 
 
 def run() -> None:
-    uvicorn.run("recallops.main:app", host="0.0.0.0", port=8080)
+    # Container ingress is constrained by its network/security group, so the
+    # application must listen on every container interface.
+    uvicorn.run("recallops.main:app", host="0.0.0.0", port=8080)  # nosec B104

@@ -2,26 +2,39 @@
 
 RecallOps runs on ECS Fargate behind an HTTPS Application Load Balancer. AWS WAF
 rate-limits abusive clients. Tasks run without public IP addresses, retrieve the
-CockroachDB URL from Secrets Manager, invoke only explicitly permitted Bedrock model
-resources, and write versioned evidence objects to a private S3 bucket. CloudWatch
-captures container logs, Container Insights, CPU alarms, and target 5xx alarms.
+CockroachDB URL from Secrets Manager and write versioned evidence objects to a private S3 bucket.
+Bedrock invocation permission is added only when a Bedrock provider is explicitly selected. CloudWatch
+captures container logs, Container Insights, CPU alarms, target 5xx alarms, and unhealthy-target
+alarms. Set `AlarmTopicArn` to deliver these alarms to a monitored SNS topic; an empty value keeps
+them dashboard-visible only for local/demo stacks.
+
+Evidence strength is not client-authoritative. `cloudwatch://alarm/<name>` references
+must resolve server-side to exactly one alarm in `OK`, and
+`s3://<configured-bucket>/<key>` must resolve to an existing evidence object.
+Arbitrary HTTP references are rejected to avoid SSRF.
 
 ## Prerequisites
 
 - Two public subnets for the ALB and two private subnets for Fargate, across at least
   two Availability Zones.
 - Private-subnet egress through NAT. RecallOps needs outbound TLS to CockroachDB,
-  Bedrock, ECR, CloudWatch Logs, Secrets Manager, S3, and its OIDC JWKS endpoint.
+  ECR, CloudWatch Logs, Secrets Manager, S3, and its OIDC JWKS endpoint. A Bedrock-enabled
+  deployment also needs Bedrock runtime access.
 - An ACM certificate in the deployment region. Point the certificate's hostname to
   the emitted ALB DNS name after deployment.
 - An OIDC application that emits access tokens with `custom:tenant_id` and
   `cognito:groups` claims. Self-registration must be disabled and tenant assignment
   controlled by an administrator.
-- A Secrets Manager secret whose value is the complete CockroachDB connection URL.
+- Three Secrets Manager secrets containing complete CockroachDB connection URLs: a LOGIN
+  principal granted only `recallops_api`, a different LOGIN principal granted only
+  `recallops_outbox`, and the migration-owner URL.
   The target `recallops` database must already exist; migrations own its schema, not
   cluster-level database provisioning. Confirm vector indexes are supported and
   enabled on the target cluster before deployment.
   Never place the URL in a CloudFormation parameter value or source file.
+- Migration 019 creates `NOLOGIN` privilege bundles but intentionally does not create credentialed
+  users. Provision and grant the API and outbox login principals using
+  [`DATABASE_SECURITY.md`](DATABASE_SECURITY.md), then retain their URLs in separate secrets.
 - Docker, Git, AWS CLI v2, and an authenticated AWS session.
 
 ## Deploy
@@ -31,29 +44,48 @@ Commit the release, then run:
 ```powershell
 ./scripts/deploy-aws.ps1 `
   -DatabaseUrlSecretArn 'arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:recallops/database-…' `
+  -OutboxDatabaseUrlSecretArn 'arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:recallops/outbox-database-…' `
+  -MigrationDatabaseUrlSecretArn 'arn:aws:secretsmanager:us-east-1:ACCOUNT:secret:recallops/migration-database-…' `
   -VpcId 'vpc-…' `
   -PublicSubnetIds 'subnet-public-a,subnet-public-b' `
   -PrivateSubnetIds 'subnet-private-a,subnet-private-b' `
   -CertificateArn 'arn:aws:acm:us-east-1:ACCOUNT:certificate/…' `
   -PublicHostname 'recallops.example.com' `
   -OidcIssuer 'https://cognito-idp.us-east-1.amazonaws.com/us-east-1_…' `
-  -OidcAudience 'OIDC_APP_CLIENT_ID' `
-  -BedrockModelArns 'arn:aws:bedrock:us-east-1::foundation-model/amazon.nova-lite-v1:0,arn:aws:bedrock:us-east-1::foundation-model/amazon.titan-embed-text-v2:0'
+  -OidcAudience 'OIDC_APP_CLIENT_ID'
 ```
 
+The default release uses deterministic reasoning and embeddings, so it has no model-service
+availability dependency. To opt into Bedrock, pass `-ReasoningProvider bedrock`,
+`-EmbeddingProvider bedrock`, and exact `-BedrockModelArns`. The task role receives
+`bedrock:InvokeModel` only in that configuration.
+
 The script rejects dirty worktrees, builds and pushes a Git-SHA-tagged image, resolves
-its digest, deploys that immutable digest, and waits for ECS stability. Each task
-applies ordered SQL migrations before serving traffic. Applied migration checksums
-are immutable; changing an already-applied file fails startup instead of silently
-drifting the schema.
+its digest, deploys that immutable digest, and waits for ECS stability. Each task starts a
+nonessential migrator with the owner secret; the API receives only its runtime secret and a
+dedicated long-running outbox container receives only the outbox secret. Both wait for successful
+migration before starting. A CockroachDB singleton row lock serializes each ordered migration;
+every file commits separately so schema changes become public before a later file depends on
+them. Applied migration checksums are immutable, and changing an
+already-applied file fails startup instead of silently drifting the schema.
 
 ## Operational checks
 
+To enable bounded read-only diagnostics, set `RECALLOPS_DIAGNOSTIC_PROVIDER=aws` plus
+`RECALLOPS_DIAGNOSTIC_ALARM_PREFIX`, `RECALLOPS_DIAGNOSTIC_ECS_CLUSTER`, and
+`RECALLOPS_DIAGNOSTIC_ECS_SERVICE_PREFIX`; grant `cloudwatch:DescribeAlarms` and
+`ecs:DescribeServices`. Names are derived as `<prefix>-<tenant>-<service>` and clients cannot
+supply AWS identifiers. Leave the provider disabled if the deployment uses another naming
+convention.
+
 1. Confirm the HTTP endpoint redirects to HTTPS and TLS uses the intended hostname.
-2. Confirm `/health` is healthy while protected endpoints reject missing tokens.
-3. Run the demo with two tenant tokens and verify cross-tenant access is denied.
-4. Inspect WAF sampled requests, ECS Container Insights, log streams, and both alarms.
-5. Roll forward with a new commit. ECS automatically rolls back a deployment that
+2. Run `recallops-db-verify` with the migration URL and retain its sanitized JSON report.
+3. Confirm `/live` is healthy while protected endpoints reject missing tokens, then confirm
+   `/ready` completes its bounded CockroachDB probe before accepting traffic.
+4. Run the demo with two tenant tokens and verify cross-tenant access is denied.
+5. Inspect WAF sampled requests, ECS Container Insights, log streams, and both alarms.
+6. Set `AlarmTopicArn` and trigger a non-production alarm test; verify notification delivery.
+7. Roll forward with a new commit. ECS automatically rolls back a deployment that
    cannot stabilize.
 
 Private subnets and NAT gateways improve isolation but create fixed cost. For a
@@ -70,7 +102,9 @@ to an internal ALB. ECS tasks use public-subnet egress but accept traffic only f
 the ALB security group. This avoids a purchased domain, ACM certificate, and NAT
 gateway without exposing the origin.
 
-The demo stack also creates an administrator-only Cognito user pool, browser client
+The demo stack defaults to the same deterministic providers and idempotently seeds its three
+governed memories in that embedding space before the API starts. ECS, S3, API Gateway, Cognito,
+and CloudWatch remain meaningful AWS integrations. The stack also creates an administrator-only Cognito user pool, browser client
 using authorization code plus PKCE, server-side tenant claim injection, and separate
 operator and reviewer identities. Passwords are `NoEcho` parameters and are set by
 a least-privilege custom resource; they are never committed. API payload identity is

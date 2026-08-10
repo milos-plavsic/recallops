@@ -2,9 +2,17 @@ from datetime import UTC, datetime, timedelta
 
 import pytest
 
+from recallops.diagnostics import (
+    AlarmInspection,
+    DiagnosticScope,
+    EcsDeploymentInspection,
+    ReadOnlyDiagnosticTools,
+)
 from recallops.domain import (
     ActionRisk,
     ApprovalRequest,
+    CompatibilityPolicy,
+    EvidenceVerification,
     ExecutionAttestationRequest,
     GovernanceAction,
     IncidentAnalysis,
@@ -25,6 +33,34 @@ class RecordingArchive:
 
     def archive(self, incident: IncidentCreate, analysis: IncidentAnalysis) -> None:
         self.incident_ids.append(str(analysis.incident_id))
+
+
+class AcceptingEvidenceVerifier:
+    def verify(self, verification: EvidenceVerification, references: list[str]) -> bool:
+        return bool(references) or verification is EvidenceVerification.MANUAL_ATTESTATION
+
+
+class FakeAlarms:
+    def inspect(self, scope: DiagnosticScope) -> AlarmInspection:
+        return AlarmInspection(
+            scope.digest, "urn:recallops:diagnostic:alarm:test", "target", (), 5, False
+        )
+
+
+class FakeDeployments:
+    def inspect(self, scope: DiagnosticScope) -> EcsDeploymentInspection:
+        return EcsDeploymentInspection(
+            scope.digest,
+            "urn:recallops:diagnostic:ecs:test",
+            "target",
+            True,
+            1,
+            1,
+            0,
+            (),
+            5,
+            False,
+        )
 
 
 def incident(version: str = "2026.07.31") -> IncidentCreate:
@@ -66,6 +102,21 @@ def test_compatible_successful_memory_drives_guarded_action() -> None:
     assert result.proposed_action.command == "reduce worker concurrency"
     assert result.proposed_action.risk is ActionRisk.MUTATING
     assert result.proposed_action.requires_approval is True
+
+
+def test_versioned_compatibility_policy_can_authorize_reviewed_patch_reuse() -> None:
+    embedder = DeterministicEmbedder()
+    compatible = memory(embedder, "2.4.1", 1.0, "reduce concurrency").model_copy(
+        update={
+            "compatibility_policy": CompatibilityPolicy.SEMVER_PATCH,
+            "compatibility_policy_version": "semver-v1",
+        }
+    )
+    result = IncidentService(
+        InMemoryStore([compatible]), embedder, DeterministicReasoner()
+    ).analyze(incident("2.4.9"))
+    assert result.memories[0].compatibility == 1.0
+    assert result.proposed_action.command == "reduce concurrency"
 
 
 def test_no_cross_tenant_retrieval() -> None:
@@ -218,9 +269,7 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
     assert first.id == second.id
     assert first.state is MemoryState.PENDING_REVIEW
 
-    before_review = service.analyze(
-        incident().model_copy(update={"idempotency_key": "event-0002"})
-    )
+    before_review = service.analyze(incident().model_copy(update={"idempotency_key": "event-0002"}))
     assert before_review.memories == []
 
     activated = service.govern_memory(
@@ -235,9 +284,7 @@ def test_observed_outcome_becomes_idempotent_retrievable_memory() -> None:
     assert activated is not None
     assert activated.state is MemoryState.ACTIVE
 
-    future = service.analyze(
-        incident().model_copy(update={"idempotency_key": "event-0003"})
-    )
+    future = service.analyze(incident().model_copy(update={"idempotency_key": "event-0003"}))
     assert future.memories[0].memory.id == first.id
     assert future.proposed_action.command == observation.action_taken
 
@@ -328,3 +375,106 @@ def test_positive_evidence_decays_but_known_failure_penalty_persists() -> None:
     assert ranked_success.freshness == pytest.approx(0.25)
     assert ranked_success.effective_confidence == pytest.approx(0.25)
     assert ranked_failure.rank_score < ranked_success.rank_score
+
+
+def test_manual_outcome_confidence_is_conservatively_capped() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+    learned = service.learn_outcome(
+        analysis.incident_id,
+        OutcomeObservation(
+            tenant_id="demo",
+            action_taken=attest(service, analysis, "operator-1"),
+            outcome="operator reports recovery",
+            outcome_score=1.0,
+            confidence=1.0,
+            actor_id="operator-1",
+        ),
+    )
+    assert learned is not None
+    assert learned.confidence == 0.70
+
+
+def test_system_observed_outcome_requires_bounded_verifiable_evidence() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(
+        InMemoryStore(),
+        embedder,
+        DeterministicReasoner(),
+        evidence_verifier=AcceptingEvidenceVerifier(),
+    )
+    analysis = service.analyze(incident())
+    action_taken = attest(service, analysis, "operator-1")
+    observation = OutcomeObservation(
+        tenant_id="demo",
+        action_taken=action_taken,
+        outcome="latency remained below the service objective",
+        outcome_score=1.0,
+        confidence=0.95,
+        actor_id="operator-1",
+        evidence_verification=EvidenceVerification.SYSTEM_OBSERVED,
+        evidence_refs=["cloudwatch://demo/checkout/latency-query/abc123"],
+        observation_window_seconds=900,
+        postconditions=["p95 latency below 300ms", "error rate below 1%"],
+    )
+    learned = service.learn_outcome(analysis.incident_id, observation)
+    assert learned is not None
+    assert learned.confidence == 0.90
+
+
+def test_client_cannot_self_assert_system_evidence() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
+    analysis = service.analyze(incident())
+    action_taken = attest(service, analysis, "operator-1")
+    with pytest.raises(IncidentWorkflowError, match="could not be verified"):
+        service.learn_outcome(
+            analysis.incident_id,
+            OutcomeObservation(
+                tenant_id="demo",
+                action_taken=action_taken,
+                outcome="unverified recovery claim",
+                outcome_score=1.0,
+                confidence=1.0,
+                actor_id="operator-1",
+                evidence_verification=EvidenceVerification.SYSTEM_OBSERVED,
+                evidence_refs=["cloudwatch://alarm/fabricated"],
+                observation_window_seconds=900,
+                postconditions=["latency recovered"],
+            ),
+        )
+
+
+def test_analysis_exposes_bounded_plan_and_candidate_dispositions() -> None:
+    embedder = DeterministicEmbedder()
+    service = IncidentService(
+        InMemoryStore([memory(embedder, "2026.07.31", 1.0, "reduce concurrency")]),
+        embedder,
+        DeterministicReasoner(),
+    )
+    analysis = service.analyze(incident())
+    assert [step.tool for step in analysis.plan] == [
+        "embed_incident",
+        "retrieve_governed_memory",
+        "reason_from_evidence",
+    ]
+    assert analysis.candidate_decisions[0].disposition == "selected"
+    assert "historical_symptom" in analysis.diagnosis
+
+
+def test_analysis_records_bounded_read_only_diagnostics() -> None:
+    tools = ReadOnlyDiagnosticTools(FakeAlarms(), FakeDeployments())
+    analysis = IncidentService(
+        InMemoryStore(), DeterministicEmbedder(), DeterministicReasoner(), diagnostic_tools=tools
+    ).analyze(incident())
+    assert [step.tool for step in analysis.plan] == [
+        "embed_incident",
+        "retrieve_governed_memory",
+        "inspect_cloudwatch_alarms",
+        "inspect_ecs_deployments",
+        "reason_from_evidence",
+    ]
+    assert [item.sequence for item in analysis.agent_trace] == [1, 2, 3, 4, 5]
+    assert analysis.agent_trace[2].evidence_refs == ["urn:recallops:diagnostic:alarm:test"]
+    assert "diagnostics" in analysis.diagnosis

@@ -1,6 +1,7 @@
 .env
 .recallops/
 .venv/
+.tools/
 __pycache__/
 .pytest_cache/
 .mypy_cache/
@@ -9,3 +10,6 @@ __pycache__/
 htmlcov/
 dist/
 *.egg-info/
+node_modules/
+test-results/
+playwright-report/

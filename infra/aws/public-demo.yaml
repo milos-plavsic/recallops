@@ -2,22 +2,63 @@ AWSTemplateFormatVersion: '2010-09-09'
 Description: RecallOps self-contained authenticated public judge demo
 
 Parameters:
+  BuildSha:
+    Type: String
+    Default: unknown
+    AllowedPattern: '^(unknown|[a-f0-9]{40})$'
   ImageUri:
     Type: String
     AllowedPattern: '^.+@sha256:[a-f0-9]{64}$'
-  DatabaseUrlSecretArn: { Type: String, NoEcho: true }
+  DatabaseUrlSecretArn:
+    Type: String
+    NoEcho: true
+    Description: Runtime URL for a LOGIN principal granted only recallops_api.
+  OutboxDatabaseUrlSecretArn:
+    Type: String
+    NoEcho: true
+    Description: Worker URL for a LOGIN principal granted only recallops_outbox.
+  MigrationDatabaseUrlSecretArn:
+    Type: String
+    NoEcho: true
+    Default: ''
+    Description: Migration-owner URL. Defaults to DatabaseUrlSecretArn only for legacy stacks.
   VpcId: { Type: 'AWS::EC2::VPC::Id' }
   TaskSubnetIds: { Type: 'List<AWS::EC2::Subnet::Id>' }
   OriginAvailabilityZoneA: { Type: 'AWS::EC2::AvailabilityZone::Name' }
   OriginAvailabilityZoneB: { Type: 'AWS::EC2::AvailabilityZone::Name' }
   OriginSubnetCidrA: { Type: String, Default: 172.31.240.0/28 }
   OriginSubnetCidrB: { Type: String, Default: 172.31.240.16/28 }
+  ReasoningProvider:
+    Type: String
+    Default: deterministic
+    AllowedValues: [deterministic, bedrock]
+  EmbeddingProvider:
+    Type: String
+    Default: deterministic
+    AllowedValues: [deterministic, bedrock]
   BedrockModelId: { Type: String, Default: amazon.nova-lite-v1:0 }
   BedrockEmbeddingModelId: { Type: String, Default: amazon.titan-embed-text-v2:0 }
-  BedrockModelArns: { Type: CommaDelimitedList }
+  BedrockModelArns:
+    Type: CommaDelimitedList
+    Default: arn:aws:bedrock:us-east-1::foundation-model/disabled
+    Description: Exact model ARNs required only when a Bedrock provider is selected.
   DesiredCount: { Type: Number, Default: 1, MinValue: 1, MaxValue: 3 }
   JudgeOperatorEmail: { Type: String, Default: recallops.operator@example.com }
   JudgeReviewerEmail: { Type: String, Default: recallops.reviewer@example.com }
+  HealthCheckPath:
+    Type: String
+    Default: /live
+    AllowedPattern: '^/.*$'
+  AlarmTopicArn:
+    Type: String
+    Default: ''
+
+Conditions:
+  HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, '']]
+  HasSeparateMigrationSecret: !Not [!Equals [!Ref MigrationDatabaseUrlSecretArn, '']]
+  UsesBedrock: !Or
+    - !Equals [!Ref ReasoningProvider, bedrock]
+    - !Equals [!Ref EmbeddingProvider, bedrock]
 
 Resources:
   OriginSubnetA:
@@ -319,7 +360,13 @@ Resources:
                 Resource: !GetAtt LogGroup.Arn
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource: !Ref DatabaseUrlSecretArn
+                Resource:
+                  - !Ref DatabaseUrlSecretArn
+                  - !Ref OutboxDatabaseUrlSecretArn
+                  - !If
+                    - HasSeparateMigrationSecret
+                    - !Ref MigrationDatabaseUrlSecretArn
+                    - !Ref DatabaseUrlSecretArn
   TaskRole:
     Type: AWS::IAM::Role
     Properties:
@@ -335,12 +382,18 @@ Resources:
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
+              - !If
+                - UsesBedrock
+                - Effect: Allow
+                  Action: bedrock:InvokeModel
+                  Resource: !Ref BedrockModelArns
+                - !Ref 'AWS::NoValue'
               - Effect: Allow
-                Action: bedrock:InvokeModel
-                Resource: !Ref BedrockModelArns
-              - Effect: Allow
-                Action: s3:PutObject
+                Action: [s3:PutObject, s3:GetObject]
                 Resource: !Sub '${EvidenceBucket.Arn}/tenants/*'
+              - Effect: Allow
+                Action: cloudwatch:DescribeAlarms
+                Resource: '*'
 
   VpcLinkSecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -384,7 +437,7 @@ Resources:
       Port: 8080
       Protocol: HTTP
       TargetType: ip
-      HealthCheckPath: /health
+      HealthCheckPath: !Ref HealthCheckPath
       Matcher: { HttpCode: '200' }
       TargetGroupAttributes:
         - { Key: deregistration_delay.timeout_seconds, Value: '30' }
@@ -415,7 +468,6 @@ Resources:
       SubnetIds: [!Ref OriginSubnetA, !Ref OriginSubnetB]
   ApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
-    DependsOn: HttpListener
     Properties:
       ApiId: !Ref Api
       IntegrationType: HTTP_PROXY
@@ -473,18 +525,55 @@ Resources:
       TaskRoleArn: !GetAtt TaskRole.Arn
       RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
       ContainerDefinitions:
+        - Name: migrate
+          Image: !Ref ImageUri
+          Essential: false
+          ReadonlyRootFilesystem: true
+          Command: [recallops-migrate]
+          Secrets:
+            - Name: RECALLOPS_DATABASE_URL
+              ValueFrom: !If
+                - HasSeparateMigrationSecret
+                - !Ref MigrationDatabaseUrlSecretArn
+                - !Ref DatabaseUrlSecretArn
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: migrate
+        - Name: seed
+          Image: !Ref ImageUri
+          Essential: false
+          ReadonlyRootFilesystem: true
+          DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
+          Command: [python, -m, recallops.demo]
+          Secrets:
+            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
+          Environment:
+            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: !Ref EmbeddingProvider }
+            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
+            - { Name: RECALLOPS_BEDROCK_EMBEDDING_MODEL_ID, Value: !Ref BedrockEmbeddingModelId }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: seed
         - Name: api
           Image: !Ref ImageUri
           Essential: true
           ReadonlyRootFilesystem: true
-          Command: [sh, -c, 'recallops-migrate && exec uvicorn recallops.main:app --host 0.0.0.0 --port 8080']
+          DependsOn: [{ ContainerName: seed, Condition: SUCCESS }]
+          Command: [uvicorn, recallops.main:app, --host, 0.0.0.0, --port, '8080']
           PortMappings: [{ ContainerPort: 8080, Protocol: tcp }]
           Secrets:
             - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
           Environment:
             - { Name: RECALLOPS_STORE, Value: postgres }
-            - { Name: RECALLOPS_REASONING_PROVIDER, Value: bedrock }
-            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: bedrock }
+            - { Name: RECALLOPS_BUILD_SHA, Value: !Ref BuildSha }
+            - { Name: RECALLOPS_REASONING_PROVIDER, Value: !Ref ReasoningProvider }
+            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: !Ref EmbeddingProvider }
             - { Name: RECALLOPS_AUTH_MODE, Value: oidc }
             - { Name: RECALLOPS_OIDC_TENANT_CLAIM, Value: tenant_id }
             - { Name: RECALLOPS_OIDC_ROLES_CLAIM, Value: 'cognito:groups' }
@@ -498,8 +587,9 @@ Resources:
             - { Name: RECALLOPS_OIDC_LOGOUT_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/logout' }
             - { Name: RECALLOPS_OIDC_REDIRECT_URL, Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/' }
             - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+            - { Name: RECALLOPS_EVIDENCE_VERIFIER, Value: aws }
           HealthCheck:
-            Command: [CMD-SHELL, "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080/health', timeout=2)\""]
+            Command: [CMD-SHELL, !Sub "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8080${HealthCheckPath}', timeout=2)\""]
             Interval: 30
             Timeout: 5
             Retries: 3
@@ -510,6 +600,23 @@ Resources:
               awslogs-group: !Ref LogGroup
               awslogs-region: !Ref 'AWS::Region'
               awslogs-stream-prefix: api
+        - Name: outbox
+          Image: !Ref ImageUri
+          Essential: true
+          ReadonlyRootFilesystem: true
+          DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
+          Command: [recallops-outbox, --watch, --limit, '25', --poll-seconds, '5']
+          Secrets:
+            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref OutboxDatabaseUrlSecretArn }
+          Environment:
+            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
+            - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref LogGroup
+              awslogs-region: !Ref 'AWS::Region'
+              awslogs-stream-prefix: outbox
   Service:
     Type: AWS::ECS::Service
     DependsOn: HttpListener
@@ -548,6 +655,7 @@ Resources:
       Threshold: 80
       ComparisonOperator: GreaterThanThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
   Target5xxAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
@@ -564,6 +672,25 @@ Resources:
       Threshold: 5
       ComparisonOperator: GreaterThanOrEqualToThreshold
       TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+
+  UnhealthyTargetsAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmDescription: RecallOps has no healthy application targets
+      Namespace: AWS/ApplicationELB
+      MetricName: UnHealthyHostCount
+      Dimensions:
+        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
+        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+      Statistic: Maximum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 1
+      ComparisonOperator: GreaterThanOrEqualToThreshold
+      TreatMissingData: breaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
 
 Outputs:
   ServiceUrl: { Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}' }

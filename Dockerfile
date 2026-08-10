@@ -6,6 +6,7 @@ COPY pyproject.toml README.md LICENSE ./
 COPY src ./src
 COPY migrations ./migrations
 COPY evaluation ./evaluation
+COPY infra/certs/cockroach-cloud-root.crt ./certs/cockroach-cloud-root.crt
 RUN pip install --no-cache-dir .
 USER recallops
 EXPOSE 8080

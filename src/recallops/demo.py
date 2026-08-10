@@ -1,12 +1,13 @@
+from datetime import UTC, datetime
 from uuid import NAMESPACE_URL, uuid5
 
 from recallops.config import get_settings
 from recallops.domain import Memory
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder, Embedder
-from recallops.store import PostgresStore
+from recallops.store import MemoryStore, PostgresStore
 
 
-def seed_memories(store: PostgresStore, embedder: Embedder) -> None:
+def seed_memories(store: MemoryStore, embedder: Embedder) -> None:
     scenarios = [
         (
             "2025.01",
@@ -33,10 +34,14 @@ def seed_memories(store: PostgresStore, embedder: Embedder) -> None:
             0.98,
         ),
     ]
+    reviewed_at = datetime.now(UTC)
     for version, symptom, action, outcome, outcome_score, confidence in scenarios:
         store.add_memory(
             Memory(
-                id=uuid5(NAMESPACE_URL, f"recallops:demo:{version}:{symptom}:{action}"),
+                id=uuid5(
+                    NAMESPACE_URL,
+                    f"recallops:demo:{embedder.space_id}:{version}:{symptom}:{action}",
+                ),
                 tenant_id="demo",
                 service="checkout",
                 service_version=version,
@@ -45,6 +50,9 @@ def seed_memories(store: PostgresStore, embedder: Embedder) -> None:
                 outcome=outcome,
                 outcome_score=outcome_score,
                 confidence=confidence,
+                observed_by="fixture-observer",
+                reviewed_by="fixture-reviewer",
+                reviewed_at=reviewed_at,
                 embedding=embedder.embed(f"checkout {symptom}"),
             )
         )

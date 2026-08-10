@@ -1,10 +1,9 @@
-import asyncio
-from collections.abc import AsyncIterator, Awaitable, Callable
-from contextlib import asynccontextmanager, suppress
+import os
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 from typing import Annotated
 from urllib.parse import urlsplit
-from uuid import UUID, uuid4
+from uuid import UUID
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
@@ -18,8 +17,14 @@ from recallops.auth import (
     create_authenticator,
 )
 from recallops.config import Settings, get_settings
+from recallops.diagnostics import (
+    AwsCloudWatchAlarmInspector,
+    AwsEcsDeploymentInspector,
+    ReadOnlyDiagnosticTools,
+)
 from recallops.domain import (
     ApprovalRequest,
+    CompatibilityPolicy,
     ExecutionAttestation,
     ExecutionAttestationRequest,
     IncidentAnalysis,
@@ -30,7 +35,7 @@ from recallops.domain import (
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
-from recallops.outbox import deliver_available
+from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
 from recallops.resilience import DependencyUnavailable
 from recallops.service import (
     BedrockReasoner,
@@ -48,6 +53,7 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             settings.database_url,
             settings.database_connect_timeout_seconds,
             settings.database_statement_timeout_seconds,
+            settings.retrieval_candidate_multiplier,
         )
         if settings.store == "postgres"
         else InMemoryStore()
@@ -85,6 +91,43 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         if settings.evidence_bucket
         else NullEvidenceArchive()
     )
+    evidence_verifier = (
+        AwsEvidenceVerifier(
+            settings.aws_region,
+            settings.evidence_bucket,
+            settings.provider_connect_timeout_seconds,
+            settings.provider_read_timeout_seconds,
+            settings.provider_max_attempts,
+        )
+        if settings.evidence_verifier == "aws"
+        else ManualOnlyEvidenceVerifier()
+    )
+    diagnostic_tools = None
+    if settings.diagnostic_provider == "aws":
+        alarm_prefix = settings.diagnostic_alarm_prefix
+        ecs_cluster = settings.diagnostic_ecs_cluster
+        ecs_service_prefix = settings.diagnostic_ecs_service_prefix
+        if alarm_prefix is None or ecs_cluster is None or ecs_service_prefix is None:
+            raise ValueError("AWS diagnostics require alarm, cluster, and service prefixes")
+        diagnostic_tools = ReadOnlyDiagnosticTools(
+            alarms=AwsCloudWatchAlarmInspector(
+                settings.aws_region,
+                alarm_prefix,
+                settings.provider_connect_timeout_seconds,
+                settings.provider_read_timeout_seconds,
+                settings.provider_max_attempts,
+                max_alarms=settings.diagnostic_max_alarms,
+            ),
+            deployments=AwsEcsDeploymentInspector(
+                settings.aws_region,
+                ecs_cluster,
+                ecs_service_prefix,
+                settings.provider_connect_timeout_seconds,
+                settings.provider_read_timeout_seconds,
+                settings.provider_max_attempts,
+                max_deployments=settings.diagnostic_max_deployments,
+            ),
+        )
     service = IncidentService(
         store,
         embedder,
@@ -97,41 +140,21 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         min_margin=settings.retrieval_min_margin,
         provider_max_attempts=settings.provider_max_attempts,
         provider_timeout_seconds=settings.provider_read_timeout_seconds,
+        evidence_verifier=evidence_verifier,
+        default_compatibility_policy=CompatibilityPolicy(settings.default_compatibility_policy),
+        compatibility_policy_version=settings.compatibility_policy_version,
+        diagnostic_tools=diagnostic_tools,
     )
     authenticator = create_authenticator(settings)
 
-    @asynccontextmanager
-    async def lifespan(app: FastAPI) -> AsyncIterator[None]:
-        del app
-        stop = asyncio.Event()
-        worker_id = f"api:{uuid4()}"
-
-        async def deliver_outbox() -> None:
-            while not stop.is_set():
-                if isinstance(store, PostgresStore) and isinstance(archive, S3EvidenceArchive):
-                    await asyncio.to_thread(
-                        deliver_available, settings.database_url, archive, worker_id, 25
-                    )
-                with suppress(TimeoutError):
-                    await asyncio.wait_for(stop.wait(), timeout=30)
-
-        worker = asyncio.create_task(deliver_outbox())
-        try:
-            yield
-        finally:
-            stop.set()
-            await worker
-            if isinstance(store, PostgresStore):
-                store.close()
-
-    app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs", lifespan=lifespan)
+    app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
     app.state.store = store
     app.state.service = service
 
-    token_origin = ""
+    oidc_connect_origin = ""
     if settings.oidc_token_url:
         parsed_token_url = urlsplit(settings.oidc_token_url)
-        token_origin = f" {parsed_token_url.scheme}://{parsed_token_url.netloc}"
+        oidc_connect_origin = f" {parsed_token_url.scheme}://{parsed_token_url.netloc}"
 
     @app.middleware("http")
     async def security_headers(
@@ -140,7 +163,8 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         response = await call_next(request)
         response.headers["Content-Security-Policy"] = (
             "default-src 'self'; base-uri 'none'; frame-ancestors 'none'; "
-            f"connect-src 'self'{token_origin}; form-action 'self'; img-src 'self' data:; "
+            f"connect-src 'self'{oidc_connect_origin}; form-action 'self'; "
+            "img-src 'self' data:; "
             "object-src 'none'; script-src 'self'; style-src 'self'"
         )
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
@@ -180,6 +204,38 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/live")
+    def live() -> dict[str, str]:
+        return {"status": "alive"}
+
+    @app.get("/ready")
+    def ready(response: Response) -> dict[str, str]:
+        try:
+            available = store.ready()
+        except Exception:  # readiness must not disclose database or credential details
+            available = False
+        if not available:
+            response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
+            return {"status": "not_ready"}
+        return {"status": "ready"}
+
+    @app.get("/v1/system/status")
+    def system_status() -> dict[str, str | bool | None]:
+        return {
+            "build_sha": os.getenv("RECALLOPS_BUILD_SHA"),
+            "store": settings.store,
+            "reasoning_provider": settings.reasoning_provider,
+            "reasoning_model": (
+                settings.bedrock_model_id if settings.reasoning_provider == "bedrock" else None
+            ),
+            "embedding_provider": settings.embedding_provider,
+            "embedding_model": embedder.model,
+            "embedding_space": embedder.space_id,
+            "evidence_archive_configured": bool(settings.evidence_bucket),
+            "auth_mode": settings.auth_mode,
+            "bedrock_runtime_verified": None,
+        }
 
     @app.get("/v1/evaluation", response_model=EvaluationReport)
     def evaluation_report() -> EvaluationReport:
@@ -256,6 +312,12 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
         try:
             execution = service.attest_execution(incident_id, payload)
+        except DependencyUnavailable as error:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"{error.dependency} unavailable; execution was not attested",
+                headers={"Retry-After": "30"},
+            ) from error
         except IncidentWorkflowError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if execution is None:

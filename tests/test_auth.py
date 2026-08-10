@@ -77,3 +77,14 @@ def test_oidc_authenticator_rejects_invalid_signature() -> None:
     _, wrong_public_key = token()
     with pytest.raises(AuthenticationError, match="invalid bearer token"):
         authenticator(wrong_public_key).authenticate(f"Bearer {encoded}", None, None, None)
+
+
+def test_oidc_authenticator_rejects_stale_access_token() -> None:
+    encoded, public_key = token(
+        {
+            "iat": datetime.now(UTC) - timedelta(hours=2),
+            "exp": datetime.now(UTC) + timedelta(minutes=5),
+        }
+    )
+    with pytest.raises(AuthenticationError, match="older than the allowed lifetime"):
+        authenticator(public_key).authenticate(f"Bearer {encoded}", None, None, None)

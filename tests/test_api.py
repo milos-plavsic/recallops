@@ -61,6 +61,16 @@ def test_health() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert client.get("/live").json() == {"status": "alive"}
+    assert client.get("/ready").json() == {"status": "ready"}
+
+
+def test_system_status_distinguishes_configuration_from_runtime_verification() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    response = client.get("/v1/system/status")
+    assert response.status_code == 200
+    assert response.json()["embedding_space"].startswith("deterministic:")
+    assert response.json()["bedrock_runtime_verified"] is None
 
 
 def test_incident_read_and_single_approval() -> None:

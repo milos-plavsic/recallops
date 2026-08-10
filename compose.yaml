@@ -1,6 +1,6 @@
 services:
   cockroach:
-    image: cockroachdb/cockroach:v25.2.3
+    image: cockroachdb/cockroach:v26.2.1
     command: start-single-node --insecure --advertise-addr=cockroach
     ports:
       - "26257:26257"
@@ -12,21 +12,22 @@ services:
       interval: 5s
       timeout: 5s
       retries: 20
-  migrate:
-    image: cockroachdb/cockroach:v25.2.3
+  create-database:
+    image: cockroachdb/cockroach:v26.2.1
     depends_on:
       cockroach:
         condition: service_healthy
-    volumes:
-      - ./migrations:/migrations:ro
-    entrypoint: ["/bin/sh", "-ec"]
-    command:
-      - >-
-        cockroach sql --insecure --host=cockroach
-        --execute='CREATE DATABASE IF NOT EXISTS recallops';
-        for migration in /migrations/*.sql; do
-          cockroach sql --insecure --host=cockroach --database=recallops --file="$${migration}";
-        done
+    command: [sql, --insecure, --host=cockroach, --execute=CREATE DATABASE IF NOT EXISTS recallops]
+  migrate:
+    build: .
+    image: recallops:local
+    depends_on:
+      create-database:
+        condition: service_completed_successfully
+    environment:
+      RECALLOPS_DATABASE_URL: postgresql://root@cockroach:26257/recallops?sslmode=disable
+      RECALLOPS_MIGRATIONS_DIR: /app/migrations
+    command: [recallops-migrate]
   api:
     build: .
     image: recallops:local

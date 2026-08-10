@@ -19,6 +19,28 @@ def test_applies_pending_migration(tmp_path: Path) -> None:
         assert apply_migrations("postgresql://database", tmp_path) == ["001_start.sql"]
 
     assert any("CREATE TABLE example" in call.args[0] for call in cursor.execute.call_args_list)
+    assert any("schema_migration_lock" in call.args[0] for call in cursor.execute.call_args_list)
+    assert any("FOR UPDATE" in call.args[0] for call in cursor.execute.call_args_list)
+
+
+def test_commits_each_migration_in_its_own_transaction(tmp_path: Path) -> None:
+    (tmp_path / "001_table.sql").write_text("CREATE TABLE example (id INT);", encoding="utf-8")
+    (tmp_path / "002_column.sql").write_text(
+        "ALTER TABLE example ADD COLUMN value INT;", encoding="utf-8"
+    )
+    cursor = MagicMock()
+    cursor.fetchone.return_value = None
+    connection = MagicMock()
+    connection.__enter__.return_value = connection
+    connection.cursor.return_value.__enter__.return_value = cursor
+
+    with patch("recallops.migrate.psycopg.connect", return_value=connection):
+        assert apply_migrations("postgresql://database", tmp_path) == [
+            "001_table.sql",
+            "002_column.sql",
+        ]
+
+    assert connection.transaction.call_count == 2
 
 
 def test_rejects_modified_applied_migration(tmp_path: Path) -> None:

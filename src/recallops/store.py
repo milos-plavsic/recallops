@@ -1,5 +1,6 @@
 import json
 import math
+import re
 import threading
 from collections.abc import Iterable, Mapping
 from datetime import UTC, datetime
@@ -12,6 +13,7 @@ from psycopg_pool import ConnectionPool
 from recallops.archive import evidence_payload
 from recallops.domain import (
     ApprovalDecision,
+    CompatibilityPolicy,
     ExecutionAttestation,
     GovernanceAction,
     IncidentAnalysis,
@@ -34,12 +36,44 @@ def cosine_similarity(left: list[float], right: list[float]) -> float:
 def memory_rank_score(
     similarity: float, outcome_score: float, compatibility: float, confidence: float
 ) -> float:
-    return (
-        0.55 * similarity
-        + 0.25 * outcome_score
-        + 0.15 * compatibility
-        + 0.05 * confidence
-    )
+    return 0.55 * similarity + 0.25 * outcome_score + 0.15 * compatibility + 0.05 * confidence
+
+
+_SEMANTIC_VERSION = re.compile(
+    r"^[vV]?(?P<major>0|[1-9]\d*)\.(?P<minor>0|[1-9]\d*)"
+    r"(?:\.(?P<patch>0|[1-9]\d*))?(?:[-+][0-9A-Za-z.-]+)?$"
+)
+
+
+def version_compatibility(
+    memory_version: str,
+    incident_version: str,
+    policy: CompatibilityPolicy = CompatibilityPolicy.EXACT,
+) -> float:
+    """Return a conservative, deterministic version proximity score.
+
+    Only an exact version is considered fully compatible by the service's safety
+    gate. SemVer-like versions receive partial credit for ranking, while unknown
+    version schemes retain the legacy low score. This deliberately does not turn
+    version proximity into authorization to reuse a mutating action.
+    """
+    if memory_version == incident_version:
+        return 1.0
+    memory_match = _SEMANTIC_VERSION.fullmatch(memory_version)
+    incident_match = _SEMANTIC_VERSION.fullmatch(incident_version)
+    if memory_match is None or incident_match is None:
+        return 0.2
+    same_major = memory_match["major"] == incident_match["major"]
+    same_minor = same_major and memory_match["minor"] == incident_match["minor"]
+    if policy is CompatibilityPolicy.SEMVER_PATCH and same_minor:
+        return 1.0
+    if policy is CompatibilityPolicy.SEMVER_MINOR and same_major:
+        return 1.0
+    if not same_major:
+        return 0.0
+    if not same_minor:
+        return 0.35
+    return 0.8
 
 
 def rank_memory(
@@ -57,10 +91,10 @@ def rank_memory(
     effective_outcome = (
         memory.outcome_score * freshness if memory.outcome_score > 0 else memory.outcome_score
     )
-    compatibility = 1.0 if memory.service_version == service_version else 0.2
-    score = memory_rank_score(
-        similarity, effective_outcome, compatibility, effective_confidence
+    compatibility = version_compatibility(
+        memory.service_version, service_version, memory.compatibility_policy
     )
+    score = memory_rank_score(similarity, effective_outcome, compatibility, effective_confidence)
     return RetrievedMemory(
         memory=memory,
         semantic_similarity=max(-1.0, min(1.0, similarity)),
@@ -124,6 +158,8 @@ def _governance_target(
 
 class MemoryStore(Protocol):
     transactional_archive: bool
+
+    def ready(self) -> bool: ...
     def add_memory(self, memory: Memory) -> None: ...
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
@@ -134,21 +170,18 @@ class MemoryStore(Protocol):
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None: ...
     def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None: ...
     def save_outcome_memory(self, memory: Memory) -> Memory: ...
-    def govern_memory(
-        self, memory_id: UUID, request: MemoryGovernanceRequest
-    ) -> Memory | None: ...
+    def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None: ...
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
     ) -> bool: ...
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None: ...
     def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation: ...
-    def get_execution(
-        self, incident_id: UUID, tenant_id: str
-    ) -> ExecutionAttestation | None: ...
+    def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None: ...
 
 
 class InMemoryStore:
     transactional_archive = False
+
     def __init__(self, memories: Iterable[Memory] = ()) -> None:
         self.memories = list(memories)
         self.analyses: dict[tuple[str, UUID], IncidentAnalysis] = {}
@@ -160,15 +193,22 @@ class InMemoryStore:
         self.executions: dict[tuple[str, UUID], ExecutionAttestation] = {}
         self._lock = threading.RLock()
 
+    def ready(self) -> bool:
+        return True
+
     def add_memory(self, memory: Memory) -> None:
         self.memories.append(memory)
 
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
     ) -> list[RetrievedMemory]:
+        as_of = datetime.now(UTC)
         candidates = (
             rank_memory(
-                memory, cosine_similarity(memory.embedding, embedding), incident.service_version
+                memory,
+                cosine_similarity(memory.embedding, embedding),
+                incident.service_version,
+                as_of=as_of,
             )
             for memory in self.memories
             if memory.tenant_id == incident.tenant_id
@@ -177,7 +217,16 @@ class InMemoryStore:
             and memory.valid
             and memory.state is MemoryState.ACTIVE
         )
-        return sorted(candidates, key=lambda item: item.rank_score, reverse=True)[:limit]
+        return sorted(
+            candidates,
+            key=lambda item: (
+                item.rank_score,
+                item.semantic_similarity,
+                item.memory.created_at,
+                str(item.memory.id),
+            ),
+            reverse=True,
+        )[:limit]
 
     def save_analysis(
         self, incident: IncidentCreate, analysis: IncidentAnalysis
@@ -199,7 +248,8 @@ class InMemoryStore:
         return self.incidents.get((tenant_id, incident_id))
 
     def save_outcome_memory(self, memory: Memory) -> Memory:
-        assert memory.source_incident_id is not None
+        if memory.source_incident_id is None:
+            raise ValueError("outcome memory requires a source incident")
         key = (memory.tenant_id, memory.source_incident_id)
         existing = self.outcome_memories.get(key)
         if existing is not None:
@@ -208,9 +258,7 @@ class InMemoryStore:
         self.memories.append(memory)
         return memory
 
-    def govern_memory(
-        self, memory_id: UUID, request: MemoryGovernanceRequest
-    ) -> Memory | None:
+    def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
         memory = next(
             (
                 candidate
@@ -275,20 +323,23 @@ class InMemoryStore:
         self.executions[key] = execution
         return execution
 
-    def get_execution(
-        self, incident_id: UUID, tenant_id: str
-    ) -> ExecutionAttestation | None:
+    def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None:
         return self.executions.get((tenant_id, incident_id))
 
 
 class PostgresStore:
     transactional_archive = True
+
     def __init__(
         self,
         database_url: str,
         connect_timeout_seconds: int = 5,
         statement_timeout_seconds: int = 15,
+        retrieval_candidate_multiplier: int = 8,
     ) -> None:
+        if retrieval_candidate_multiplier < 1:
+            raise ValueError("retrieval_candidate_multiplier must be at least 1")
+        self._retrieval_candidate_multiplier = retrieval_candidate_multiplier
         self._pool = ConnectionPool(
             database_url,
             min_size=1,
@@ -304,6 +355,14 @@ class PostgresStore:
     def close(self) -> None:
         self._pool.close()
 
+    def ready(self) -> bool:
+        try:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute("SELECT 1")
+                return cursor.fetchone() is not None
+        except Exception:
+            return False
+
     @staticmethod
     def _vector(values: list[float]) -> str:
         return "[" + ",".join(f"{value:.9g}" for value in values) + "]"
@@ -316,18 +375,24 @@ class PostgresStore:
 
     def add_memory(self, memory: Memory) -> None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
+            cursor.execute(  # nosec B608  # nosemgrep
                 """INSERT INTO memories
-                (id, tenant_id, service, service_version, symptom, action, outcome,
+                (id, tenant_id, service, service_version, compatibility_policy,
+                 compatibility_policy_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding_space, embedding, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                 observed_by, evidence_verification, evidence_refs,
+                 observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 embedding_space, embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
+                        %s::JSONB,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (id) DO NOTHING""",
                 (
                     memory.id,
                     memory.tenant_id,
                     memory.service,
                     memory.service_version,
+                    memory.compatibility_policy,
+                    memory.compatibility_policy_version,
                     memory.symptom,
                     memory.action,
                     memory.outcome,
@@ -338,6 +403,10 @@ class PostgresStore:
                     memory.superseded_by,
                     memory.source_incident_id,
                     memory.observed_by,
+                    memory.evidence_verification,
+                    json.dumps(memory.evidence_refs),
+                    memory.observation_window_seconds,
+                    json.dumps(memory.postconditions),
                     memory.reviewed_by,
                     memory.reviewed_at,
                     memory.embedding_space,
@@ -349,29 +418,93 @@ class PostgresStore:
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
     ) -> list[RetrievedMemory]:
+        if limit <= 0:
+            return []
         vector = self._vector(embedding)
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """SELECT id, tenant_id, service, service_version, symptom, action, outcome,
+        candidate_limit = limit * self._retrieval_candidate_multiplier
+        columns = """id, tenant_id, service, service_version, compatibility_policy,
+                   compatibility_policy_version, symptom, action, outcome,
                    outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                   observed_by, reviewed_by, reviewed_at, embedding_space,
+                   observed_by, evidence_verification, evidence_refs,
+                   observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                   embedding_space,
                    embedding::STRING AS embedding,
-                   created_at, 1 - (embedding <=> %s::VECTOR) AS similarity
-                   FROM memories
-                   WHERE tenant_id = %s AND service = %s AND embedding_space = %s
-                     AND valid AND state = 'active'
-                   ORDER BY embedding <=> %s::VECTOR LIMIT %s""",
-                (vector, incident.tenant_id, incident.service, embedding_space, vector, limit * 3),
+                   created_at, 1 - (embedding <=> %s::VECTOR) AS similarity"""
+        predicates = """tenant_id = %s AND service = %s AND embedding_space = %s
+                     AND valid AND state = 'active'"""
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            # Protect safe-candidate recall from a dense cluster of close failures or
+            # obsolete versions. The exact-version-success lane is intentionally
+            # unioned with the broad semantic lane before application reranking.
+            cursor.execute(  # nosec B608  # nosemgrep
+                f"""SELECT {columns} FROM memories WHERE {predicates}
+                   AND service_version = %s AND outcome_score > 0
+                   ORDER BY embedding <=> %s::VECTOR LIMIT %s""",  # nosec B608
+                (
+                    vector,
+                    incident.tenant_id,
+                    incident.service,
+                    embedding_space,
+                    incident.service_version,
+                    vector,
+                    candidate_limit,
+                ),
             )
-            rows = cursor.fetchall()
-        ranked = []
+            compatible_success_rows = cursor.fetchall()
+            cursor.execute(  # nosec B608  # nosemgrep
+                f"""SELECT {columns} FROM memories WHERE {predicates}
+                   AND compatibility_policy IN ('semver_patch', 'semver_minor')
+                   AND outcome_score > 0
+                   ORDER BY embedding <=> %s::VECTOR LIMIT %s""",  # nosec B608
+                (
+                    vector,
+                    incident.tenant_id,
+                    incident.service,
+                    embedding_space,
+                    vector,
+                    candidate_limit,
+                ),
+            )
+            policy_compatible_success_rows = cursor.fetchall()
+            cursor.execute(  # nosec B608  # nosemgrep
+                f"""SELECT {columns} FROM memories WHERE {predicates}
+                   ORDER BY embedding <=> %s::VECTOR LIMIT %s""",  # nosec B608
+                (
+                    vector,
+                    incident.tenant_id,
+                    incident.service,
+                    embedding_space,
+                    vector,
+                    candidate_limit,
+                ),
+            )
+            semantic_rows = cursor.fetchall()
+        ranked: list[RetrievedMemory] = []
+        seen: set[UUID] = set()
+        as_of = datetime.now(UTC)
+        rows = [
+            *compatible_success_rows,
+            *policy_compatible_success_rows,
+            *semantic_rows,
+        ]
         for raw_row in rows:
             row = dict(raw_row)
             similarity = float(row.pop("similarity"))
-            ranked.append(
-                rank_memory(self._memory(row), similarity, incident.service_version)
-            )
-        return sorted(ranked, key=lambda item: item.rank_score, reverse=True)[:limit]
+            memory = self._memory(row)
+            if memory.id in seen:
+                continue
+            seen.add(memory.id)
+            ranked.append(rank_memory(memory, similarity, incident.service_version, as_of=as_of))
+        return sorted(
+            ranked,
+            key=lambda item: (
+                item.rank_score,
+                item.semantic_similarity,
+                item.memory.created_at,
+                str(item.memory.id),
+            ),
+            reverse=True,
+        )[:limit]
 
     def save_analysis(
         self, incident: IncidentCreate, analysis: IncidentAnalysis
@@ -397,7 +530,8 @@ class PostgresStore:
                 ),
             )
             raw_row = cursor.fetchone()
-            assert raw_row is not None
+            if raw_row is None:
+                raise RuntimeError("incident upsert returned no row")
             row = dict(raw_row)
             saved = IncidentAnalysis.model_validate(row["analysis"])
             payload = evidence_payload(incident, saved)
@@ -439,19 +573,27 @@ class PostgresStore:
         return IncidentCreate.model_validate(dict(raw_row)) if raw_row is not None else None
 
     def save_outcome_memory(self, memory: Memory) -> Memory:
-        assert memory.source_incident_id is not None
+        if memory.source_incident_id is None:
+            raise ValueError("outcome memory requires a source incident")
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """INSERT INTO memories
-                (id, tenant_id, service, service_version, symptom, action, outcome,
+                (id, tenant_id, service, service_version, compatibility_policy,
+                 compatibility_policy_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding_space, embedding, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
+                 observed_by, evidence_verification, evidence_refs,
+                 observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 embedding_space, embedding, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
+                        %s::JSONB,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (source_incident_id) DO UPDATE
                 SET source_incident_id=excluded.source_incident_id
-                RETURNING id, tenant_id, service, service_version, symptom, action, outcome,
+                RETURNING id, tenant_id, service, service_version, compatibility_policy,
+                 compatibility_policy_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-                 observed_by, reviewed_by, reviewed_at, embedding_space,
+                 observed_by, evidence_verification, evidence_refs,
+                 observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 embedding_space,
                  embedding::STRING AS embedding,
                  created_at""",
                 (
@@ -459,6 +601,8 @@ class PostgresStore:
                     memory.tenant_id,
                     memory.service,
                     memory.service_version,
+                    memory.compatibility_policy,
+                    memory.compatibility_policy_version,
                     memory.symptom,
                     memory.action,
                     memory.outcome,
@@ -469,6 +613,10 @@ class PostgresStore:
                     memory.superseded_by,
                     memory.source_incident_id,
                     memory.observed_by,
+                    memory.evidence_verification,
+                    json.dumps(memory.evidence_refs),
+                    memory.observation_window_seconds,
+                    json.dumps(memory.postconditions),
                     memory.reviewed_by,
                     memory.reviewed_at,
                     memory.embedding_space,
@@ -477,19 +625,21 @@ class PostgresStore:
                 ),
             )
             raw_row = cursor.fetchone()
-        assert raw_row is not None
+        if raw_row is None:
+            raise RuntimeError("outcome memory upsert returned no row")
         return self._memory(raw_row)
 
-    def govern_memory(
-        self, memory_id: UUID, request: MemoryGovernanceRequest
-    ) -> Memory | None:
-        columns = """id, tenant_id, service, service_version, symptom, action, outcome,
+    def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
+        columns = """id, tenant_id, service, service_version, compatibility_policy,
+            compatibility_policy_version, symptom, action, outcome,
             outcome_score, confidence, valid, state, superseded_by, source_incident_id,
-            observed_by, reviewed_by, reviewed_at, embedding_space,
+            observed_by, evidence_verification, evidence_refs,
+            observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+            embedding_space,
             embedding::STRING AS embedding, created_at"""
         with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s FOR UPDATE",
+            cursor.execute(  # nosec B608  # nosemgrep
+                f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s FOR UPDATE",  # nosec B608
                 (memory_id, request.tenant_id),
             )
             raw_memory = cursor.fetchone()
@@ -498,8 +648,8 @@ class PostgresStore:
             memory = self._memory(raw_memory)
             candidates = [memory]
             if request.replacement_memory_id is not None:
-                cursor.execute(
-                    f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s",
+                cursor.execute(  # nosec B608  # nosemgrep
+                    f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s",  # nosec B608
                     (request.replacement_memory_id, request.tenant_id),
                 )
                 raw_replacement = cursor.fetchone()
@@ -507,11 +657,11 @@ class PostgresStore:
                     candidates.append(self._memory(raw_replacement))
             target = _governance_target(memory, request, candidates)
             reviewed_at = datetime.now(UTC)
-            cursor.execute(
+            cursor.execute(  # nosec B608  # nosemgrep
                 """UPDATE memories SET state=%s, valid=%s, reviewed_by=%s, reviewed_at=%s,
                 superseded_by=%s WHERE id=%s AND tenant_id=%s
                 RETURNING """
-                + columns,
+                + columns,  # nosec B608
                 (
                     target,
                     target is MemoryState.ACTIVE,
@@ -523,7 +673,8 @@ class PostgresStore:
                 ),
             )
             raw_updated = cursor.fetchone()
-            assert raw_updated is not None
+            if raw_updated is None:
+                raise RuntimeError("memory governance update returned no row")
             event = MemoryEvent(
                 memory_id=memory.id,
                 tenant_id=memory.tenant_id,
@@ -579,10 +730,10 @@ class PostgresStore:
             cursor.execute(
                 """INSERT INTO execution_attestations
                 (incident_id, tenant_id, actor_id, action_hash, action_taken, evidence_refs,
-                 created_at) VALUES (%s,%s,%s,%s,%s,%s::JSONB,%s)
+                 evidence_verification, created_at) VALUES (%s,%s,%s,%s,%s,%s::JSONB,%s,%s)
                 ON CONFLICT (incident_id) DO UPDATE SET incident_id=excluded.incident_id
                 RETURNING incident_id, tenant_id, actor_id, action_hash, action_taken,
-                  evidence_refs, created_at""",
+                  evidence_refs, evidence_verification, created_at""",
                 (
                     execution.incident_id,
                     execution.tenant_id,
@@ -590,11 +741,13 @@ class PostgresStore:
                     execution.action_hash,
                     execution.action_taken,
                     execution.model_dump_json(include={"evidence_refs"}),
+                    execution.evidence_verification,
                     execution.created_at,
                 ),
             )
             row = cursor.fetchone()
-        assert row is not None
+        if row is None:
+            raise RuntimeError("execution attestation upsert returned no row")
         result = dict(row)
         evidence = result["evidence_refs"]
         result["evidence_refs"] = evidence.get("evidence_refs", evidence)
@@ -603,13 +756,11 @@ class PostgresStore:
             raise MemoryGovernanceError("incident already has a different execution")
         return recorded
 
-    def get_execution(
-        self, incident_id: UUID, tenant_id: str
-    ) -> ExecutionAttestation | None:
+    def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
                 """SELECT incident_id, tenant_id, actor_id, action_hash, action_taken,
-                  evidence_refs, created_at FROM execution_attestations
+                  evidence_refs, evidence_verification, created_at FROM execution_attestations
                 WHERE incident_id=%s AND tenant_id=%s""",
                 (incident_id, tenant_id),
             )

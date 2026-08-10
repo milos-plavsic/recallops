@@ -4,6 +4,8 @@ param(
     [string]$StackName = "recallops-production",
     [string]$RepositoryName = "recallops",
     [Parameter(Mandatory = $true)][string]$DatabaseUrlSecretArn,
+    [Parameter(Mandatory = $true)][string]$OutboxDatabaseUrlSecretArn,
+    [string]$MigrationDatabaseUrlSecretArn = "",
     [Parameter(Mandatory = $true)][string]$VpcId,
     [Parameter(Mandatory = $true)][string]$PublicSubnetIds,
     [Parameter(Mandatory = $true)][string]$PrivateSubnetIds,
@@ -11,13 +13,20 @@ param(
     [Parameter(Mandatory = $true)][string]$PublicHostname,
     [Parameter(Mandatory = $true)][string]$OidcIssuer,
     [Parameter(Mandatory = $true)][string]$OidcAudience,
-    [Parameter(Mandatory = $true)][string]$BedrockModelArns,
+    [ValidateSet("deterministic", "bedrock")][string]$ReasoningProvider = "deterministic",
+    [ValidateSet("deterministic", "bedrock")][string]$EmbeddingProvider = "deterministic",
+    [string]$BedrockModelArns = "",
     [string]$BedrockModelId = "amazon.nova-lite-v1:0",
     [string]$BedrockEmbeddingModelId = "amazon.titan-embed-text-v2:0"
 )
 
 $ErrorActionPreference = "Stop"
 Set-StrictMode -Version Latest
+
+if (($ReasoningProvider -eq "bedrock" -or $EmbeddingProvider -eq "bedrock") -and
+    -not $BedrockModelArns) {
+    throw "BedrockModelArns is required when either provider is bedrock."
+}
 
 foreach ($command in @("aws", "docker", "git")) {
     if (-not (Get-Command $command -ErrorAction SilentlyContinue)) {
@@ -58,17 +67,28 @@ $digest = aws ecr describe-images --region $Region --repository-name $Repository
 if ($digest -notmatch '^sha256:[a-f0-9]{64}$') { throw "ECR returned an invalid image digest" }
 $imageUri = "${repositoryUri}@${digest}"
 
+$parameterOverrides = @(
+    "ImageUri=$imageUri", "BuildSha=$gitSha", "DatabaseUrlSecretArn=$DatabaseUrlSecretArn",
+    "OutboxDatabaseUrlSecretArn=$OutboxDatabaseUrlSecretArn",
+    "VpcId=$VpcId", "PublicSubnetIds=$PublicSubnetIds",
+    "PrivateSubnetIds=$PrivateSubnetIds", "CertificateArn=$CertificateArn",
+    "PublicHostname=$PublicHostname", "OidcIssuer=$OidcIssuer",
+    "OidcAudience=$OidcAudience", "ReasoningProvider=$ReasoningProvider",
+    "EmbeddingProvider=$EmbeddingProvider",
+    "BedrockModelId=$BedrockModelId",
+    "BedrockEmbeddingModelId=$BedrockEmbeddingModelId"
+)
+if ($BedrockModelArns) {
+    $parameterOverrides += "BedrockModelArns=$BedrockModelArns"
+}
+if ($MigrationDatabaseUrlSecretArn) {
+    $parameterOverrides += "MigrationDatabaseUrlSecretArn=$MigrationDatabaseUrlSecretArn"
+}
+
 aws cloudformation deploy --region $Region --stack-name $StackName `
     --template-file infra/aws/cloudformation.yaml --capabilities CAPABILITY_NAMED_IAM `
     --no-fail-on-empty-changeset `
-    --parameter-overrides `
-        "ImageUri=$imageUri" "DatabaseUrlSecretArn=$DatabaseUrlSecretArn" `
-        "VpcId=$VpcId" "PublicSubnetIds=$PublicSubnetIds" `
-        "PrivateSubnetIds=$PrivateSubnetIds" "CertificateArn=$CertificateArn" `
-        "PublicHostname=$PublicHostname" `
-        "OidcIssuer=$OidcIssuer" "OidcAudience=$OidcAudience" `
-        "BedrockModelArns=$BedrockModelArns" "BedrockModelId=$BedrockModelId" `
-        "BedrockEmbeddingModelId=$BedrockEmbeddingModelId" `
+    --parameter-overrides $parameterOverrides `
     --tags Application=RecallOps ManagedBy=CloudFormation SourceCommit=$gitSha
 if ($LASTEXITCODE -ne 0) { throw "CloudFormation deployment failed" }
 

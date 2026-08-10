@@ -1,0 +1,16 @@
+{
+  "name": "recallops-browser-tests",
+  "private": true,
+  "description": "Browser-level judge-flow and accessibility checks for RecallOps",
+  "engines": {
+    "node": ">=20"
+  },
+  "scripts": {
+    "test:browser": "playwright test",
+    "test:browser:ui": "playwright test --ui"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "4.10.2",
+    "@playwright/test": "1.62.1"
+  }
+}

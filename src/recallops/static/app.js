@@ -30,7 +30,7 @@ function headers(actor = "demo-operator") {
   };
 }
 async function request(path, options = {}) {
-  const response = await fetch(path, options);
+  const response = await fetch(path, { ...options, headers: { "Accept": "application/json", ...(options.headers || {}) } });
   if (!response.ok) {
     const body = await response.json().catch(() => ({}));
     throw new Error(body.detail || `Request failed (${response.status})`);
@@ -38,7 +38,7 @@ async function request(path, options = {}) {
   return response.json();
 }
 function showError(error) {
-  $("#result").innerHTML = `<p class="risk"><b>Request stopped safely.</b><br>${escapeHtml(error.message)}</p>`;
+  $("#result").innerHTML = `<p class="risk"><b>Request stopped safely.</b><br>${escapeHtml(error.message)}<br><small>No action was executed. Check the provider/API status above and retry when ready.</small></p>`;
 }
 function escapeHtml(value) {
   const node = document.createElement("span"); node.textContent = value; return node.innerHTML;
@@ -54,9 +54,21 @@ function incidentPayload() {
 function renderTrace(trace = []) {
   const steps = trace.map((step) => `<li class="trace-${escapeHtml(step.status)}">
     <span>${step.sequence}</span><b>${escapeHtml(step.tool.replaceAll("_", " "))}</b>
-    <small>${escapeHtml(step.status)} · read-only · ≤${step.max_attempts} attempt${step.max_attempts === 1 ? "" : "s"}${step.timeout_seconds ? ` · ${step.timeout_seconds}s timeout` : ""}</small>
+    <small>${escapeHtml(step.status)} · <span class="trace-risk">${escapeHtml(step.risk || "read_only").replaceAll("_", " ")}</span> · ≤${step.max_attempts} attempt${step.max_attempts === 1 ? "" : "s"}${step.timeout_seconds ? ` · ${step.timeout_seconds}s timeout` : ""}${step.degraded_reason ? ` · ${escapeHtml(step.degraded_reason)}` : ""}</small>
   </li>`).join("");
-  return `<details class="agent-trace" open><summary>Replayable agent trace</summary><ol>${steps}</ol></details>`;
+  return `<details class="agent-trace" open><summary>Replayable agent trace (${trace.length} bounded step${trace.length === 1 ? "" : "s"})</summary><ol>${steps || "<li>No trace steps recorded</li>"}</ol></details>`;
+}
+function renderCandidates(memories = [], decisions = []) {
+  if (!memories.length) return "<p class=\"muted\">No candidates survived the pre-ranking eligibility gates.</p>";
+  return `<details class="candidates"><summary>Candidate evidence and rejection reasons (${memories.length})</summary><ol>${memories.map((item, index) => {
+    const m = item.memory || {};
+    const decision = decisions.find((candidate) => candidate.memory_id === m.id) || {};
+    const selected = decision.disposition === "selected";
+    const outcome = m.outcome || "outcome unavailable";
+    const state = m.state || (m.valid === false ? "invalid" : "eligible");
+    const why = selected ? "selected after policy ranking" : (decision.reasons || []).join(", ") || (index ? "ranked below selected candidate" : "eligible but policy abstained");
+    return `<li class="candidate ${selected ? "selected" : "rejected"}"><div><b>${selected ? "Selected" : "Candidate"} · rank ${(item.rank_score ?? 0).toFixed(3)}</b><span>${escapeHtml(outcome)}</span></div><small>${escapeHtml(state)} · similarity ${(item.semantic_similarity ?? 0).toFixed(3)} · compatibility ${(item.compatibility ?? 0).toFixed(3)} · ${escapeHtml(why)}</small></li>`;
+  }).join("")}</ol></details>`;
 }
 function renderAnalysis(analysis) {
   const memory = analysis.retrieval_abstention_reasons.length ? null : analysis.memories[0];
@@ -68,7 +80,7 @@ function renderAnalysis(analysis) {
     <dt>Safety gate</dt><dd class="${analysis.proposed_action.requires_approval ? "risk" : ""}">${analysis.proposed_action.requires_approval ? "Human approval required" : "Read-only; no approval required"}</dd>
     <dt>Best memory</dt><dd>${memory ? `${escapeHtml(memory.memory.outcome)} · rank ${memory.rank_score.toFixed(3)}` : "Abstained — no compatible successful memory"}</dd>
     <dt>Retrieval abstention</dt><dd>${escapeHtml(abstention)}</dd>
-    <dt>Degraded</dt><dd>${escapeHtml(degraded)}</dd></dl>${renderTrace(analysis.agent_trace)}`;
+    <dt>Degraded</dt><dd class="${analysis.degraded_dependencies.length ? "risk" : ""}">${escapeHtml(degraded)}</dd></dl>${renderCandidates(analysis.memories, analysis.candidate_decisions)}${renderTrace(analysis.agent_trace)}`;
   $("#loop-actions").hidden = false;
   state.action = analysis.proposed_action;
   $("#approve").disabled = !state.action.requires_approval;
@@ -76,11 +88,11 @@ function renderAnalysis(analysis) {
   $("#observe").disabled = true;
 }
 async function analyze(event) {
-  event?.preventDefault(); $("#analyze").disabled = true;
+  event?.preventDefault(); $("#analyze").disabled = true; $("#analyze").setAttribute("aria-busy", "true"); $("#result").innerHTML = `<p class="muted loading">Embedding incident and applying governance gates…</p>`;
   try {
     const result = await request("/v1/incidents", { method: "POST", headers: headers(), body: JSON.stringify(incidentPayload()) });
     state.incidentId = result.incident_id; sessionStorage.setItem("incident_id", state.incidentId); renderAnalysis(result);
-  } catch (error) { showError(error); } finally { $("#analyze").disabled = false; }
+  } catch (error) { showError(error); } finally { $("#analyze").disabled = false; $("#analyze").removeAttribute("aria-busy"); }
 }
 async function approve() {
   try {
@@ -152,7 +164,10 @@ async function initialize() {
         $("#signin").hidden = true; $("#signout").hidden = false;
       }
     }
-    await request("/health"); $("#health-label").textContent = "API healthy";
+    await request("/ready"); $("#health-label").textContent = "API and memory ready";
+    const system = await request("/v1/system/status");
+    const configured = `${system.embedding_provider} embeddings · ${system.reasoning_provider} reasoning`;
+    $("#provider-status").textContent = `${configured} · runtime success is reported per analysis`;
     const report = await request("/v1/evaluation");
     $("#recall-accuracy").textContent = percentage(report.recallops.top1_safe_accuracy);
     $("#baseline-accuracy").textContent = `similarity-only ${percentage(report.similarity_only.top1_safe_accuracy)}`;
@@ -161,9 +176,10 @@ async function initialize() {
     $("#isolation-count").textContent = report.recallops.isolation_violations;
     $("#recall-mrr").textContent = report.recallops.mean_reciprocal_rank.toFixed(2);
     $("#case-count").textContent = `${report.case_count} adversarial cases`;
-    $("#benchmark-status").textContent = report.passed ? "CI gate passing" : "Evaluation failed";
+    $("#benchmark-status").textContent = report.passed ? "Synthetic policy suite passing" : "Policy suite failed";
+    $("#benchmark-status").title = `${report.case_count} deterministic cases; this is not an end-to-end provider benchmark`;
     if (state.memoryId) { $("#loop-actions").hidden = false; $("#review").disabled = false; }
-  } catch (error) { $("#health-label").textContent = "API unavailable"; showError(error); }
+  } catch (error) { $("#health-label").textContent = "API unavailable"; $("#provider-status").textContent = "API/provider status unavailable"; showError(error); }
 }
 $("#incident-form").addEventListener("submit", analyze);
 $("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
