@@ -42,7 +42,7 @@
         <article><span>Isolation violations</span><strong id="isolation-count">—</strong><small>tenant + validity gate</small></article>
         <article><span>Mean reciprocal rank</span><strong id="recall-mrr">—</strong><small id="case-count">— cases</small></article>
       </div>
-      <p class="method">The headline suite is a small, synthetic, deterministic policy regression set—not an end-to-end retrieval benchmark. It covers attractive failed remediations, incompatible versions, invalid memories, and cross-tenant candidates. CI rejects policy regressions; live provider status is shown separately.</p>
+      <p class="method">The headline suite is a small, synthetic, deterministic policy regression set—not an end-to-end retrieval benchmark. It covers attractive failed remediations, incompatible versions, invalid memories, and cross-tenant candidates. CI rejects policy regressions; live provider status is shown separately. In the live loop below, open <b>Candidate evidence</b> to see vector candidates become explicit policy selections or rejections.</p>
     </section>
 
     <section id="demo" class="section demo" aria-labelledby="demo-title">
@@ -79,7 +79,7 @@
       <div class="section-heading"><div><p class="eyebrow">03 / SYSTEM OF RECORD</p><h2 id="architecture-title">One causal path. Explicit trust boundaries.</h2></div></div>
       <div class="architecture" role="img" aria-label="Operator uses HTTPS and OIDC to reach RecallOps on ECS. RecallOps uses a bounded configured reasoning provider, stores transactional vector memory in CockroachDB, and archives evidence to S3 with CloudWatch observability.">
         <div class="node human"><b>Operator</b><span>OIDC identity</span></div><i>HTTPS</i><div class="node core"><b>RecallOps / ECS</b><span>policy + orchestration</span></div><i>bounded</i><div class="node"><b>Reason + embed</b><span>deterministic · Bedrock optional</span></div>
-        <div class="branch"><div class="node database"><b>CockroachDB</b><span>incidents · vectors · governance</span></div><div class="node"><b>Amazon S3</b><span>versioned evidence</span></div><div class="node"><b>CloudWatch</b><span>logs · metrics · alarms</span></div></div>
+        <div class="branch"><div class="node database"><b>CockroachDB DVI</b><span>incidents · vectors · outcomes · governance</span></div><div class="node"><b>Amazon S3</b><span>versioned, verifiable evidence</span></div><div class="node"><b>Amazon CloudWatch</b><span>logs · metrics · verified alarms</span></div></div>
       </div>
       <div class="safeguards"><span>Tenant filter before rank</span><span>Four-eyes activation</span><span>Immutable provenance</span><span>Confidence decay</span><span>Approval before mutation</span><span>Provider degradation</span></div>
     </section>

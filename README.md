@@ -2,17 +2,57 @@
 
 **Live judge demo:** https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
 
-RecallOps is an outcome-conditioned incident-response agent. It recalls prior incidents by semantic similarity, rejects operationally incompatible memories, proposes bounded remediations, and requires explicit human approval before consequential actions.
+RecallOps is an SRE agent that remembers whether a remediation actually worked. It uses vector
+similarity to find candidates, then deterministically rejects memories from the wrong tenant,
+service version, governance state, or observed outcome before proposing an action.
+
+## See the product in 60 seconds
+
+Open the **[live judge demo](https://ltfrottcxj.execute-api.us-east-1.amazonaws.com)** and follow
+the numbered lifecycle already displayed in the result panel:
+
+1. Click **Analyze incident**. Open **Candidate evidence** to compare the raw semantic candidates
+   with the final policy decision and its rejection reasons.
+2. Approve the exact proposed action, attest its execution, and record the observed outcome.
+3. Confirm that the resulting memory is **PENDING REVIEW** and therefore retrieval-ineligible.
+4. Switch to the independent reviewer identity and activate it.
+5. Click **Analyze again** and confirm that the reviewed outcome now participates in the decision.
+
+That proves the product's central claim in one causal path:
+
+> retrieve evidence → propose and approve → observe outcome → quarantine learning → independently
+> activate → recall during the next incident
+
+No infrastructure mutation is performed in this milestone. “Execution” is explicitly an operator
+attestation; the safety contribution is governed memory and deterministic authorization around the
+reasoning layer.
+
+### What changes the recommendation
+
+| Stage | Evidence | Effect |
+| --- | --- | --- |
+| Candidate generation | CockroachDB 1024-dimensional vector search | Finds semantically similar incident memories; similarity grants no authority. |
+| Eligibility gates | Tenant, service, active state, validity, and compatibility policy | Excludes memories that must never reach ranking. |
+| Policy ranking | Observed outcome, version compatibility, confidence, and age | Promotes compatible successes and preserves known-failure penalties. |
+| Action control | Typed risk plus persisted human approval | Prevents the LLM or deterministic reasoner from authorizing a mutation. |
+| Outcome learning | Operator attestation plus independent review | Creates quarantined evidence that becomes retrievable only after four-eyes activation. |
+
+**Concrete cloud proof:** CockroachDB stores the incident, embedding, decision, approval, outcome,
+memory state, and governance event transactionally. The deployed application runs on Amazon ECS
+behind API Gateway; Cognito separates operator and reviewer identities, S3 archives versioned
+evidence, and CloudWatch supplies logs, metrics, and server-verifiable alarm evidence. Bedrock is an
+optional provider and is deliberately not required for the reliable public judge path.
 
 This is a new project for the CockroachDB × AWS Build with Agentic Memory Hackathon. Its architectural starting points are disclosed in [docs/PROVENANCE.md](docs/PROVENANCE.md).
 
-**Fastest judge path:** run `./scripts/judge-demo.ps1`, then follow the
-[three-minute judge guide](docs/JUDGE_GUIDE.md).
+**Local proof:** run `./scripts/judge-demo.ps1`. **Three-minute recording path:** follow the
+[recording-day runbook](docs/VIDEO_RECORDING_RUNBOOK.md). **Deep evidence:** use the
+[judge guide](docs/JUDGE_GUIDE.md) only after seeing the product loop.
 
 [![CI](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml/badge.svg)](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-c8ff4d.svg)](LICENSE)
 
-## What is implemented
+## Implementation details
 
 - CockroachDB-backed structured incident state and 1024-dimensional distributed vector memory.
 - Tenant-prefixed vector retrieval, application-level row isolation, direct-SQL composite tenant

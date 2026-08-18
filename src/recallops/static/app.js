@@ -44,7 +44,7 @@ function escapeHtml(value) {
   const node = document.createElement("span"); node.textContent = value; return node.innerHTML;
 }
 function tenant() { return state.identity?.tenant_id || $("#tenant").value; }
-function actor() { return state.identity?.subject || "demo-operator"; }
+function actor(demoActor = "demo-operator") { return state.identity?.subject || demoActor; }
 function incidentPayload() {
   state.key ||= `judge-${Date.now()}`;
   return { tenant_id: tenant(), service: $("#service").value,
@@ -67,7 +67,7 @@ function renderCandidates(memories = [], decisions = []) {
     const outcome = m.outcome || "outcome unavailable";
     const state = m.state || (m.valid === false ? "invalid" : "eligible");
     const why = selected ? "selected after policy ranking" : (decision.reasons || []).join(", ") || (index ? "ranked below selected candidate" : "eligible but policy abstained");
-    return `<li class="candidate ${selected ? "selected" : "rejected"}"><div><b>${selected ? "Selected" : "Candidate"} · rank ${(item.rank_score ?? 0).toFixed(3)}</b><span>${escapeHtml(outcome)}</span></div><small>${escapeHtml(state)} · similarity ${(item.semantic_similarity ?? 0).toFixed(3)} · compatibility ${(item.compatibility ?? 0).toFixed(3)} · ${escapeHtml(why)}</small></li>`;
+    return `<li class="candidate ${selected ? "selected" : "rejected"}"><div><b>Vector candidate ${index + 1} → ${selected ? "POLICY SELECTED" : "POLICY REJECTED"}</b><span>${escapeHtml(outcome)}</span></div><small>semantic similarity ${(item.semantic_similarity ?? 0).toFixed(3)} → governed rank ${(item.rank_score ?? 0).toFixed(3)} · state ${escapeHtml(state)} · compatibility ${(item.compatibility ?? 0).toFixed(3)} · decision: ${escapeHtml(why)}</small></li>`;
   }).join("")}</ol></details>`;
 }
 function renderAnalysis(analysis) {
@@ -78,7 +78,7 @@ function renderAnalysis(analysis) {
     <h3>${escapeHtml(analysis.diagnosis)}</h3><dl>
     <dt>Proposed action</dt><dd>${escapeHtml(analysis.proposed_action.command)}</dd>
     <dt>Safety gate</dt><dd class="${analysis.proposed_action.requires_approval ? "risk" : ""}">${analysis.proposed_action.requires_approval ? "Human approval required" : "Read-only; no approval required"}</dd>
-    <dt>Best memory</dt><dd>${memory ? `${escapeHtml(memory.memory.outcome)} · rank ${memory.rank_score.toFixed(3)}` : "Abstained — no compatible successful memory"}</dd>
+    <dt>Governed decision</dt><dd>${memory ? `${escapeHtml(memory.memory.outcome)} · policy rank ${memory.rank_score.toFixed(3)}` : "Abstained — no compatible successful memory"}</dd>
     <dt>Retrieval abstention</dt><dd>${escapeHtml(abstention)}</dd>
     <dt>Degraded</dt><dd class="${analysis.degraded_dependencies.length ? "risk" : ""}">${escapeHtml(degraded)}</dd></dl>${renderCandidates(analysis.memories, analysis.candidate_decisions)}${renderTrace(analysis.agent_trace)}`;
   $("#loop-actions").hidden = false;
@@ -108,14 +108,14 @@ async function execute() {
 }
 async function observe() {
   try {
-    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor() }) });
+    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor("demo-observer") }) });
     state.memoryId = result.id; sessionStorage.setItem("memory_id", state.memoryId); $("#stage-observe").classList.add("active"); $("#review").disabled = false; $("#observe").disabled = true;
     $("#result").innerHTML = `<span class="confidence">PENDING REVIEW</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
   } catch (error) { showError(error); }
 }
 async function review() {
   try {
-    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer"), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
+    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer"), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
     $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY</span><h3>Independent review completed.</h3><p>The evidence is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
   } catch (error) { showError(error); }
