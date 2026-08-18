@@ -177,6 +177,9 @@ test.describe("judge console", () => {
     await expect(page.getByRole("heading", { name: successfulAnalysis.diagnosis })).toBeVisible();
     await expect(page.getByText("mutating requires approval")).toBeVisible();
     await expect(page.getByText("read only")).toBeVisible();
+    await page.getByText(/Candidate evidence and rejection reasons/).click();
+    await expect(page.getByText(/Vector candidate 1 → POLICY SELECTED/)).toBeVisible();
+    await expect(page.getByText(/semantic similarity .* → governed rank/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Attest execution" })).toBeDisabled();
   });
@@ -192,6 +195,49 @@ test.describe("judge console", () => {
     await expect(page.getByText(/negative outcome evidence/)).toBeVisible();
     await expect(page.getByText("read only")).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeDisabled();
+  });
+
+  test("completes the local governed-memory loop with distinct observer and reviewer identities", async ({ page }) => {
+    await mockApi(page);
+    const identities: Array<{ path: string; header: string | null; actor: string }> = [];
+    await page.route("**/v1/incidents/*/approval", (route) =>
+      route.fulfill({ json: { recorded: true } }),
+    );
+    await page.route("**/v1/incidents/*/execution", (route) =>
+      route.fulfill({ status: 201, json: { recorded: true } }),
+    );
+    await page.route("**/v1/incidents/*/outcome", async (route) => {
+      const body = route.request().postDataJSON();
+      identities.push({
+        path: "outcome",
+        header: route.request().headers()["x-actor-id"] ?? null,
+        actor: body.actor_id,
+      });
+      await route.fulfill({ status: 201, json: { id: "00000000-0000-0000-0000-000000000020" } });
+    });
+    await page.route("**/v1/memories/*/governance", async (route) => {
+      const body = route.request().postDataJSON();
+      identities.push({
+        path: "governance",
+        header: route.request().headers()["x-actor-id"] ?? null,
+        actor: body.actor_id,
+      });
+      await route.fulfill({ json: { id: "00000000-0000-0000-0000-000000000020", state: "active" } });
+    });
+    await page.goto("/");
+
+    await page.getByRole("button", { name: "Analyze incident" }).click();
+    await page.getByRole("button", { name: "Approve exact action" }).click();
+    await page.getByRole("button", { name: "Attest execution" }).click();
+    await page.getByRole("button", { name: "Record successful outcome" }).click();
+    await expect(page.getByText("PENDING REVIEW")).toBeVisible();
+    await page.getByRole("button", { name: "Activate as reviewer" }).click();
+    await expect(page.getByText("ACTIVE MEMORY")).toBeVisible();
+
+    expect(identities).toEqual([
+      { path: "outcome", header: "demo-observer", actor: "demo-observer" },
+      { path: "governance", header: "demo-reviewer", actor: "demo-reviewer" },
+    ]);
   });
 
   test("contains long analysis evidence within a mobile viewport", async ({ page }) => {

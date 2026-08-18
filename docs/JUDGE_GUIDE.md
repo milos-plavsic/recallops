@@ -91,16 +91,22 @@ The result is an agent that can learn without silently teaching itself a mistake
 
 ## Three-minute video plan
 
+The production-ready action-first script, exact clicks, database proof query, and
+recording checklist are in [`VIDEO_PRODUCTION.md`](VIDEO_PRODUCTION.md). The live
+application must act within the first 10 seconds; architecture and regression evidence
+belong after the complete memory loop.
+
 | Time | Visual | Spoken proof |
 | --- | --- | --- |
-| 0:00–0:20 | Title, unsafe similarity candidate beside successful candidate | “Similarity is not operational truth. RecallOps remembers consequences.” |
-| 0:20–0:45 | Architecture section | Show CockroachDB as transactional vector memory; ECS orchestration, S3 evidence, Cognito identity, and CloudWatch observability. Label Bedrock optional. |
-| 0:45–1:15 | Live policy cards | Label the six-case (or current count) suite as synthetic policy regression evidence. Do not present it as a production retrieval accuracy estimate. |
-| 1:15–1:50 | Analyze prefilled incident | Show compatible outcome-aware retrieval, rationale, confidence, and mandatory approval. |
-| 1:50–2:25 | Observe then review | Show pending memory excluded, independent reviewer activation, and provenance. |
-| 2:25–2:40 | Analyze again | Close the learning loop and show the governed memory recalled. |
-| 2:40–2:55 | Security/resilience badges and GitHub tests | Tenant isolation, OIDC, timeouts, conservative fallback, immutable deployment. |
-| 2:55–3:00 | Closing thesis | “An agent that learns what worked—and knows who proved it.” |
+| 0:00–0:10 | Live incident console and one-sentence problem | “Similarity is not operational truth. RecallOps remembers consequences.” |
+| 0:10–0:49 | Analyze and open candidate evidence | Show outcome-aware retrieval, the rejected dangerous candidate, and mandatory approval. |
+| 0:49–1:02 | Replayable agent trace | Show ordered tools, bounded risk, status, and evidence references. |
+| 1:02–1:51 | Approve, attest, observe, then switch identity and review | Show `pending_review` exclusion and independent reviewer activation. Cut all credential entry. |
+| 1:51–2:10 | Analyze again and open candidate evidence | Prove that the newly governed memory participates in the next decision. |
+| 2:10–2:28 | Live read-only CockroachDB query | Show the stored outcome, active state, observer/reviewer presence, governance event, and DVI index. |
+| 2:28–2:43 | Architecture section | Name CockroachDB DVI and AWS ECS, API Gateway, Cognito, S3, and CloudWatch on screen. Label Bedrock optional. |
+| 2:43–2:54 | Regression and test evidence | Label policy cases as synthetic regression evidence, not production accuracy. |
+| 2:54–3:00 | Closing thesis | “An agent that learns what worked—and knows who proved it.” |
 
 Record at 1080p with browser zoom near 110%, a clean demo database, no terminal secrets,
 and captions. Keep the live path rehearsed but do not replace it with mock screenshots.
