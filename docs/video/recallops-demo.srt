@@ -1,0 +1,43 @@
+1
+00:00:00,000 --> 00:00:08,000
+For SRE teams, a similar incident is not necessarily a safe precedent. RecallOps remembers consequences.
+
+2
+00:00:08,000 --> 00:00:24,000
+This public AWS agent retrieves persistent, tenant-scoped memory from CockroachDB, checks compatibility and outcomes, then proposes an approval-gated action.
+
+3
+00:00:24,000 --> 00:00:45,000
+Vector search generates candidates; it never grants authority. A semantically close restart previously worsened the outage, so deterministic validity, compatibility, outcome, tenant, and governance controls reject it.
+
+4
+00:00:45,000 --> 00:00:57,000
+The replayable trace exposes tools, evidence references, risk, retries, and timeouts—an inspectable audit trail, not hidden chain-of-thought.
+
+5
+00:00:57,000 --> 00:01:20,000
+The operator approves the exact proposal, attests the externally performed action, and records recovery. Memory ID shown here is held pending review and remains retrieval-ineligible.
+
+6
+00:01:20,000 --> 00:01:39,000
+A different Amazon Cognito identity performs four-eyes review. CockroachDB atomically records the reviewer, active state, and governance event before eligibility changes.
+
+7
+00:01:39,000 --> 00:01:59,000
+Now the same reviewed memory appears in the next decision with its source and provenance. This visibly closes the store, govern, retrieve, and propose loop.
+
+8
+00:01:59,000 --> 00:02:23,000
+The live row confirms outcome, observer, reviewer, active state, and audit event. The verified CockroachDB plan shows tenant-scoped vector search using the distributed index.
+
+9
+00:02:23,000 --> 00:02:36,000
+The pinned official CockroachDB Agent Skill directly shaped these retry-safe transaction boundaries; this split view shows the guidance and its implemented consequence.
+
+10
+00:02:36,000 --> 00:02:47,000
+ECS runs the API behind API Gateway; Cognito separates identities; S3 versions evidence; and CloudWatch supplies observable, server-verifiable state.
+
+11
+00:02:47,000 --> 00:02:52,000
+RecallOps remembers what worked—and who proved it.

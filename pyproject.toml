@@ -23,8 +23,9 @@ dependencies = [
 dev = [
   "botocore[crt]>=1.40,<2",
   "hypothesis>=6.138,<7",
-  "httpx>=0.28,<1",
+  "httpx2>=2.9,<3",
   "mypy>=1.17,<3",
+  "mutmut>=3.7,<4",
   "pytest>=9.0.3,<10",
   "pytest-cov>=6.2,<8",
   "ruff>=0.12,<1",
@@ -45,6 +46,18 @@ packages = ["src/recallops"]
 addopts = "-q --strict-markers"
 testpaths = ["tests"]
 
+[tool.coverage.run]
+branch = true
+source = ["recallops"]
+
+[tool.coverage.report]
+fail_under = 100
+show_missing = true
+skip_covered = false
+
+[tool.coverage.xml]
+output = "coverage.xml"
+
 [tool.ruff]
 line-length = 100
 target-version = "py312"
@@ -60,3 +73,19 @@ packages = ["recallops"]
 [[tool.mypy.overrides]]
 module = ["boto3", "botocore.*"]
 ignore_missing_imports = true
+
+[tool.mutmut]
+source_paths = ["src/recallops/"]
+only_mutate = [
+  "src/recallops/evidence.py",
+  "src/recallops/service.py",
+  "src/recallops/store.py",
+]
+pytest_add_cli_args_test_selection = [
+  "tests/test_evidence.py",
+  "tests/test_retrieval.py",
+  "tests/test_resilience.py",
+  "tests/test_service.py",
+  "tests/test_store.py",
+]
+mutate_only_covered_lines = true

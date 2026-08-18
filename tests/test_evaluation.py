@@ -1,6 +1,12 @@
 import json
+import runpy
+import sys
 from pathlib import Path
+from types import SimpleNamespace
 
+import pytest
+
+import recallops.evaluation as evaluation
 from recallops.evaluation import (
     evaluate,
     load_dataset,
@@ -59,3 +65,86 @@ def test_end_to_end_suite_executes_real_service_and_store_path() -> None:
         "ambiguous_successes_force_abstention",
         "weak_evidence_forces_abstention",
     }
+
+
+def test_empty_inputs_have_explicit_zero_metrics() -> None:
+    assert evaluation._select([], "recallops") is None
+    assert evaluation._percentile([], 0.95) == 0.0
+    incompatible = evaluation.Candidate(
+        id="old",
+        tenant_id="demo",
+        state="active",
+        valid=True,
+        eligible=True,
+        similarity=1.0,
+        outcome_score=1.0,
+        compatibility=0.5,
+        confidence=1.0,
+        unsafe=False,
+    )
+    assert evaluation._select([incompatible], "recallops") is None
+
+
+def test_evaluation_cli_runs_both_modes(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recallops-evaluate", "--dataset", "evaluation/memory_cases.json"],
+    )
+    evaluation.main()
+    assert '"passed": true' in capsys.readouterr().out
+
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        [
+            "recallops-evaluate",
+            "--mode",
+            "end-to-end",
+            "--end-to-end-dataset",
+            "evaluation/end_to_end_cases.json",
+        ],
+    )
+    evaluation.main()
+    assert '"backend": "in_memory"' in capsys.readouterr().out
+
+
+def test_evaluation_cli_database_lifecycle_and_failure_exit(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    closed: list[bool] = []
+
+    class FakeStore:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def close(self) -> None:
+            closed.append(True)
+
+    report = SimpleNamespace(passed=True, model_dump=lambda: {"passed": True})
+    monkeypatch.setattr(evaluation, "PostgresStore", FakeStore)
+    monkeypatch.setattr(evaluation, "run_end_to_end", lambda *args, **kwargs: report)
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recallops-evaluate", "--mode", "end-to-end", "--database-url", "postgres://db"],
+    )
+    evaluation.main()
+    assert closed == [True]
+
+    failed = SimpleNamespace(passed=False, model_dump=lambda: {"passed": False})
+    monkeypatch.setattr(evaluation, "evaluate", lambda dataset: failed)
+    monkeypatch.setattr(sys, "argv", ["recallops-evaluate"])
+    with pytest.raises(SystemExit, match="1"):
+        evaluation.main()
+
+
+def test_evaluation_module_entry_point(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(
+        sys,
+        "argv",
+        ["recallops.evaluation", "--dataset", "evaluation/memory_cases.json"],
+    )
+    runpy.run_path(str(evaluation.__file__), run_name="__main__")

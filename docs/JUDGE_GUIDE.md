@@ -2,6 +2,10 @@
 
 Live demo: https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
 
+For a claim-by-claim route through the repository, use the curated
+[`EVIDENCE_INDEX.md`](EVIDENCE_INDEX.md). It separates live proof, reproducible proof, and explicit
+limitations so older artifacts cannot be mistaken for evidence from the submitted release.
+
 Use the separately supplied operator and reviewer credentials. Sign in as the
 operator for analysis and outcome capture, then select **Switch identity** and sign
 in as the reviewer to activate the pending memory. The two accounts deliberately
@@ -75,7 +79,7 @@ made the outage worse. RecallOps makes retrieval a safety decision before it bec
 ranking problem.
 
 Every memory is scoped by tenant and service, tied to observed outcomes, and governed
-through a state machine. New observations are quarantined from retrieval until a
+through a state machine. New observations are held pending and excluded from retrieval until a
 different operator reviews them. Positive evidence decays; known failure never becomes
 safe merely because it is old. Revocation and supersession are transactional and
 auditable. Mutating actions remain proposals until a human approves them.
@@ -91,22 +95,20 @@ The result is an agent that can learn without silently teaching itself a mistake
 
 ## Three-minute video plan
 
-The production-ready action-first script, exact clicks, database proof query, and
-recording checklist are in [`VIDEO_PRODUCTION.md`](VIDEO_PRODUCTION.md). The live
-application must act within the first 10 seconds; architecture and regression evidence
-belong after the complete memory loop.
+The production-ready action-first script, exact clicks, database proof query, and recording
+checklist are in [`VIDEO_RECORDING_RUNBOOK.md`](VIDEO_RECORDING_RUNBOOK.md). The live application
+acts within six seconds, and one short memory ID connects every lifecycle proof.
 
 | Time | Visual | Spoken proof |
 | --- | --- | --- |
-| 0:00–0:10 | Live incident console and one-sentence problem | “Similarity is not operational truth. RecallOps remembers consequences.” |
-| 0:10–0:49 | Analyze and open candidate evidence | Show outcome-aware retrieval, the rejected dangerous candidate, and mandatory approval. |
-| 0:49–1:02 | Replayable agent trace | Show ordered tools, bounded risk, status, and evidence references. |
-| 1:02–1:51 | Approve, attest, observe, then switch identity and review | Show `pending_review` exclusion and independent reviewer activation. Cut all credential entry. |
-| 1:51–2:10 | Analyze again and open candidate evidence | Prove that the newly governed memory participates in the next decision. |
-| 2:10–2:28 | Live read-only CockroachDB query | Show the stored outcome, active state, observer/reviewer presence, governance event, and DVI index. |
-| 2:28–2:43 | Architecture section | Name CockroachDB DVI and AWS ECS, API Gateway, Cognito, S3, and CloudWatch on screen. Label Bedrock optional. |
-| 2:43–2:54 | Regression and test evidence | Label policy cases as synthetic regression evidence, not production accuracy. |
-| 2:54–3:00 | Closing thesis | “An agent that learns what worked—and knows who proved it.” |
+| 0:00–0:24 | Analyze the live incident | Establish the SRE problem, persistent CockroachDB memory, and mandatory approval. |
+| 0:24–0:57 | Candidate and trace proof | Show selection/rejection reasons plus sanitized evidence, risk, retry, and timeout bounds. |
+| 0:57–1:39 | Approve, attest, observe, switch identity, review | Carry the same short ID from `pending_review` to `active`; cut all credentials. |
+| 1:39–1:59 | Analyze again | Show the same memory ID, source incident, reviewed flag, and outcome in the next decision. |
+| 1:59–2:23 | CockroachDB ground truth | Query the live row and show the captured managed plan using `memories_embedding_v2`. |
+| 2:23–2:36 | Agent Skill proof | Connect the pinned official skill to three exact transaction consequences. |
+| 2:36–2:47 | AWS proof with architecture inset | Show ECS, CloudWatch, and S3; name API Gateway and Cognito. |
+| 2:47–2:52 | Closing recalled-memory frame | “RecallOps remembers what worked—and who proved it.” |
 
 Record at 1080p with browser zoom near 110%, a clean demo database, no terminal secrets,
 and captions. Keep the live path rehearsed but do not replace it with mock screenshots.

@@ -1,9 +1,14 @@
+from unittest.mock import MagicMock
+
+import pytest
 from fastapi.testclient import TestClient
 
 from recallops.api import create_app
 from recallops.config import Settings
 from recallops.domain import Memory
 from recallops.embedding import DeterministicEmbedder
+from recallops.resilience import DependencyUnavailable
+from recallops.service import IncidentWorkflowError
 from recallops.store import InMemoryStore
 
 
@@ -71,6 +76,151 @@ def test_system_status_distinguishes_configuration_from_runtime_verification() -
     assert response.status_code == 200
     assert response.json()["embedding_space"].startswith("deterministic:")
     assert response.json()["bedrock_runtime_verified"] is None
+
+
+def test_diagnostics_configuration_requires_all_resource_prefixes() -> None:
+    with pytest.raises(ValueError, match="AWS diagnostics require"):
+        create_app(Settings(store="memory", diagnostic_provider="aws"), InMemoryStore())
+
+
+def test_complete_aws_diagnostics_configuration_builds_tools(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    created: list[str] = []
+    monkeypatch.setattr(
+        "recallops.api.AwsCloudWatchAlarmInspector",
+        lambda *args, **kwargs: created.append("alarms") or MagicMock(),
+    )
+    monkeypatch.setattr(
+        "recallops.api.AwsEcsDeploymentInspector",
+        lambda *args, **kwargs: created.append("ecs") or MagicMock(),
+    )
+    app = create_app(
+        Settings(
+            store="memory",
+            diagnostic_provider="aws",
+            diagnostic_alarm_prefix="recallops",
+            diagnostic_ecs_cluster="recallops",
+            diagnostic_ecs_service_prefix="recallops",
+        ),
+        InMemoryStore(),
+    )
+    assert app.state.service._diagnostic_tools is not None
+    assert created == ["alarms", "ecs"]
+
+
+def test_oidc_token_origin_is_added_to_content_security_policy() -> None:
+    settings = Settings(
+        store="memory",
+        oidc_token_url="https://identity.example.test/oauth/token",
+    )
+    response = TestClient(create_app(settings, InMemoryStore())).get("/health")
+    assert "https://identity.example.test" in response.headers["content-security-policy"]
+
+
+@pytest.mark.parametrize("mode", ["false", "exception"])
+def test_readiness_fails_closed(mode: str) -> None:
+    store = InMemoryStore()
+    store.ready = MagicMock(
+        return_value=False, side_effect=RuntimeError("secret") if mode == "exception" else None
+    )
+    response = TestClient(create_app(Settings(store="memory"), store)).get("/ready")
+    assert response.status_code == 503
+    assert response.json() == {"status": "not_ready"}
+    assert "secret" not in response.text
+
+
+def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.MonkeyPatch) -> None:
+    app = create_app(Settings(store="memory"), InMemoryStore())
+    client = TestClient(app)
+    headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator"}
+    incident_id = "00000000-0000-0000-0000-000000000001"
+    approval = {
+        "tenant_id": "demo",
+        "actor_id": "operator",
+        "approved": True,
+        "reason": "reviewed",
+    }
+    monkeypatch.setattr(
+        app.state.service,
+        "decide_approval",
+        MagicMock(side_effect=IncidentWorkflowError("approval conflict")),
+    )
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/approval", headers=headers, json=approval
+        ).status_code
+        == 409
+    )
+
+    execution = {
+        "tenant_id": "demo",
+        "actor_id": "operator",
+        "action_hash": "0" * 64,
+        "action_taken": "inspect",
+        "evidence_refs": ["test://evidence"],
+    }
+    monkeypatch.setattr(
+        app.state.service,
+        "attest_execution",
+        MagicMock(side_effect=DependencyUnavailable("bedrock")),
+    )
+    unavailable = client.post(
+        f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+    )
+    assert unavailable.status_code == 503 and unavailable.headers["retry-after"] == "30"
+    monkeypatch.setattr(
+        app.state.service,
+        "attest_execution",
+        MagicMock(side_effect=IncidentWorkflowError("execution conflict")),
+    )
+    assert client.post(
+        f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+    ).status_code == 409
+    monkeypatch.setattr(app.state.service, "attest_execution", MagicMock(return_value=None))
+    assert client.post(
+        f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+    ).status_code == 404
+
+    outcome = {
+        "tenant_id": "demo",
+        "actor_id": "operator",
+        "action_taken": "inspect",
+        "outcome": "healthy",
+        "outcome_score": 1,
+        "confidence": 0.8,
+    }
+    monkeypatch.setattr(
+        app.state.service,
+        "learn_outcome",
+        MagicMock(side_effect=DependencyUnavailable("embedding")),
+    )
+    unavailable = client.post(f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome)
+    assert unavailable.status_code == 503 and unavailable.headers["retry-after"] == "30"
+    monkeypatch.setattr(
+        app.state.service,
+        "learn_outcome",
+        MagicMock(side_effect=IncidentWorkflowError("outcome conflict")),
+    )
+    assert client.post(
+        f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome
+    ).status_code == 409
+
+
+def test_execution_rejects_actor_mismatch_before_service_call() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    response = client.post(
+        "/v1/incidents/00000000-0000-0000-0000-000000000001/execution",
+        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator"},
+        json={
+            "tenant_id": "demo",
+            "actor_id": "someone-else",
+            "action_hash": "0" * 64,
+            "action_taken": "inspect",
+            "evidence_refs": ["test://evidence"],
+        },
+    )
+    assert response.status_code == 403
 
 
 def test_incident_read_and_single_approval() -> None:

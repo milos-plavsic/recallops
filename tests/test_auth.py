@@ -5,7 +5,12 @@ import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
 
-from recallops.auth import AuthenticationError, OidcAuthenticator
+from recallops.auth import (
+    AuthenticationError,
+    DemoAuthenticator,
+    OidcAuthenticator,
+    create_authenticator,
+)
 from recallops.config import Settings
 
 
@@ -88,3 +93,38 @@ def test_oidc_authenticator_rejects_stale_access_token() -> None:
     )
     with pytest.raises(AuthenticationError, match="older than the allowed lifetime"):
         authenticator(public_key).authenticate(f"Bearer {encoded}", None, None, None)
+
+
+def test_oidc_configuration_and_bearer_syntax_fail_closed() -> None:
+    with pytest.raises(ValueError, match="issuer and audience"):
+        OidcAuthenticator(Settings(auth_mode="oidc"))
+    encoded, public_key = token()
+    verifier = authenticator(public_key)
+    for authorization in (None, "", encoded, "Basic token", "Bearer   "):
+        with pytest.raises(AuthenticationError, match="Bearer token required"):
+            verifier.authenticate(authorization, None, None, None)
+
+
+@pytest.mark.parametrize("issued_at", [None, True, "yesterday"])
+def test_oidc_rejects_invalid_issued_at_type(issued_at: object) -> None:
+    _, public_key = token()
+    with pytest.raises(AuthenticationError, match="issued-at"):
+        authenticator(public_key)._validate_token_age({"iat": issued_at})
+
+
+@pytest.mark.parametrize(
+    "roles, expected",
+    [
+        ("operator reviewer", frozenset({"operator", "reviewer"})),
+        (["operator", 1], frozenset()),
+        (None, frozenset()),
+    ],
+)
+def test_oidc_role_claim_shapes(roles: object, expected: frozenset[str]) -> None:
+    encoded, public_key = token({"cognito:groups": roles})
+    principal = authenticator(public_key).authenticate(f"Bearer {encoded}", None, None, None)
+    assert principal.roles == expected
+
+
+def test_authenticator_factory_selects_mode() -> None:
+    assert isinstance(create_authenticator(Settings(auth_mode="demo")), DemoAuthenticator)

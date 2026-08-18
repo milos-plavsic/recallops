@@ -65,6 +65,8 @@ def test_outbox_dead_letters_after_retry_budget(monkeypatch: pytest.MonkeyPatch)
 
     assert outbox.release_failed("postgresql://test", message_id, "worker-1", 8, "failed", 8)
     assert "dead_lettered_at=now()" in cursor.executions[0][0]
+    with pytest.raises(ValueError, match="max_attempts"):
+        outbox.release_failed("postgresql://test", message_id, "worker-1", 1, "failed", 0)
 
 
 def test_outbox_status_is_payload_free(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -138,5 +140,23 @@ def test_delivery_releases_failed_message(monkeypatch: pytest.MonkeyPatch) -> No
 
     assert outbox.deliver_available(
         "postgresql://test", RecordingArchive(fail=True), "worker-1", 1
+    ) == (0, 1)
+    assert len(released) == 1
+
+
+def test_delivery_treats_lost_acknowledgement_as_failure(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    pending = [message()]
+    released: list[object] = []
+    monkeypatch.setattr(outbox, "claim", lambda *args: pending.pop(0))
+    monkeypatch.setattr(outbox, "mark_delivered", lambda *args: False)
+    monkeypatch.setattr(
+        outbox,
+        "release_failed",
+        lambda *args: released.append(args[1]) or False,
+    )
+    assert outbox.deliver_available(
+        "postgresql://test", RecordingArchive(), "worker-1", 1
     ) == (0, 1)
     assert len(released) == 1

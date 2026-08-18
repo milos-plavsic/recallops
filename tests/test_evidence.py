@@ -1,7 +1,11 @@
 from typing import Any
 
+import pytest
+from botocore.exceptions import ClientError
+
 from recallops.domain import EvidenceVerification
 from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
+from recallops.resilience import DependencyUnavailable
 
 
 class FakeCloudWatch:
@@ -62,3 +66,38 @@ def test_aws_verifier_rejects_untrusted_schemes_and_buckets(monkeypatch: Any) ->
         EvidenceVerification.EXTERNALLY_VERIFIED,
         ["s3://attacker-bucket/fabricated.json"],
     )
+
+
+@pytest.mark.parametrize(
+    "reference",
+    ["cloudwatch://alarm/", "cloudwatch://alarm/a%2Fb", "s3://evidence-bucket/"],
+)
+def test_aws_verifier_rejects_malformed_scoped_references(
+    monkeypatch: pytest.MonkeyPatch, reference: str
+) -> None:
+    verifier, _ = aws_verifier(monkeypatch)
+    assert not verifier.verify(EvidenceVerification.SYSTEM_OBSERVED, [reference])
+
+
+def test_aws_verifier_manual_empty_and_alarm_state_paths(monkeypatch: pytest.MonkeyPatch) -> None:
+    verifier, _ = aws_verifier(monkeypatch)
+    assert verifier.verify(EvidenceVerification.MANUAL_ATTESTATION, [])
+    assert not verifier.verify(EvidenceVerification.SYSTEM_OBSERVED, [])
+    verifier._cloudwatch.describe_alarms = lambda **kwargs: {  # type: ignore[method-assign]
+        "MetricAlarms": [{"StateValue": "ALARM"}]
+    }
+    assert not verifier.verify(
+        EvidenceVerification.SYSTEM_OBSERVED, ["cloudwatch://alarm/unhealthy"]
+    )
+
+
+def test_aws_verifier_translates_provider_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    verifier, _ = aws_verifier(monkeypatch)
+
+    def fail(**kwargs: Any) -> dict[str, Any]:
+        del kwargs
+        raise ClientError({"Error": {"Code": "Denied", "Message": "no"}}, "DescribeAlarms")
+
+    verifier._cloudwatch.describe_alarms = fail  # type: ignore[method-assign]
+    with pytest.raises(DependencyUnavailable, match="aws_evidence_verification"):
+        verifier.verify(EvidenceVerification.SYSTEM_OBSERVED, ["cloudwatch://alarm/a"])

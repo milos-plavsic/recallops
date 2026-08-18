@@ -7,6 +7,8 @@ const selectedMemory = {
   compatibility: 1,
   memory: {
     id: "00000000-0000-0000-0000-000000000001",
+    source_incident_id: "00000000-0000-0000-0000-000000000099",
+    reviewed_by: "reviewer-subject",
     outcome: "Connection pool tuning restored checkout latency",
     state: "active",
     valid: true,
@@ -40,6 +42,7 @@ const successfulAnalysis = {
       risk: "read_only",
       max_attempts: 2,
       timeout_seconds: 5,
+      evidence_refs: ["memory:00000000-0000-0000-0000-000000000001"],
     },
     {
       sequence: 2,
@@ -48,6 +51,7 @@ const successfulAnalysis = {
       risk: "mutating_requires_approval",
       max_attempts: 1,
       timeout_seconds: 10,
+      evidence_refs: ["urn:recallops:diagnostic:alarm:sanitized-proof"],
     },
   ],
 };
@@ -177,8 +181,11 @@ test.describe("judge console", () => {
     await expect(page.getByRole("heading", { name: successfulAnalysis.diagnosis })).toBeVisible();
     await expect(page.getByText("mutating requires approval")).toBeVisible();
     await expect(page.getByText("read only")).toBeVisible();
+    await expect(page.getByText(/evidence: memory:00000000/)).toBeVisible();
     await page.getByText(/Candidate evidence and rejection reasons/).click();
     await expect(page.getByText(/Vector candidate 1 → POLICY SELECTED/)).toBeVisible();
+    await expect(page.getByText(/learned memory 00000000 · source incident 00000000/)).toBeVisible();
+    await expect(page.getByText(/independently reviewed yes/)).toBeVisible();
     await expect(page.getByText(/semantic similarity .* → governed rank/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeEnabled();
     await expect(page.getByRole("button", { name: "Attest execution" })).toBeDisabled();
@@ -187,6 +194,9 @@ test.describe("judge console", () => {
   test("explains abstention and candidate rejection instead of presenting an unsafe action", async ({ page }) => {
     await mockApi(page, abstainedAnalysis);
     await page.goto("/");
+    await page.getByRole("button", { name: "Load safe-failure scenario" }).click();
+    await expect(page.getByLabel("Version")).toHaveValue("2099.01");
+    await expect(page.getByText(/incompatible memory cannot authorize an action/)).toBeVisible();
     await page.getByRole("button", { name: "Analyze incident" }).click();
 
     await expect(page.getByRole("heading", { name: abstainedAnalysis.diagnosis })).toBeVisible();
@@ -230,9 +240,9 @@ test.describe("judge console", () => {
     await page.getByRole("button", { name: "Approve exact action" }).click();
     await page.getByRole("button", { name: "Attest execution" }).click();
     await page.getByRole("button", { name: "Record successful outcome" }).click();
-    await expect(page.getByText("PENDING REVIEW")).toBeVisible();
+    await expect(page.getByText(/PENDING REVIEW · MEMORY 00000000/)).toBeVisible();
     await page.getByRole("button", { name: "Activate as reviewer" }).click();
-    await expect(page.getByText("ACTIVE MEMORY")).toBeVisible();
+    await expect(page.getByText(/ACTIVE MEMORY · 00000000/)).toBeVisible();
 
     expect(identities).toEqual([
       { path: "outcome", header: "demo-observer", actor: "demo-observer" },
