@@ -4,6 +4,12 @@
 
 `migrations/001_initial.sql` creates a cosine vector index prefixed by tenant and service. The demo proves that compatible successful memory outranks a semantically similar obsolete failure.
 
+On CockroachDB Cloud Basic/Serverless, vector indexing is enabled by default. RecallOps therefore
+does not run `SET CLUSTER SETTING feature.vector_index.enabled = true`, which is a privileged and
+unnecessary operation on that tier. The migrations issue `CREATE VECTOR INDEX` directly; migration
+`020_embedding_space_vector_index.sql` creates the current tenant-, service-, and embedding-space-
+prefixed index, and migration `021_drop_legacy_vector_index.sql` removes the superseded index.
+
 ## Agent Skills (reproducible engineering workflow)
 
 RecallOps uses the official CockroachDB `designing-application-transactions` Agent Skill as its

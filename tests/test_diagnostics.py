@@ -188,3 +188,100 @@ def test_malformed_aws_data_fails_closed(monkeypatch: pytest.MonkeyPatch) -> Non
     with pytest.raises(DependencyUnavailable) as raised:
         alarms.inspect(DiagnosticScope.from_tenant_service("tenant-a", "payments"))
     assert raised.value.dependency == "cloudwatch_diagnostics"
+
+
+def test_all_diagnostic_configuration_boundaries(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr("recallops.diagnostics.boto3.client", lambda *args, **kwargs: object())
+    with pytest.raises(ValueError, match="max_alarms"):
+        AwsCloudWatchAlarmInspector("us-east-1", "valid", 1, 2, 2, max_alarms=21)
+    with pytest.raises(ValueError, match="cluster_name"):
+        AwsEcsDeploymentInspector("us-east-1", "bad/cluster", "valid", 1, 2, 2)
+    with pytest.raises(ValueError, match="service_name_prefix"):
+        AwsEcsDeploymentInspector("us-east-1", "valid", "bad/prefix", 1, 2, 2)
+
+
+def test_cloudwatch_non_list_payload_fails_closed(monkeypatch: pytest.MonkeyPatch) -> None:
+    cloudwatch = FakeCloudWatch({"MetricAlarms": (), "CompositeAlarms": ()})
+    alarms, _ = inspector_clients(
+        monkeypatch, cloudwatch, FakeEcs({"failures": [], "services": []})
+    )
+    with pytest.raises(DependencyUnavailable, match="cloudwatch_diagnostics"):
+        alarms.inspect(DiagnosticScope.from_tenant_service("tenant-a", "payments"))
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        {"failures": "invalid", "services": []},
+        {"failures": [{"reason": "MISSING"}], "services": []},
+        {"failures": [], "services": [{}, {}]},
+        {"failures": [], "services": [{"deployments": "invalid"}]},
+        {
+            "failures": [],
+            "services": [
+                {
+                    "deployments": ["invalid"],
+                    "desiredCount": 1,
+                    "runningCount": 1,
+                    "pendingCount": 0,
+                }
+            ],
+        },
+        {
+            "failures": [],
+            "services": [
+                {
+                    "deployments": [
+                        {
+                            "status": "UNKNOWN",
+                            "desiredCount": 1,
+                            "runningCount": 1,
+                            "pendingCount": 0,
+                        }
+                    ],
+                    "desiredCount": 1,
+                    "runningCount": 1,
+                    "pendingCount": 0,
+                }
+            ],
+        },
+        {
+            "failures": [],
+            "services": [
+                {
+                    "deployments": [
+                        {
+                            "status": "PRIMARY",
+                            "rolloutState": "UNKNOWN",
+                            "desiredCount": 1,
+                            "runningCount": 1,
+                            "pendingCount": 0,
+                        }
+                    ],
+                    "desiredCount": 1,
+                    "runningCount": 1,
+                    "pendingCount": 0,
+                }
+            ],
+        },
+        {
+            "failures": [],
+            "services": [
+                {
+                    "deployments": [],
+                    "desiredCount": True,
+                    "runningCount": 1,
+                    "pendingCount": 0,
+                }
+            ],
+        },
+    ],
+)
+def test_each_malformed_ecs_shape_fails_closed(
+    monkeypatch: pytest.MonkeyPatch, response: dict[str, Any]
+) -> None:
+    _, deployments = inspector_clients(
+        monkeypatch, FakeCloudWatch({"MetricAlarms": []}), FakeEcs(response)
+    )
+    with pytest.raises(DependencyUnavailable, match="ecs_diagnostics"):
+        deployments.inspect(DiagnosticScope.from_tenant_service("tenant-a", "payments"))

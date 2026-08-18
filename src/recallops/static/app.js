@@ -43,6 +43,11 @@ function showError(error) {
 function escapeHtml(value) {
   const node = document.createElement("span"); node.textContent = value; return node.innerHTML;
 }
+function shortId(value) { return String(value || "unknown").slice(0, 8); }
+function traceEvidence(refs = []) {
+  if (!refs.length) return "evidence: none recorded";
+  return `evidence: ${refs.slice(0, 2).map((ref) => escapeHtml(String(ref).slice(0, 96))).join(" · ")}`;
+}
 function tenant() { return state.identity?.tenant_id || $("#tenant").value; }
 function actor(demoActor = "demo-operator") { return state.identity?.subject || demoActor; }
 function incidentPayload() {
@@ -54,7 +59,7 @@ function incidentPayload() {
 function renderTrace(trace = []) {
   const steps = trace.map((step) => `<li class="trace-${escapeHtml(step.status)}">
     <span>${step.sequence}</span><b>${escapeHtml(step.tool.replaceAll("_", " "))}</b>
-    <small>${escapeHtml(step.status)} · <span class="trace-risk">${escapeHtml(step.risk || "read_only").replaceAll("_", " ")}</span> · ≤${step.max_attempts} attempt${step.max_attempts === 1 ? "" : "s"}${step.timeout_seconds ? ` · ${step.timeout_seconds}s timeout` : ""}${step.degraded_reason ? ` · ${escapeHtml(step.degraded_reason)}` : ""}</small>
+    <small>${escapeHtml(step.status)} · <span class="trace-risk">${escapeHtml(step.risk || "read_only").replaceAll("_", " ")}</span> · ≤${step.max_attempts} attempt${step.max_attempts === 1 ? "" : "s"}${step.timeout_seconds ? ` · ${step.timeout_seconds}s timeout` : ""}${step.degraded_reason ? ` · ${escapeHtml(step.degraded_reason)}` : ""}<br>${traceEvidence(step.evidence_refs)}</small>
   </li>`).join("");
   return `<details class="agent-trace" open><summary>Replayable agent trace (${trace.length} bounded step${trace.length === 1 ? "" : "s"})</summary><ol>${steps || "<li>No trace steps recorded</li>"}</ol></details>`;
 }
@@ -67,7 +72,8 @@ function renderCandidates(memories = [], decisions = []) {
     const outcome = m.outcome || "outcome unavailable";
     const state = m.state || (m.valid === false ? "invalid" : "eligible");
     const why = selected ? "selected after policy ranking" : (decision.reasons || []).join(", ") || (index ? "ranked below selected candidate" : "eligible but policy abstained");
-    return `<li class="candidate ${selected ? "selected" : "rejected"}"><div><b>Vector candidate ${index + 1} → ${selected ? "POLICY SELECTED" : "POLICY REJECTED"}</b><span>${escapeHtml(outcome)}</span></div><small>semantic similarity ${(item.semantic_similarity ?? 0).toFixed(3)} → governed rank ${(item.rank_score ?? 0).toFixed(3)} · state ${escapeHtml(state)} · compatibility ${(item.compatibility ?? 0).toFixed(3)} · decision: ${escapeHtml(why)}</small></li>`;
+    const provenance = m.source_incident_id ? `learned memory ${shortId(m.id)} · source incident ${shortId(m.source_incident_id)} · independently reviewed ${m.reviewed_by ? "yes" : "no"}` : `seeded precedent ${shortId(m.id)}`;
+    return `<li class="candidate ${selected ? "selected" : "rejected"}"><div><b>Vector candidate ${index + 1} → ${selected ? "POLICY SELECTED" : "POLICY REJECTED"}</b><span>${escapeHtml(outcome)}</span></div><small>${escapeHtml(provenance)}<br>semantic similarity ${(item.semantic_similarity ?? 0).toFixed(3)} → governed rank ${(item.rank_score ?? 0).toFixed(3)} · state ${escapeHtml(state)} · compatibility ${(item.compatibility ?? 0).toFixed(3)} · decision: ${escapeHtml(why)}</small></li>`;
   }).join("")}</ol></details>`;
 }
 function renderAnalysis(analysis) {
@@ -110,19 +116,25 @@ async function observe() {
   try {
     const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor("demo-observer") }) });
     state.memoryId = result.id; sessionStorage.setItem("memory_id", state.memoryId); $("#stage-observe").classList.add("active"); $("#review").disabled = false; $("#observe").disabled = true;
-    $("#result").innerHTML = `<span class="confidence">PENDING REVIEW</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
+    $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
   } catch (error) { showError(error); }
 }
 async function review() {
   try {
     await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer"), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
-    $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY</span><h3>Independent review completed.</h3><p>The evidence is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
+    $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY · ${escapeHtml(shortId(state.memoryId))}</span><h3>Independent review completed.</h3><p>The same memory is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
   } catch (error) { showError(error); }
 }
 async function recall() {
   state.key = `judge-recall-${Date.now()}`;
   await analyze(); $("#stage-recall").classList.add("active");
+}
+function loadSafeFailure() {
+  $("#version").value = "2099.01";
+  $("#symptom").value = "latency spike with no compatible reviewed precedent";
+  state.key = null;
+  $("#result").innerHTML = `<p class="muted">Safe-failure scenario loaded. Analyze it to verify that incompatible memory cannot authorize an action.</p>`;
 }
 async function signIn() {
   const verifier = randomBase64Url(64);
@@ -182,6 +194,7 @@ async function initialize() {
   } catch (error) { $("#health-label").textContent = "API unavailable"; $("#provider-status").textContent = "API/provider status unavailable"; showError(error); }
 }
 $("#incident-form").addEventListener("submit", analyze);
+$("#safe-failure").addEventListener("click", loadSafeFailure);
 $("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
 $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("click", signOut);
 initialize();

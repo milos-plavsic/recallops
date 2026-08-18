@@ -62,7 +62,7 @@ unless all deployment prefixes are configured.
 The service proposes and records decisions but does not execute infrastructure mutations. The current
 demo's execution endpoint is an operator attestation, not proof that infrastructure ran. Elevated
 evidence claims fail closed unless the server verifies an OK CloudWatch alarm or an object in the
-configured evidence bucket. It closes the memory lifecycle with quarantined learning,
+configured evidence bucket. It closes the memory lifecycle with pending-review learning,
 independent review, revocation, supersession, and confidence decay. Production identity is verified
 with signed OIDC access tokens and tenant scope is derived from immutable claims. Allowlisted execution
 execution adapters and automatic postcondition collection remain future vertical increments; until
@@ -70,8 +70,8 @@ they exist, mutation stays behind explicit human approval and evidence strength 
 
 ```mermaid
 flowchart LR
-  O[Operator] -->|HTTPS + Cognito PKCE| G[API Gateway]
-  G -->|private VPC Link| L[Internal ALB]
+  O[Operator] -->|HTTPS + Cognito PKCE| GW[API Gateway]
+  GW -->|private VPC Link| L[Internal ALB]
   L --> A[RecallOps on ECS Fargate]
   A -.->|optional reason + embed| B[Amazon Bedrock]
   A -->|default bounded provider| D[Deterministic reasoning + embedding]
@@ -81,6 +81,6 @@ flowchart LR
   C --> I[Incident]
   I --> P[Decision + approval]
   P --> U[Observed outcome]
-  U --> G[Independent governance]
-  G --> M[Eligible future memory]
+  U --> GOV[Independent governance]
+  GOV --> M[Eligible future memory]
 ```

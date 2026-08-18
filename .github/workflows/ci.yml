@@ -23,7 +23,10 @@ jobs:
       - run: python -m pip install --no-deps --editable .
       - run: python -m ruff check .
       - run: python -m mypy
-      - run: python -m pytest --cov=recallops --cov-report=term-missing --cov-fail-under=75
+      - name: Start branch-aware production coverage
+        run: |
+          python -m coverage erase
+          python -m coverage run -m pytest
       - run: recallops-eval
       - name: CockroachDB end-to-end retrieval gate
         shell: bash
@@ -45,8 +48,16 @@ jobs:
           recallops-migrate
           recallops-eval --mode end-to-end --database-url "$RECALLOPS_DATABASE_URL"
           export RECALLOPS_INTEGRATION_DATABASE_URL="$RECALLOPS_DATABASE_URL"
-          python -m pytest tests/integration
-          recallops-db-verify --output database-boundaries.json >/dev/null
+          python -m coverage run --append -m pytest tests/integration
+          RECALLOPS_EMBEDDING_PROVIDER=deterministic \
+            python -m coverage run --append -m recallops.demo
+          python -m coverage run --append -m recallops.migrate
+          python -m coverage run --append -m recallops.outbox --status >/dev/null
+          python -m coverage run --append -m recallops.reembed >/dev/null
+          python -m coverage run --append -m recallops.db_verify \
+            --output database-boundaries.json >/dev/null
+          python -m coverage report --fail-under=100
+          python -m coverage xml
       - run: python -m pip install pip-audit==2.10.1 cfn-lint==1.41.0
       - run: python -m pip_audit --local --format cyclonedx-json --output sbom.cdx.json
       - run: cfn-lint infra/aws/cloudformation.yaml infra/aws/public-demo.yaml
@@ -57,6 +68,7 @@ jobs:
           path: |
             sbom.cdx.json
             database-boundaries.json
+            coverage.xml
           if-no-files-found: error
       - run: docker compose config --quiet
 
@@ -87,3 +99,37 @@ jobs:
             playwright-report/
             test-results/
           if-no-files-found: ignore
+
+  mutation:
+    name: Safety-critical mutation gate
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+      - run: python -m pip install --upgrade pip
+      - run: python -m pip install --requirement requirements-dev.lock
+      - run: python -m pip install --no-deps --editable .
+      - run: mutmut run
+      - run: mutmut export-cicd-stats
+      - name: Require at least a 70% mutation score
+        shell: bash
+        run: |
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          stats = json.loads(Path("mutants/mutmut-cicd-stats.json").read_text())
+          score = 100 * stats["killed"] / stats["total"]
+          print(f"mutation score: {score:.2f}% ({stats['killed']}/{stats['total']})")
+          if score < 70:
+              raise SystemExit("mutation score is below the 70% safety gate")
+          PY
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: recallops-mutation-report
+          path: mutants/mutmut-cicd-stats.json
+          if-no-files-found: error

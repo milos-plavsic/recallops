@@ -343,6 +343,7 @@ class PostgresStore:
         self._retrieval_candidate_multiplier = retrieval_candidate_multiplier
         self._pool = ConnectionPool(
             database_url,
+            open=True,
             min_size=1,
             max_size=10,
             timeout=connect_timeout_seconds,

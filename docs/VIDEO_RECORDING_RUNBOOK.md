@@ -7,9 +7,12 @@ and must show live state-changing actions rather than a slide or screenshot tour
 
 - The deployed frontend contains `Vector candidate → POLICY SELECTED/REJECTED` labels.
 - `GET /health` and `GET /ready` succeed on the public URL.
+- `/v1/system/status` reports the final committed build SHA used by every proof artifact.
 - Operator and reviewer Cognito accounts both sign in and expose different subjects.
 - One rehearsal completes analyze → approve → attest → observe → review → analyze again.
 - The CockroachDB query below returns the rehearsal memory without exposing identifiers or secrets.
+- The DVI plan and Agent Skill evidence both name that same final build SHA; older-release artifacts
+  are not used in the recording.
 - ECS, CloudWatch, and S3 console tabs are open at safe, relevant views.
 - Notifications, password prompts, bookmarks, personal tabs, and account menus are hidden.
 
@@ -17,24 +20,23 @@ Do not delete production data merely to obtain a clean take. Use a new incident 
 frame the newest memory row. If accumulated demo memories make the result ambiguous, record against
 a freshly seeded isolated environment and label it accurately.
 
-## Master cut: 2:57 target
+## Master cut: 2:52 target
 
 The narration column is the final voice script. Record it after the screen takes are locked.
 
 | Time | Cursor and live screen action | Final narration | Required overlay |
 | --- | --- | --- | --- |
-| 0:00–0:10 | Begin on the live incident form. Click **Analyze incident** by 0:07. | “For an SRE team, the most similar incident is not always a safe precedent. RecallOps remembers consequences—not just similarity.” | `RecallOps · governed operational memory` |
-| 0:10–0:26 | Let the live result render. Point once to the proposed action and **Human approval required**. | “This live agent retrieves tenant-scoped memory from CockroachDB, checks operational compatibility and observed outcomes, and proposes a bounded action that still requires human approval.” | `LIVE · public AWS deployment` |
-| 0:26–0:48 | Expand **Candidate evidence**. Frame one rejected dangerous candidate and the selected successful candidate together. | “Vector search generates candidates; it never grants authority. The closest-looking restart previously worsened an outage, so deterministic tenant, validity, compatibility, outcome, and governance controls reject it in favor of reviewed evidence.” | `Similarity ≠ authorization` |
-| 0:48–0:59 | Expand **Replayable agent trace**. Point to tool order, evidence reference, risk, attempt bound, and timeout. | “The trace shows the tools used, evidence consulted, risk classification, and bounded failure behavior. The reasoning provider cannot bypass these controls.” | `Inspectable trace · not chain-of-thought` |
-| 0:59–1:20 | Click **Approve exact action**, **Attest execution**, and **Record successful outcome**. Pause on `PENDING REVIEW`. | “The operator approves the exact action, attests execution, and records the observed recovery. But the agent cannot declare its own advice successful. The new memory is quarantined and excluded from retrieval.” | `PENDING REVIEW · retrieval-ineligible` |
-| 1:20–1:37 | Click **Switch identity**. Cut only credential entry and waiting. Resume as reviewer; click **Activate as reviewer**. Pause on `ACTIVE MEMORY`. | “A different Cognito identity performs four-eyes review. CockroachDB atomically records the reviewer and governance transition before the evidence becomes eligible.” | `Amazon Cognito · independent reviewer` |
-| 1:37–1:56 | Click **Analyze again**, expand candidates, and frame the newly active memory participating in the decision. | “Now—and only now—the reviewed outcome informs the next incident. This is the complete store, govern, retrieve, and act memory loop.” | `ACTIVE → recalled in next decision` |
-| 1:56–2:17 | Cut to the pre-opened CockroachDB SQL Console. Press **Run** on the read-only memory query; then run `SHOW INDEXES FROM memories`. | “This is the underlying record: outcome, observer, reviewer, active state, and audit event in one transactional system. The 1,024-dimensional embedding is searched with CockroachDB Distributed Vector Indexing.” | `CRDB TOOL 1 · Distributed Vector Indexing` |
-| 2:17–2:28 | Show the pinned Agent Skill evidence and the corresponding transaction boundary together, preferably in a terminal or repository split view with no scrolling. | “The official transaction-design Agent Skill shaped the retry-safe incident, outcome, and governance boundaries used by the agent.” | `CRDB TOOL 2 · Agent Skills Repo` |
-| 2:28–2:45 | Fast live cuts: healthy ECS task, current CloudWatch log or alarm, then the newest versioned S3 evidence object. | “On AWS, ECS runs the service behind API Gateway, Cognito separates roles, S3 archives versioned evidence, and CloudWatch provides observability and server-verifiable alarm state.” | `ECS · API Gateway · Cognito · S3 · CloudWatch` |
-| 2:45–2:52 | Return to the rejected candidate or a rehearsed live abstention with action controls disabled. | “When no safe precedent exists, RecallOps abstains. Similarity can never authorize an action.” | `SAFE FAILURE · abstain` |
-| 2:52–2:57 | Return to the second analysis with the active recalled memory visible. Hold still. | “RecallOps remembers what worked, who proved it, and when it is safe to use again.” | `RecallOps` |
+| 0:00–0:08 | Begin on the live incident form. Click **Analyze incident** by 0:06. | “For SRE teams, a similar incident is not necessarily a safe precedent. RecallOps remembers consequences.” | `RecallOps · governed operational memory` |
+| 0:08–0:24 | Let the live result render. Point once to the proposed action and **Human approval required**. | “This public AWS agent retrieves persistent, tenant-scoped memory from CockroachDB, checks compatibility and outcomes, then proposes an approval-gated action.” | `LIVE · AWS + CockroachDB` |
+| 0:24–0:45 | Expand **Candidate evidence**. Keep the selected and rejected candidates, their semantic and governed scores, provenance, and rejection reasons readable together. | “Vector search generates candidates; it never grants authority. A semantically close restart previously worsened the outage, so deterministic validity, compatibility, outcome, tenant, and governance controls reject it.” | `Similarity ≠ authorization` |
+| 0:45–0:57 | Frame the automatically open **Replayable agent trace**. Point to tool order, sanitized evidence references, risk, attempt bound, and timeout. | “The replayable trace exposes tools, evidence references, risk, retries, and timeouts—an inspectable audit trail, not hidden chain-of-thought.” | `TRACE · evidence · risk · bounds` |
+| 0:57–1:20 | Click **Approve exact action**, **Attest execution**, and **Record successful outcome**. Hold the short memory ID beside `PENDING REVIEW`. | “The operator approves the exact proposal, attests the externally performed action, and records recovery. Memory ID shown here is held pending review and remains retrieval-ineligible.” | `PENDING REVIEW · same memory ID` |
+| 1:20–1:39 | Click **Switch identity**. Cut only credential entry and waiting. Resume with a visibly different subject prefix; click **Activate as reviewer** and hold the same memory ID beside `ACTIVE MEMORY`. | “A different Amazon Cognito identity performs four-eyes review. CockroachDB atomically records the reviewer, active state, and governance event before eligibility changes.” | `Cognito · independent reviewer · ACTIVE` |
+| 1:39–1:59 | Click **Analyze again**, expand candidates, and frame the same short memory ID, source incident, reviewed flag, and observed outcome. | “Now the same reviewed memory appears in the next decision with its source and provenance. This visibly closes the store, govern, retrieve, and propose loop.” | `PENDING → ACTIVE → RECALLED` |
+| 1:59–2:23 | In the pre-opened CockroachDB SQL Console, run the read-only memory query. Then show the redacted verified plan lines `vector search` and `memories@memories_embedding_v2`. | “The live row confirms outcome, observer, reviewer, active state, and audit event. The verified CockroachDB plan shows tenant-scoped vector search using the distributed index.” | `CRDB TOOL 1 · Distributed Vector Indexing` |
+| 2:23–2:36 | Show the pinned `designing-application-transactions` skill revision beside the exact transaction consequences: atomic incident-plus-outbox, provider calls outside transactions, and bounded serialization retry. | “The pinned official CockroachDB Agent Skill directly shaped these retry-safe transaction boundaries; this split view shows the guidance and its implemented consequence.” | `CRDB TOOL 2 · Agent Skills Repo` |
+| 2:36–2:47 | Use three pre-opened live views: stable ECS task, current CloudWatch signal, newest versioned S3 evidence. Keep the compact architecture inset visible. | “ECS runs the API behind API Gateway; Cognito separates identities; S3 versions evidence; and CloudWatch supplies observable, server-verifiable state.” | `AWS · ECS · API Gateway · Cognito · S3 · CloudWatch` |
+| 2:47–2:52 | Return to the second analysis. Hold the recalled short memory ID and reviewed provenance completely still. | “RecallOps remembers what worked—and who proved it.” | `RecallOps` |
 
 ## Exact live click choreography
 
@@ -51,7 +53,8 @@ The narration column is the final voice script. Record it after the screen takes
 9. Click **Switch identity**. Stop the take before any credential is visible.
 10. Resume after reviewer authentication. Preserve a short visual discontinuity so the cut is honest.
 11. Click **Activate as reviewer**; hold `ACTIVE MEMORY` for two seconds.
-12. Click **Analyze again** and show the newly active memory in **Candidate evidence**.
+12. Click **Analyze again** and show the same short memory ID, source incident, and reviewed flag in
+    **Candidate evidence**.
 
 Never simulate a click, replace a transition with a still frame, or imply that the execution
 attestation mutated infrastructure. If network latency is shortened, preserve the loading state and
@@ -86,20 +89,23 @@ ORDER BY m.created_at DESC
 LIMIT 3;
 ```
 
-Then run:
+Then open the latest redacted query-plan evidence and frame only these verified lines:
 
-```sql
-SHOW INDEXES FROM memories;
+```text
+• vector search
+  table: memories@memories_embedding_v2
 ```
 
-Frame `memories_embedding_v2`. Do not show connection strings, passwords, account email, cluster
-credentials, access tokens, or embedding values.
+The artifact must identify its captured release and limitation: it is a managed, synthetic-row plan
+whose optimizer choice may vary with cardinality and statistics. Do not show connection strings,
+passwords, account email, cluster credentials, access tokens, tenant values, or embedding values.
 
 ### Take C: Agent Skill and AWS proof
 
-The Agent Skill shot must connect a named tool to a visible engineering outcome. Frame the pinned
-`designing-application-transactions` evidence beside the incident/outcome/governance transaction
-design. Do not show the generic skills landing page.
+The Agent Skill shot must connect a named tool to visible engineering outcomes. Frame the pinned
+`designing-application-transactions` revision beside exactly three implemented consequences: atomic
+incident-plus-outbox persistence, remote providers outside transactions, and bounded serialization
+retry. Do not show the generic skills landing page or a long scrolling document.
 
 Prepare these AWS console views before recording:
 
@@ -117,24 +123,23 @@ at least two seconds.
 
 ```text
 RecallOps · governed operational memory
-LIVE · public AWS deployment
+LIVE · AWS + CockroachDB
 Similarity ≠ authorization
-Inspectable trace · not chain-of-thought
-PENDING REVIEW · retrieval-ineligible
-Amazon Cognito · independent reviewer
-ACTIVE → recalled in next decision
+TRACE · evidence · risk · bounds
+PENDING REVIEW · same memory ID
+Cognito · independent reviewer · ACTIVE
+PENDING → ACTIVE → RECALLED
 CRDB TOOL 1 · Distributed Vector Indexing
 CRDB TOOL 2 · Agent Skills Repo
-ECS · API Gateway · Cognito · S3 · CloudWatch
-SAFE FAILURE · abstain
-RecallOps
+AWS · ECS · API Gateway · Cognito · S3 · CloudWatch
 ```
 
 ## Editing and audio specification
 
 - Capture 1920×1080 at 30 fps; export H.264 at 1080p with AAC audio.
 - Keep browser zoom between 110% and 125% and verify that candidate reasons do not clip.
-- Use a gentle, clear female voice at approximately 125–135 words per minute. Aim for calm authority,
+- Use a gentle, clear female voice at approximately 120–130 words per minute while speaking. Leave
+  deliberate silence for state changes and proof holds. Aim for calm authority,
   not advertising enthusiasm or sensual delivery.
 - Record narration separately after picture lock. Duck or omit music; UI clicks need not be audible.
 - Burn in accurate captions and manually correct `CockroachDB`, `Cognito`, `idempotency`, and `SRE`.
@@ -159,15 +164,17 @@ unrelated runs. Retain the raw recordings until the public upload is verified.
 
 - [ ] The first live action occurs by 0:07.
 - [ ] A viewer can explain why the highest-similarity memory may be rejected.
-- [ ] Approval, execution attestation, outcome capture, quarantine, independent review, and recall
+- [ ] Approval, execution attestation, outcome capture, pending-review hold, independent review, and recall
       are all visibly performed.
 - [ ] The language makes clear that execution is an attestation, not an infrastructure mutation.
-- [ ] The newly learned memory is visibly absent before review and eligible after review.
-- [ ] CockroachDB rows and the distributed vector index are run and shown live.
+- [ ] Before review, the new memory is visibly marked retrieval-ineligible; after review, the same
+      short ID is visibly eligible and recalled.
+- [ ] One stable short memory ID visibly connects pending, active, recalled, and SQL states.
+- [ ] The CockroachDB row is queried live and the captured managed plan visibly proves DVI use.
 - [ ] Both required CockroachDB tools are named and their actual use is explained.
 - [ ] The AWS deployment and each claimed AWS service have visible, truthful evidence.
 - [ ] Bedrock is called optional unless the recorded runtime actually uses it.
 - [ ] No secret, email address, account number, token, password, or connection string is visible.
 - [ ] Captions are accurate, the voice is intelligible, and every text proof is readable at 1080p.
-- [ ] Duration is no more than 2:59 to leave platform-transcoding margin.
+- [ ] Duration is no more than 2:54, with the planned 2:52 cut leaving editing margin.
 - [ ] YouTube or Vimeo playback works without signing in and the Devpost URL opens correctly.

@@ -43,7 +43,8 @@ def apply_migrations(database_url: str, directory: Path) -> list[str]:
         applied: list[str] = []
         for name, sql in migrations:
             digest = hashlib.sha256(sql.encode()).hexdigest()
-            for attempt in range(MAX_SERIALIZATION_RETRIES):
+            attempt = 0
+            while True:
                 try:
                     with connection.transaction(), connection.cursor() as cursor:
                         cursor.execute(
@@ -71,6 +72,7 @@ def apply_migrations(database_url: str, directory: Path) -> list[str]:
                     # Bounded exponential backoff gives the holder time to commit while
                     # avoiding an unbounded startup loop during a database incident.
                     time.sleep(0.05 * (2**attempt))
+                    attempt += 1
         return applied
 
 

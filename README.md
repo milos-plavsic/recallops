@@ -20,7 +20,7 @@ the numbered lifecycle already displayed in the result panel:
 
 That proves the product's central claim in one causal path:
 
-> retrieve evidence → propose and approve → observe outcome → quarantine learning → independently
+> retrieve evidence → propose and approve → observe outcome → hold learning for review → independently
 > activate → recall during the next incident
 
 No infrastructure mutation is performed in this milestone. “Execution” is explicitly an operator
@@ -47,7 +47,8 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
 
 **Local proof:** run `./scripts/judge-demo.ps1`. **Three-minute recording path:** follow the
 [recording-day runbook](docs/VIDEO_RECORDING_RUNBOOK.md). **Deep evidence:** use the
-[judge guide](docs/JUDGE_GUIDE.md) only after seeing the product loop.
+[judge guide](docs/JUDGE_GUIDE.md) only after seeing the product loop. The curated
+[evidence index](docs/EVIDENCE_INDEX.md) maps every major claim to live and reproducible proof.
 
 [![CI](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml/badge.svg)](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-c8ff4d.svg)](LICENSE)

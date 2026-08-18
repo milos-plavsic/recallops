@@ -1,11 +1,14 @@
 from typing import Any
+from uuid import uuid4
 
 import pytest
+from botocore.exceptions import ClientError
 
 from recallops import archive as archive_module
 from recallops.archive import S3EvidenceArchive, evidence_payload
 from recallops.domain import IncidentCreate
 from recallops.embedding import DeterministicEmbedder
+from recallops.resilience import DependencyUnavailable
 from recallops.service import DeterministicReasoner, IncidentService
 from recallops.store import InMemoryStore
 
@@ -58,3 +61,16 @@ def test_s3_archive_uses_deterministic_encrypted_object(monkeypatch: pytest.Monk
     assert request["Key"].endswith(f"/{analysis.incident_id}/analysis.json")
     assert request["ServerSideEncryption"] == "AES256"
     assert b'"embedding"' not in request["Body"]
+
+
+def test_s3_archive_translates_provider_failure(monkeypatch: pytest.MonkeyPatch) -> None:
+    class FailingS3:
+        def put_object(self, **request: Any) -> None:
+            del request
+            raise ClientError({"Error": {"Code": "Denied", "Message": "no"}}, "PutObject")
+
+    monkeypatch.setattr(archive_module.boto3, "client", lambda *args, **kwargs: FailingS3())
+    archive = S3EvidenceArchive("us-east-1", "evidence-bucket")
+
+    with pytest.raises(DependencyUnavailable, match="s3_evidence"):
+        archive.archive_payload("tenant-a", uuid4(), {}, "checkout", "v1")
