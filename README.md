@@ -2,6 +2,9 @@
 
 **Live judge demo:** https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
 
+**Demo video:** https://youtu.be/4YVucwgoJLk · **Architecture:**
+[docs/recallops-architecture.png](docs/recallops-architecture.png)
+
 RecallOps is an SRE agent that remembers whether a remediation actually worked. It uses vector
 similarity to find candidates, then deterministically rejects memories from the wrong tenant,
 service version, governance state, or observed outcome before proposing an action.
