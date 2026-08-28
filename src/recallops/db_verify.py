@@ -31,6 +31,9 @@ EXPECTED_GRANTS = {
     ("recallops_api", "memories", "SELECT"),
     ("recallops_api", "memories", "UPDATE"),
     ("recallops_api", "memory_events", "INSERT"),
+    ("recallops_api", "webmcp_workflows", "INSERT"),
+    ("recallops_api", "webmcp_workflows", "SELECT"),
+    ("recallops_api", "webmcp_workflows", "UPDATE"),
     ("recallops_outbox", "evidence_outbox", "SELECT"),
     ("recallops_outbox", "evidence_outbox", "UPDATE"),
 }
@@ -141,6 +144,14 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     (memory_b, memory_a),
                     "memories_supersession_tenant_fk",
                 ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO webmcp_workflows
+                       (workflow_id, tenant_id, state, epoch)
+                       VALUES (%s, 'boundary_b', 'INVESTIGATING', 1)""",
+                    (incident_a,),
+                    "webmcp_workflow_incident_fk",
+                ),
             ]
         finally:
             # Verification is non-destructive even when pointed at a persistent
@@ -209,6 +220,7 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "SELECT * FROM schema_migrations LIMIT 0"),
         ("recallops_api", "UPDATE evidence_outbox SET attempts=attempts WHERE false"),
         ("recallops_api", "CREATE TABLE runtime_privilege_escape (id INT PRIMARY KEY)"),
+        ("recallops_api", "DELETE FROM webmcp_workflows WHERE false"),
         ("recallops_outbox", "SELECT * FROM incidents LIMIT 0"),
         ("recallops_outbox", "INSERT INTO incidents DEFAULT VALUES"),
         ("recallops_outbox", "CREATE TABLE worker_privilege_escape (id INT PRIMARY KEY)"),

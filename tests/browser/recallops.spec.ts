@@ -116,6 +116,19 @@ async function installWebMcpHarness(page: Page) {
 }
 
 async function mockApi(page: Page, analysis: Analysis = successfulAnalysis) {
+  await page.route("**/v1/incidents/*/capabilities", (route) =>
+    route.fulfill({ json: {
+      workflow_id: analysis.incident_id,
+      state: analysis.proposed_action.requires_approval ? "AWAITING_OPERATOR_APPROVAL" : "INVESTIGATING",
+      epoch: 1,
+      active: true,
+      authority_owner: analysis.proposed_action.requires_approval ? "HUMAN_OPERATOR" : "AGENT",
+      available_tools: analysis.proposed_action.requires_approval
+        ? ["inspect_incident"]
+        : ["inspect_incident", "propose_mitigation"],
+      protected_tools: [],
+    } }),
+  );
   await page.route("**/v1/config", (route) =>
     route.fulfill({ json: { auth_required: false } }),
   );
@@ -263,7 +276,7 @@ test.describe("judge console", () => {
     await expect(page.getByText(/ACTIVE MEMORY · 00000000/)).toBeVisible();
 
     expect(identities).toEqual([
-      { path: "outcome", header: "demo-observer", actor: "demo-observer" },
+      { path: "outcome", header: "demo-operator", actor: "demo-operator" },
       { path: "governance", header: "demo-reviewer", actor: "demo-reviewer" },
     ]);
   });
@@ -344,6 +357,7 @@ test.describe("judge console", () => {
 
     await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
     await expect(page.locator("#webmcp-state")).toHaveText("AWAITING_OPERATOR_APPROVAL");
+    await expect(page.locator("#webmcp-epoch")).toHaveText("1");
     await expect(page.locator("#webmcp-authority")).toHaveText("HUMAN_OPERATOR");
     await expect(page.locator("#webmcp-withheld")).toContainText("propose_mitigation — unresolved proposal");
     await expect(page.locator("#webmcp-events")).toContainText("propose_mitigation withdrawn");

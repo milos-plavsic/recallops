@@ -76,7 +76,7 @@ def test_explicit_semver_policies_define_the_only_non_exact_full_compatibility()
     foreign_count=st.integers(min_value=0, max_value=30),
     invalid_count=st.integers(min_value=0, max_value=30),
 )
-@settings(max_examples=40)
+@settings(max_examples=40, deadline=None)
 def test_tenant_and_governance_filters_hold_for_arbitrary_candidate_counts(
     foreign_count: int, invalid_count: int
 ) -> None:

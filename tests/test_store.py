@@ -223,3 +223,9 @@ def test_postgres_analysis_upsert_requires_a_returned_row() -> None:
     ).analyze(incident)
     with pytest.raises(RuntimeError, match="incident upsert"):
         postgres_with_rows([None]).save_analysis(incident, analysis)
+
+
+def test_postgres_get_memory_is_tenant_scoped() -> None:
+    memory = active_memory()
+    assert postgres_with_rows([database_row(memory)]).get_memory(memory.id, "demo") == memory
+    assert postgres_with_rows([None]).get_memory(memory.id, "other") is None

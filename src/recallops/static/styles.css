@@ -79,7 +79,7 @@ textarea { resize: vertical; }
 .capability-heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
 .capability-heading h3 { margin: .2rem 0 0; font-size: 1rem; }
 .capability-heading .eyebrow { margin: 0; font-size: .62rem; }
-.capability-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; margin: .9rem 0; }
+.capability-meta { display: grid; grid-template-columns: repeat(3, 1fr); gap: .5rem; margin: .9rem 0; }
 .capability-meta div { border: 1px solid var(--line); padding: .55rem; }
 .capability-meta dt { color: var(--muted); font-size: .65rem; text-transform: uppercase; }
 .capability-meta dd { margin: .15rem 0 0; color: var(--cyan); font: 700 .76rem ui-monospace, monospace; overflow-wrap: anywhere; }

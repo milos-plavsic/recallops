@@ -12,6 +12,7 @@ from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
 from recallops.archive import evidence_payload
+from recallops.db_retry import run_serializable
 from recallops.domain import (
     ApprovalDecision,
     CompatibilityPolicy,
@@ -170,6 +171,7 @@ class MemoryStore(Protocol):
     ) -> IncidentAnalysis: ...
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None: ...
     def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None: ...
+    def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None: ...
     def save_outcome_memory(self, memory: Memory) -> Memory: ...
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None: ...
     def record_approval(
@@ -247,6 +249,16 @@ class InMemoryStore:
 
     def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None:
         return self.incidents.get((tenant_id, incident_id))
+
+    def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None:
+        return next(
+            (
+                memory
+                for memory in self.memories
+                if memory.id == memory_id and memory.tenant_id == tenant_id
+            ),
+            None,
+        )
 
     def save_outcome_memory(self, memory: Memory) -> Memory:
         if memory.source_incident_id is None:
@@ -376,9 +388,10 @@ class PostgresStore:
         return Memory.model_validate(row)
 
     def add_memory(self, memory: Memory) -> None:
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(  # nosec B608  # nosemgrep
-                """INSERT INTO memories
+        def add_once() -> None:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(  # nosec B608  # nosemgrep
+                    """INSERT INTO memories
                 (id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
@@ -388,34 +401,36 @@ class PostgresStore:
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
                         %s::JSONB,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (id) DO NOTHING""",
-                (
-                    memory.id,
-                    memory.tenant_id,
-                    memory.service,
-                    memory.service_version,
-                    memory.compatibility_policy,
-                    memory.compatibility_policy_version,
-                    memory.symptom,
-                    memory.action,
-                    memory.outcome,
-                    memory.outcome_score,
-                    memory.confidence,
-                    memory.valid,
-                    memory.state,
-                    memory.superseded_by,
-                    memory.source_incident_id,
-                    memory.observed_by,
-                    memory.evidence_verification,
-                    json.dumps(memory.evidence_refs),
-                    memory.observation_window_seconds,
-                    json.dumps(memory.postconditions),
-                    memory.reviewed_by,
-                    memory.reviewed_at,
-                    memory.embedding_space,
-                    self._vector(memory.embedding),
-                    memory.created_at,
-                ),
-            )
+                    (
+                        memory.id,
+                        memory.tenant_id,
+                        memory.service,
+                        memory.service_version,
+                        memory.compatibility_policy,
+                        memory.compatibility_policy_version,
+                        memory.symptom,
+                        memory.action,
+                        memory.outcome,
+                        memory.outcome_score,
+                        memory.confidence,
+                        memory.valid,
+                        memory.state,
+                        memory.superseded_by,
+                        memory.source_incident_id,
+                        memory.observed_by,
+                        memory.evidence_verification,
+                        json.dumps(memory.evidence_refs),
+                        memory.observation_window_seconds,
+                        json.dumps(memory.postconditions),
+                        memory.reviewed_by,
+                        memory.reviewed_at,
+                        memory.embedding_space,
+                        self._vector(memory.embedding),
+                        memory.created_at,
+                    ),
+                )
+
+        run_serializable(add_once)
 
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
@@ -525,53 +540,56 @@ class PostgresStore:
     def save_analysis(
         self, incident: IncidentCreate, analysis: IncidentAnalysis
     ) -> IncidentAnalysis:
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """INSERT INTO incidents
-                (id, tenant_id, service, service_version, symptom,
-                 idempotency_key, status, analysis)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s::JSONB)
-                ON CONFLICT (tenant_id, idempotency_key)
-                DO UPDATE SET idempotency_key=excluded.idempotency_key
-                RETURNING id, analysis""",
-                (
-                    analysis.incident_id,
-                    incident.tenant_id,
-                    incident.service,
-                    incident.service_version,
-                    incident.symptom,
-                    incident.idempotency_key,
-                    analysis.status,
-                    analysis.model_dump_json(),
-                ),
-            )
-            raw_row = cursor.fetchone()
-            if raw_row is None:
-                raise RuntimeError("incident upsert returned no row")
-            row = dict(raw_row)
-            saved = IncidentAnalysis.model_validate(row["analysis"])
-            payload = evidence_payload(incident, saved)
-            try:
-                # CockroachDB requires SELECT on the conflict target for
-                # INSERT ... ON CONFLICT. Keep the API role insert-only instead:
-                # a nested transaction creates a savepoint so an idempotent replay
-                # rolls back only the duplicate outbox insert, not the incident.
-                with connection.transaction():
-                    cursor.execute(
-                        """INSERT INTO evidence_outbox
-                        (id, incident_id, tenant_id, service, service_version, payload)
-                        VALUES (gen_random_uuid(),%s,%s,%s,%s,%s::JSONB)""",
-                        (
-                            saved.incident_id,
-                            incident.tenant_id,
-                            incident.service,
-                            incident.service_version,
-                            json.dumps(payload, separators=(",", ":")),
-                        ),
-                    )
-            except UniqueViolation:
-                pass
-        return saved
+        def save_once() -> IncidentAnalysis:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO incidents
+                    (id, tenant_id, service, service_version, symptom,
+                     idempotency_key, status, analysis)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s::JSONB)
+                    ON CONFLICT (tenant_id, idempotency_key)
+                    DO UPDATE SET idempotency_key=excluded.idempotency_key
+                    RETURNING id, analysis""",
+                    (
+                        analysis.incident_id,
+                        incident.tenant_id,
+                        incident.service,
+                        incident.service_version,
+                        incident.symptom,
+                        incident.idempotency_key,
+                        analysis.status,
+                        analysis.model_dump_json(),
+                    ),
+                )
+                raw_row = cursor.fetchone()
+                if raw_row is None:
+                    raise RuntimeError("incident upsert returned no row")
+                row = dict(raw_row)
+                saved = IncidentAnalysis.model_validate(row["analysis"])
+                payload = evidence_payload(incident, saved)
+                try:
+                    # CockroachDB requires SELECT on the conflict target for
+                    # INSERT ... ON CONFLICT. Keep the API role insert-only instead:
+                    # a nested transaction creates a savepoint so an idempotent replay
+                    # rolls back only the duplicate outbox insert, not the incident.
+                    with connection.transaction():
+                        cursor.execute(
+                            """INSERT INTO evidence_outbox
+                            (id, incident_id, tenant_id, service, service_version, payload)
+                            VALUES (gen_random_uuid(),%s,%s,%s,%s,%s::JSONB)""",
+                            (
+                                saved.incident_id,
+                                incident.tenant_id,
+                                incident.service,
+                                incident.service_version,
+                                json.dumps(payload, separators=(",", ":")),
+                            ),
+                        )
+                except UniqueViolation:
+                    pass
+            return saved
+
+        return run_serializable(save_once)
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -595,12 +613,29 @@ class PostgresStore:
             raw_row = cursor.fetchone()
         return IncidentCreate.model_validate(dict(raw_row)) if raw_row is not None else None
 
+    def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, tenant_id, service, service_version, compatibility_policy,
+                 compatibility_policy_version, symptom, action, outcome,
+                 outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                 observed_by, evidence_verification, evidence_refs,
+                 observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 embedding_space, embedding::STRING AS embedding, created_at
+                 FROM memories WHERE id=%s AND tenant_id=%s""",
+                (memory_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        return self._memory(row) if row is not None else None
+
     def save_outcome_memory(self, memory: Memory) -> Memory:
         if memory.source_incident_id is None:
             raise ValueError("outcome memory requires a source incident")
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """INSERT INTO memories
+
+        def save_once() -> Memory:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO memories
                 (id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
                  outcome_score, confidence, valid, state, superseded_by, source_incident_id,
@@ -619,40 +654,47 @@ class PostgresStore:
                  embedding_space,
                  embedding::STRING AS embedding,
                  created_at""",
-                (
-                    memory.id,
-                    memory.tenant_id,
-                    memory.service,
-                    memory.service_version,
-                    memory.compatibility_policy,
-                    memory.compatibility_policy_version,
-                    memory.symptom,
-                    memory.action,
-                    memory.outcome,
-                    memory.outcome_score,
-                    memory.confidence,
-                    memory.valid,
-                    memory.state,
-                    memory.superseded_by,
-                    memory.source_incident_id,
-                    memory.observed_by,
-                    memory.evidence_verification,
-                    json.dumps(memory.evidence_refs),
-                    memory.observation_window_seconds,
-                    json.dumps(memory.postconditions),
-                    memory.reviewed_by,
-                    memory.reviewed_at,
-                    memory.embedding_space,
-                    self._vector(memory.embedding),
-                    memory.created_at,
-                ),
-            )
-            raw_row = cursor.fetchone()
-        if raw_row is None:
-            raise RuntimeError("outcome memory upsert returned no row")
-        return self._memory(raw_row)
+                    (
+                        memory.id,
+                        memory.tenant_id,
+                        memory.service,
+                        memory.service_version,
+                        memory.compatibility_policy,
+                        memory.compatibility_policy_version,
+                        memory.symptom,
+                        memory.action,
+                        memory.outcome,
+                        memory.outcome_score,
+                        memory.confidence,
+                        memory.valid,
+                        memory.state,
+                        memory.superseded_by,
+                        memory.source_incident_id,
+                        memory.observed_by,
+                        memory.evidence_verification,
+                        json.dumps(memory.evidence_refs),
+                        memory.observation_window_seconds,
+                        json.dumps(memory.postconditions),
+                        memory.reviewed_by,
+                        memory.reviewed_at,
+                        memory.embedding_space,
+                        self._vector(memory.embedding),
+                        memory.created_at,
+                    ),
+                )
+                raw_row = cursor.fetchone()
+            if raw_row is None:
+                raise RuntimeError("outcome memory upsert returned no row")
+            return self._memory(raw_row)
+
+        return run_serializable(save_once)
 
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
+        return run_serializable(lambda: self._govern_memory_once(memory_id, request))
+
+    def _govern_memory_once(
+        self, memory_id: UUID, request: MemoryGovernanceRequest
+    ) -> Memory | None:
         columns = """id, tenant_id, service, service_version, compatibility_policy,
             compatibility_policy_version, symptom, action, outcome,
             outcome_score, confidence, valid, state, superseded_by, source_incident_id,
@@ -729,14 +771,17 @@ class PostgresStore:
     def record_approval(
         self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
     ) -> bool:
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """INSERT INTO approvals (incident_id, tenant_id, actor_id, approved, reason)
+        def record_once() -> bool:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO approvals (incident_id, tenant_id, actor_id, approved, reason)
                 SELECT id, tenant_id, %s, %s, %s FROM incidents WHERE id=%s AND tenant_id=%s
                 ON CONFLICT (incident_id) DO NOTHING RETURNING incident_id""",
-                (actor_id, approved, reason, incident_id, tenant_id),
-            )
-            return cursor.fetchone() is not None
+                    (actor_id, approved, reason, incident_id, tenant_id),
+                )
+                return cursor.fetchone() is not None
+
+        return run_serializable(record_once)
 
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -749,35 +794,38 @@ class PostgresStore:
         return ApprovalDecision.model_validate(dict(row)) if row is not None else None
 
     def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation:
-        with self._pool.connection() as connection, connection.cursor() as cursor:
-            cursor.execute(
-                """INSERT INTO execution_attestations
+        def record_once() -> ExecutionAttestation:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO execution_attestations
                 (incident_id, tenant_id, actor_id, action_hash, action_taken, evidence_refs,
                  evidence_verification, created_at) VALUES (%s,%s,%s,%s,%s,%s::JSONB,%s,%s)
                 ON CONFLICT (incident_id) DO UPDATE SET incident_id=excluded.incident_id
                 RETURNING incident_id, tenant_id, actor_id, action_hash, action_taken,
                   evidence_refs, evidence_verification, created_at""",
-                (
-                    execution.incident_id,
-                    execution.tenant_id,
-                    execution.actor_id,
-                    execution.action_hash,
-                    execution.action_taken,
-                    execution.model_dump_json(include={"evidence_refs"}),
-                    execution.evidence_verification,
-                    execution.created_at,
-                ),
-            )
-            row = cursor.fetchone()
-        if row is None:
-            raise RuntimeError("execution attestation upsert returned no row")
-        result = dict(row)
-        evidence = result["evidence_refs"]
-        result["evidence_refs"] = evidence.get("evidence_refs", evidence)
-        recorded = ExecutionAttestation.model_validate(result)
-        if recorded.action_hash != execution.action_hash:
-            raise MemoryGovernanceError("incident already has a different execution")
-        return recorded
+                    (
+                        execution.incident_id,
+                        execution.tenant_id,
+                        execution.actor_id,
+                        execution.action_hash,
+                        execution.action_taken,
+                        execution.model_dump_json(include={"evidence_refs"}),
+                        execution.evidence_verification,
+                        execution.created_at,
+                    ),
+                )
+                row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("execution attestation upsert returned no row")
+            result = dict(row)
+            evidence = result["evidence_refs"]
+            result["evidence_refs"] = evidence.get("evidence_refs", evidence)
+            recorded = ExecutionAttestation.model_validate(result)
+            if recorded.action_hash != execution.action_hash:
+                raise MemoryGovernanceError("incident already has a different execution")
+            return recorded
+
+        return run_serializable(record_once)
 
     def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:

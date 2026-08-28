@@ -1,4 +1,5 @@
 from unittest.mock import MagicMock
+from uuid import UUID
 
 import pytest
 from fastapi.testclient import TestClient
@@ -10,13 +11,22 @@ from recallops.embedding import DeterministicEmbedder
 from recallops.resilience import DependencyUnavailable
 from recallops.service import IncidentWorkflowError
 from recallops.store import InMemoryStore
+from recallops.workflow import RequestChannel, WorkflowState
 
 
 def execute_analyzed_action(client: TestClient, incident: dict, headers: dict[str, str]) -> str:
     action = incident["proposed_action"]
+    workflow = client.get(
+        f"/v1/incidents/{incident['incident_id']}/capabilities", headers=headers
+    ).json()
+    workflow_headers = {
+        **headers,
+        "X-RecallOps-Channel": "ui",
+        "X-Workflow-Epoch": str(workflow["epoch"]),
+    }
     response = client.post(
         f"/v1/incidents/{incident['incident_id']}/execution",
-        headers=headers,
+        headers=workflow_headers,
         json={
             "tenant_id": headers["X-Tenant-ID"],
             "actor_id": headers["X-Actor-ID"],
@@ -27,6 +37,17 @@ def execute_analyzed_action(client: TestClient, incident: dict, headers: dict[st
     )
     assert response.status_code == 201
     return action["command"]
+
+
+def authoritative_headers(
+    client: TestClient, incident_id: str, headers: dict[str, str]
+) -> dict[str, str]:
+    workflow = client.get(f"/v1/incidents/{incident_id}/capabilities", headers=headers).json()
+    return {
+        **headers,
+        "X-RecallOps-Channel": "ui",
+        "X-Workflow-Epoch": str(workflow["epoch"]),
+    }
 
 
 def test_judge_console_and_live_evaluation_are_served() -> None:
@@ -135,8 +156,16 @@ def test_readiness_fails_closed(mode: str) -> None:
 def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.MonkeyPatch) -> None:
     app = create_app(Settings(store="memory"), InMemoryStore())
     client = TestClient(app)
-    headers = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator"}
+    headers = {
+        "X-Tenant-ID": "demo",
+        "X-Actor-ID": "operator",
+        "X-Roles": "operator",
+        "X-RecallOps-Channel": "ui",
+        "X-Workflow-Epoch": "1",
+    }
     incident_id = "00000000-0000-0000-0000-000000000001"
+    workflow_id = UUID(incident_id)
+    app.state.workflows.ensure_for_analysis("demo", workflow_id, "0" * 64, mutating=True)
     approval = {
         "tenant_id": "demo",
         "actor_id": "operator",
@@ -154,6 +183,18 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         ).status_code
         == 409
     )
+
+    app.state.workflows.transition(
+        workflow_id,
+        "demo",
+        1,
+        WorkflowState.AWAITING_OPERATOR_APPROVAL,
+        WorkflowState.APPROVED_AWAITING_EXECUTION,
+        channel=RequestChannel.UI,
+        actor_subject="operator",
+        role="operator",
+    )
+    headers["X-Workflow-Epoch"] = "2"
 
     execution = {
         "tenant_id": "demo",
@@ -176,13 +217,31 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         "attest_execution",
         MagicMock(side_effect=IncidentWorkflowError("execution conflict")),
     )
-    assert client.post(
-        f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
-    ).status_code == 409
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+        ).status_code
+        == 409
+    )
     monkeypatch.setattr(app.state.service, "attest_execution", MagicMock(return_value=None))
-    assert client.post(
-        f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
-    ).status_code == 404
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+        ).status_code
+        == 404
+    )
+
+    app.state.workflows.transition(
+        workflow_id,
+        "demo",
+        2,
+        WorkflowState.APPROVED_AWAITING_EXECUTION,
+        WorkflowState.OBSERVING_POSTCHECK,
+        channel=RequestChannel.UI,
+        actor_subject="operator",
+        role="operator",
+    )
+    headers["X-Workflow-Epoch"] = "3"
 
     outcome = {
         "tenant_id": "demo",
@@ -204,9 +263,12 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         "learn_outcome",
         MagicMock(side_effect=IncidentWorkflowError("outcome conflict")),
     )
-    assert client.post(
-        f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome
-    ).status_code == 409
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome
+        ).status_code
+        == 409
+    )
 
 
 def test_execution_rejects_actor_mismatch_before_service_call() -> None:
@@ -273,15 +335,19 @@ def test_incident_read_and_single_approval() -> None:
     }
     assert (
         client.post(
-            f"/v1/incidents/{incident_id}/approval", headers=headers, json=approval
+            f"/v1/incidents/{incident_id}/approval",
+            headers=authoritative_headers(client, incident_id, headers),
+            json=approval,
         ).status_code
         == 200
     )
     assert (
         client.post(
-            f"/v1/incidents/{incident_id}/approval", headers=headers, json=approval
+            f"/v1/incidents/{incident_id}/approval",
+            headers={**headers, "X-RecallOps-Channel": "ui", "X-Workflow-Epoch": "1"},
+            json=approval,
         ).status_code
-        == 404
+        == 409
     )
 
 
@@ -334,11 +400,15 @@ def test_outcome_is_learned_once_and_embedding_is_not_exposed() -> None:
         "confidence": 0.97,
         "actor_id": "operator-observer",
     }
-    first = client.post(f"/v1/incidents/{incident_id}/outcome", headers=headers, json=payload)
-    second = client.post(f"/v1/incidents/{incident_id}/outcome", headers=headers, json=payload)
+    outcome_headers = authoritative_headers(client, incident_id, headers)
+    first = client.post(
+        f"/v1/incidents/{incident_id}/outcome", headers=outcome_headers, json=payload
+    )
+    second = client.post(
+        f"/v1/incidents/{incident_id}/outcome", headers=outcome_headers, json=payload
+    )
     assert first.status_code == 201
-    assert second.status_code == 201
-    assert first.json()["id"] == second.json()["id"]
+    assert second.status_code == 409
     assert "embedding" not in first.json()
     assert first.json()["state"] == "pending_review"
 
@@ -394,7 +464,7 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
     action_taken = execute_analyzed_action(client, incident, observer_headers)
     memory = client.post(
         f"/v1/incidents/{incident['incident_id']}/outcome",
-        headers=observer_headers,
+        headers=authoritative_headers(client, incident["incident_id"], observer_headers),
         json={
             "tenant_id": "demo",
             "action_taken": action_taken,
@@ -406,7 +476,7 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
     ).json()
     self_review = client.post(
         f"/v1/memories/{memory['id']}/governance",
-        headers=observer_headers,
+        headers=authoritative_headers(client, incident["incident_id"], observer_headers),
         json={
             "tenant_id": "demo",
             "actor_id": "operator-observer",
@@ -418,7 +488,11 @@ def test_memory_governance_enforces_four_eyes_and_tenant_boundary() -> None:
 
     activated = client.post(
         f"/v1/memories/{memory['id']}/governance",
-        headers={"X-Tenant-ID": "demo", "X-Actor-ID": "operator-reviewer"},
+        headers=authoritative_headers(
+            client,
+            incident["incident_id"],
+            {"X-Tenant-ID": "demo", "X-Actor-ID": "operator-reviewer"},
+        ),
         json={
             "tenant_id": "demo",
             "actor_id": "operator-reviewer",

@@ -6,13 +6,26 @@ const state = {
   key: null,
   config: null,
   identity: null,
-  webmcpPhase: sessionStorage.getItem("webmcp_phase") || "INVESTIGATING"
+  webmcpPhase: sessionStorage.getItem("webmcp_phase") || "INVESTIGATING",
+  workflowEpoch: Number(sessionStorage.getItem("workflow_epoch") || "0"),
+  webmcpTools: ["inspect_incident", "propose_mitigation"],
+  authorityOwner: "AGENT"
 };
 
 function setWebMcpPhase(phase, detail = {}) {
   state.webmcpPhase = phase;
+  if (detail.epoch) state.workflowEpoch = Number(detail.epoch);
+  if (detail.availableTools) state.webmcpTools = detail.availableTools;
+  if (detail.authorityOwner) state.authorityOwner = detail.authorityOwner;
   sessionStorage.setItem("webmcp_phase", phase);
-  window.dispatchEvent(new CustomEvent("recallops:webmcp-state", { detail: { phase, ...detail } }));
+  sessionStorage.setItem("workflow_epoch", String(state.workflowEpoch));
+  window.dispatchEvent(new CustomEvent("recallops:webmcp-state", { detail: {
+    phase,
+    epoch: state.workflowEpoch,
+    availableTools: state.webmcpTools,
+    authorityOwner: state.authorityOwner,
+    ...detail
+  } }));
 }
 
 function percentage(value) { return `${Math.round(value * 100)}%`; }
@@ -27,13 +40,18 @@ function base64Url(data) {
   return btoa(String.fromCharCode(...data)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 function accessToken() { return sessionStorage.getItem("access_token"); }
-function headers(actor = "demo-operator") {
+function headers(actor = "demo-operator", roles = "operator", channel = "ui", epoch = null) {
   const token = accessToken() || $("#token").value.trim();
-  return token ? { Authorization: `Bearer ${token}`, "Content-Type": "application/json" } : {
+  const context = {
+    "Content-Type": "application/json",
+    "X-RecallOps-Channel": channel,
+    ...(epoch ? { "X-Workflow-Epoch": String(epoch) } : {})
+  };
+  return token ? { Authorization: `Bearer ${token}`, ...context } : {
     "X-Tenant-ID": $("#tenant").value,
     "X-Actor-ID": actor,
-    "X-Roles": "operator,reviewer",
-    "Content-Type": "application/json"
+    "X-Roles": roles,
+    ...context
   };
 }
 async function request(path, options = {}) {
@@ -100,15 +118,30 @@ function renderAnalysis(analysis) {
   $("#execute").disabled = state.action.requires_approval;
   $("#observe").disabled = true;
 }
-async function runAnalysis(payload, { signal, advancePhase = true } = {}) {
+function applyWorkflowManifest(manifest) {
+  setWebMcpPhase(manifest.state, {
+    epoch: manifest.epoch,
+    availableTools: manifest.available_tools,
+    authorityOwner: manifest.authority_owner
+  });
+}
+async function refreshWorkflow({ signal } = {}) {
+  if (!state.incidentId) return null;
+  const manifest = await request(`/v1/incidents/${state.incidentId}/capabilities`, {
+    headers: headers("demo-agent", "agent", "webmcp"), signal
+  });
+  applyWorkflowManifest(manifest);
+  return manifest;
+}
+async function runAnalysis(payload, { signal, channel = "ui", refresh = true } = {}) {
   $("#analyze").disabled = true; $("#analyze").setAttribute("aria-busy", "true"); $("#result").innerHTML = `<p class="muted loading">Embedding incident and applying governance gates…</p>`;
   try {
-    const result = await request("/v1/incidents", { method: "POST", headers: headers(), body: JSON.stringify(payload), signal });
+    const requestHeaders = channel === "webmcp"
+      ? headers("demo-agent", "agent", "webmcp")
+      : headers("demo-operator", "operator", "ui");
+    const result = await request("/v1/incidents", { method: "POST", headers: requestHeaders, body: JSON.stringify(payload), signal });
     state.incidentId = result.incident_id; sessionStorage.setItem("incident_id", state.incidentId); renderAnalysis(result);
-    if (advancePhase) {
-      const phase = result.proposed_action.requires_approval ? "AWAITING_OPERATOR_APPROVAL" : "INVESTIGATING";
-      setWebMcpPhase(phase, { proposalHash: result.proposed_action.action_hash });
-    }
+    if (refresh) await refreshWorkflow({ signal });
     return result;
   } finally {
     $("#analyze").disabled = false; $("#analyze").removeAttribute("aria-busy");
@@ -120,34 +153,51 @@ async function analyze(event) {
 }
 async function approve() {
   try {
-    await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers(), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), reason: "operator verified the exact action and current incident evidence" }) });
+    const result = await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), reason: "operator verified the exact action and current incident evidence" }) });
     $("#stage-approve").classList.add("active"); $("#approve").disabled = true; $("#execute").disabled = false;
-    setWebMcpPhase("APPROVED_AWAITING_EXECUTION", { incidentId: state.incidentId });
+    if (result.workflow) applyWorkflowManifest(result.workflow); else await refreshWorkflow();
   } catch (error) { showError(error); }
 }
 async function execute() {
   try {
-    await request(`/v1/incidents/${state.incidentId}/execution`, { method: "POST", headers: headers(), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), action_hash: state.action.action_hash, action_taken: state.action.command, evidence_refs: [`urn:recallops:execution:${Date.now()}`] }) });
+    await request(`/v1/incidents/${state.incidentId}/execution`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), action_hash: state.action.action_hash, action_taken: state.action.command, evidence_refs: [`urn:recallops:execution:${Date.now()}`] }) });
     $("#stage-execute").classList.add("active"); $("#execute").disabled = true; $("#observe").disabled = false;
+    await refreshWorkflow();
   } catch (error) { showError(error); }
 }
 async function observe() {
   try {
-    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-observer"), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor("demo-observer") }) });
+    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor("demo-operator") }) });
     state.memoryId = result.id; sessionStorage.setItem("memory_id", state.memoryId); $("#stage-observe").classList.add("active"); $("#review").disabled = false; $("#observe").disabled = true;
+    await refreshWorkflow();
     $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
   } catch (error) { showError(error); }
 }
 async function review() {
   try {
-    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer"), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
+    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer", "reviewer", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: "demo-reviewer", action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
+    await refreshWorkflow();
     $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY · ${escapeHtml(shortId(state.memoryId))}</span><h3>Independent review completed.</h3><p>The same memory is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
   } catch (error) { showError(error); }
 }
 async function recall() {
   state.key = `judge-recall-${Date.now()}`;
   await analyze(); $("#stage-recall").classList.add("active");
+}
+async function resetWorkflow() {
+  try {
+    if (state.incidentId && state.workflowEpoch) {
+      await request(`/v1/incidents/${state.incidentId}/reset`, {
+        method: "POST",
+        headers: headers("demo-operator", "operator", "ui", state.workflowEpoch)
+      });
+    }
+    for (const key of ["incident_id", "memory_id", "webmcp_phase", "workflow_epoch"]) {
+      sessionStorage.removeItem(key);
+    }
+    location.assign("/");
+  } catch (error) { showError(error); }
 }
 function loadSafeFailure() {
   $("#version").value = "2099.01";
@@ -188,14 +238,16 @@ async function proposeForWebMcp(input, { signal } = {}) {
   if (service.length > 80 || serviceVersion.length > 80 || symptom.length > 500) throw new Error("incident input exceeds its bounded schema");
   $("#service").value = service; $("#version").value = serviceVersion; $("#symptom").value = symptom;
   state.key = `webmcp-${Date.now()}-${randomBase64Url(12)}`;
-  return runAnalysis(incidentPayload(), { signal, advancePhase: false });
+  return runAnalysis(incidentPayload(), { signal, channel: "webmcp", refresh: false });
 }
 
 window.recallOpsWebMcpHost = Object.freeze({
   getPhase: () => state.webmcpPhase,
+  getCapabilities: () => [...state.webmcpTools],
+  getAuthorityOwner: () => state.authorityOwner,
   inspectIncident: inspectForWebMcp,
   proposeMitigation: proposeForWebMcp,
-  markProposalCreated: (proposalHash) => setWebMcpPhase("AWAITING_OPERATOR_APPROVAL", { proposalHash })
+  refreshWorkflow
 });
 async function signIn() {
   const verifier = randomBase64Url(64);
@@ -251,6 +303,7 @@ async function initialize() {
     $("#case-count").textContent = `${report.case_count} adversarial cases`;
     $("#benchmark-status").textContent = report.passed ? "Synthetic policy suite passing" : "Policy suite failed";
     $("#benchmark-status").title = `${report.case_count} deterministic cases; this is not an end-to-end provider benchmark`;
+    if (state.incidentId) await refreshWorkflow();
     if (state.memoryId) { $("#loop-actions").hidden = false; $("#review").disabled = false; }
   } catch (error) { $("#health-label").textContent = "API unavailable"; $("#provider-status").textContent = "API/provider status unavailable"; showError(error); }
 }
@@ -258,4 +311,5 @@ $("#incident-form").addEventListener("submit", analyze);
 $("#safe-failure").addEventListener("click", loadSafeFailure);
 $("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
 $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("click", signOut);
+$("#reset-workflow").addEventListener("click", resetWorkflow);
 initialize();

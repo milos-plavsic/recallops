@@ -5,6 +5,7 @@
   const modelContext = document.modelContext;
   const status = document.querySelector("#webmcp-status");
   const phaseNode = document.querySelector("#webmcp-state");
+  const epochNode = document.querySelector("#webmcp-epoch");
   const authorityNode = document.querySelector("#webmcp-authority");
   const availableNode = document.querySelector("#webmcp-available");
   const withheldNode = document.querySelector("#webmcp-withheld");
@@ -23,14 +24,16 @@
     return { content: [{ type: "text", text: JSON.stringify(value) }] };
   }
 
-  function desiredTools(phase) {
-    return phase === "INVESTIGATING" ? ["inspect_incident", "propose_mitigation"] : ["inspect_incident"];
+  function desiredTools(phase, serverTools = host.getCapabilities()) {
+    const implemented = new Set(Object.keys(definitions));
+    return serverTools.filter((name) => implemented.has(name));
   }
 
-  function render(phase) {
-    const desired = desiredTools(phase);
+  function render(phase, serverTools) {
+    const desired = desiredTools(phase, serverTools);
     phaseNode.textContent = phase;
-    authorityNode.textContent = phase === "INVESTIGATING" ? "AGENT" : "HUMAN_OPERATOR";
+    epochNode.textContent = String(sessionStorage.getItem("workflow_epoch") || "—");
+    authorityNode.textContent = host.getAuthorityOwner();
     availableNode.replaceChildren(...desired.map((name) => {
       const item = document.createElement("li"); item.textContent = name; return item;
     }));
@@ -73,9 +76,10 @@
         const approvalRequired = Boolean(result.proposed_action.requires_approval);
         if (approvalRequired) {
           activity("SYSTEM", `proposal ${String(result.proposed_action.action_hash).slice(0, 20)} staged`);
-          setTimeout(() => host.markProposalCreated(result.proposed_action.action_hash), 0);
+          setTimeout(() => host.refreshWorkflow(), 0);
         } else {
           activity("SYSTEM", "analysis abstained; no mutating proposal staged");
+          setTimeout(() => host.refreshWorkflow(), 0);
         }
         return textResult({
           incident_id: result.incident_id,
@@ -95,8 +99,8 @@
     }
   };
 
-  async function reconcile(phase) {
-    render(phase);
+  async function reconcile(phase, serverTools = host.getCapabilities()) {
+    render(phase, serverTools);
     if (!modelContext?.registerTool) {
       status.textContent = "WebMCP unavailable · manual controls remain";
       status.classList.add("neutral");
@@ -106,7 +110,7 @@
     }
 
     status.textContent = "Native WebMCP active";
-    const desired = new Set(desiredTools(phase));
+    const desired = new Set(desiredTools(phase, serverTools));
     for (const [name, controller] of registrations) {
       if (!desired.has(name)) {
         controller.abort(); registrations.delete(name);
@@ -128,6 +132,6 @@
     }
   }
 
-  window.addEventListener("recallops:webmcp-state", (event) => reconcile(event.detail.phase));
-  reconcile(host.getPhase());
+  window.addEventListener("recallops:webmcp-state", (event) => reconcile(event.detail.phase, event.detail.availableTools));
+  reconcile(host.getPhase(), host.getCapabilities());
 })();

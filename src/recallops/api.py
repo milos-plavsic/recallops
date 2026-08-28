@@ -27,6 +27,7 @@ from recallops.domain import (
     CompatibilityPolicy,
     ExecutionAttestation,
     ExecutionAttestationRequest,
+    GovernanceAction,
     IncidentAnalysis,
     IncidentCreate,
     Memory,
@@ -44,6 +45,14 @@ from recallops.service import (
     IncidentWorkflowError,
 )
 from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
+from recallops.workflow import (
+    InMemoryWorkflowRepository,
+    PostgresWorkflowRepository,
+    RequestChannel,
+    WorkflowConflict,
+    WorkflowCoordinator,
+    WorkflowState,
+)
 
 
 def create_app(settings: Settings | None = None, store: MemoryStore | None = None) -> FastAPI:
@@ -146,10 +155,21 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         diagnostic_tools=diagnostic_tools,
     )
     authenticator = create_authenticator(settings)
+    workflow_repository = (
+        PostgresWorkflowRepository(
+            settings.database_url,
+            settings.database_connect_timeout_seconds,
+            settings.database_statement_timeout_seconds,
+        )
+        if isinstance(store, PostgresStore)
+        else InMemoryWorkflowRepository()
+    )
+    workflows = WorkflowCoordinator(workflow_repository)
 
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
     app.state.store = store
     app.state.service = service
+    app.state.workflows = workflows
 
     oidc_connect_origin = ""
     if settings.oidc_token_url:
@@ -203,6 +223,64 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
 
     AuthenticatedPrincipal = Annotated[Principal, Depends(principal)]
+
+    def channel(value: str | None) -> RequestChannel:
+        try:
+            return RequestChannel(value or RequestChannel.UI)
+        except ValueError as error:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "invalid request channel") from error
+
+    def transition_workflow(
+        incident_id: UUID,
+        identity: Principal,
+        expected_epoch: int | None,
+        channel_name: str | None,
+        expected_state: WorkflowState,
+        target_state: WorkflowState,
+        role: str,
+    ) -> object:
+        request_channel = channel(channel_name)
+        if expected_epoch is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+        try:
+            return workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                expected_epoch,
+                expected_state,
+                target_state,
+                channel=request_channel,
+                actor_subject=identity.subject,
+                role=role,
+            )
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    def validate_workflow(
+        incident_id: UUID,
+        identity: Principal,
+        expected_epoch: int | None,
+        channel_name: str | None,
+        expected_state: WorkflowState,
+        role: str,
+    ) -> object:
+        request_channel = channel(channel_name)
+        if workflows.get(incident_id, identity.tenant_id) is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident or workflow not found")
+        if expected_epoch is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+        try:
+            return workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                expected_epoch,
+                expected_state,
+                channel=request_channel,
+                actor_subject=identity.subject,
+                role=role,
+            )
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
     @app.get("/health")
     def health() -> dict[str, str]:
@@ -269,10 +347,24 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         response_model_exclude={"memories": {"__all__": {"memory": {"embedding"}}}},
         status_code=status.HTTP_201_CREATED,
     )
-    def analyze(payload: IncidentCreate, identity: AuthenticatedPrincipal) -> IncidentAnalysis:
+    def analyze(
+        payload: IncidentCreate,
+        identity: AuthenticatedPrincipal,
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+    ) -> IncidentAnalysis:
         if payload.tenant_id != identity.tenant_id:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload tenant differ")
-        return service.analyze(payload)
+        request_channel = channel(x_recallops_channel)
+        if request_channel is RequestChannel.WEBMCP and "agent" not in identity.roles:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "agent role required for WebMCP")
+        result = service.analyze(payload)
+        workflows.ensure_for_analysis(
+            identity.tenant_id,
+            result.incident_id,
+            result.proposed_action.action_hash,
+            result.proposed_action.requires_approval,
+        )
+        return result
 
     @app.get(
         "/v1/incidents/{incident_id}",
@@ -285,20 +377,65 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
         return result
 
+    @app.get("/v1/incidents/{incident_id}/capabilities")
+    def capabilities(incident_id: UUID, identity: AuthenticatedPrincipal) -> object:
+        result = workflows.capability_manifest(incident_id, identity.tenant_id)
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "workflow not found")
+        return result
+
     @app.post("/v1/incidents/{incident_id}/approval")
     def approve(
-        incident_id: UUID, payload: ApprovalRequest, identity: AuthenticatedPrincipal
-    ) -> dict[str, bool]:
+        incident_id: UUID,
+        payload: ApprovalRequest,
+        identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+    ) -> dict[str, object]:
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        validate_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            WorkflowState.AWAITING_OPERATOR_APPROVAL,
+            "operator",
+        )
         try:
             recorded = service.decide_approval(incident_id, payload)
         except IncidentWorkflowError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if not recorded:
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found or already decided")
-        return {"recorded": True}
+            existing = store.get_approval(incident_id, identity.tenant_id)
+            if (
+                existing is None
+                or existing.actor_id != identity.subject
+                or existing.approved != payload.approved
+            ):
+                raise HTTPException(
+                    status.HTTP_404_NOT_FOUND, "incident not found or already decided"
+                )
+        workflow = transition_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            WorkflowState.AWAITING_OPERATOR_APPROVAL,
+            (
+                WorkflowState.APPROVED_AWAITING_EXECUTION
+                if payload.approved
+                else WorkflowState.INVESTIGATING
+            ),
+            "operator",
+        )
+        return {"recorded": True, "workflow": workflow}
 
     @app.post(
         "/v1/incidents/{incident_id}/execution",
@@ -309,10 +446,36 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         incident_id: UUID,
         payload: ExecutionAttestationRequest,
         identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
     ) -> ExecutionAttestation:
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        current_workflow = workflows.get(incident_id, identity.tenant_id)
+        expected_state = (
+            current_workflow.state
+            if current_workflow is not None
+            else WorkflowState.APPROVED_AWAITING_EXECUTION
+        )
+        if expected_state not in {
+            WorkflowState.INVESTIGATING,
+            WorkflowState.APPROVED_AWAITING_EXECUTION,
+        }:
+            raise HTTPException(status.HTTP_409_CONFLICT, "execution is unavailable in this state")
+        validate_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            expected_state,
+            "operator",
+        )
         try:
             execution = service.attest_execution(incident_id, payload)
         except DependencyUnavailable as error:
@@ -325,6 +488,15 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if execution is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        transition_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            expected_state,
+            WorkflowState.OBSERVING_POSTCHECK,
+            "operator",
+        )
         return execution
 
     @app.post(
@@ -337,10 +509,25 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         incident_id: UUID,
         payload: OutcomeObservation,
         identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
     ) -> Memory:
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        validate_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            WorkflowState.OBSERVING_POSTCHECK,
+            "operator",
+        )
         try:
             memory = service.learn_outcome(incident_id, payload)
         except DependencyUnavailable as error:
@@ -353,6 +540,15 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if memory is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        transition_workflow(
+            incident_id,
+            identity,
+            x_workflow_epoch,
+            x_recallops_channel,
+            WorkflowState.OBSERVING_POSTCHECK,
+            WorkflowState.PENDING_REVIEW,
+            "operator",
+        )
         return memory
 
     @app.post(
@@ -364,17 +560,93 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         memory_id: UUID,
         payload: MemoryGovernanceRequest,
         identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
     ) -> Memory:
         require_role(identity, "reviewer")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        source_memory = store.get_memory(memory_id, identity.tenant_id)
+        source_incident_id = source_memory.source_incident_id if source_memory is not None else None
+        workflow_advanced = False
+        if source_incident_id is not None and workflows.get(source_incident_id, identity.tenant_id):
+            if x_workflow_epoch is None:
+                raise HTTPException(
+                    status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required"
+                )
+            try:
+                workflows.validate_transition(
+                    source_incident_id,
+                    identity.tenant_id,
+                    x_workflow_epoch,
+                    WorkflowState.PENDING_REVIEW,
+                    channel=channel(x_recallops_channel),
+                    actor_subject=identity.subject,
+                    role="reviewer",
+                )
+            except WorkflowConflict as error:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+            # Activation creates retrieval authority. Advance the capability guard first so a
+            # concurrent/stale reviewer can never activate memory and then lose the epoch race.
+            # If the subsequent governance write fails, memory remains non-retrievable.
+            if payload.action is GovernanceAction.ACTIVATE:
+                transition_workflow(
+                    source_incident_id,
+                    identity,
+                    x_workflow_epoch,
+                    x_recallops_channel,
+                    WorkflowState.PENDING_REVIEW,
+                    WorkflowState.REVIEWED,
+                    "reviewer",
+                )
+                workflow_advanced = True
         try:
             memory = service.govern_memory(memory_id, payload)
         except MemoryGovernanceError as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
         if memory is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "memory not found")
+        if memory.source_incident_id is not None and not workflow_advanced:
+            transition_workflow(
+                memory.source_incident_id,
+                identity,
+                x_workflow_epoch,
+                x_recallops_channel,
+                WorkflowState.PENDING_REVIEW,
+                WorkflowState.REVIEWED,
+                "reviewer",
+            )
         return memory
+
+    @app.post("/v1/incidents/{incident_id}/reset")
+    def reset_workflow(
+        incident_id: UUID,
+        identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int = Header(ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+    ) -> object:
+        require_role(identity, "operator")
+        request_channel = channel(x_recallops_channel)
+        if request_channel is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "reset is not authorized through WebMCP",
+            )
+        try:
+            return workflows.invalidate(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                channel=request_channel,
+                role="operator",
+            )
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
     static_directory = Path(__file__).with_name("static")
 
