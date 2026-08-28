@@ -66,6 +66,8 @@ def test_health() -> None:
     assert response.headers["x-content-type-options"] == "nosniff"
     assert response.headers["x-frame-options"] == "DENY"
     assert "frame-ancestors 'none'" in response.headers["content-security-policy"]
+    assert response.headers["origin-agent-cluster"] == "?1"
+    assert "tools=(self)" in response.headers["permissions-policy"]
     assert client.get("/live").json() == {"status": "alive"}
     assert client.get("/ready").json() == {"status": "ready"}
 

@@ -7,6 +7,7 @@
   <title>RecallOps — operational memory that learns what worked</title>
   <link rel="stylesheet" href="/assets/styles.css">
   <script src="/assets/app.js" defer></script>
+  <script src="/assets/webmcp.js" defer></script>
 </head>
 <body>
   <a class="skip-link" href="#main">Skip to main content</a>
@@ -62,6 +63,21 @@
         <div class="panel result-panel">
           <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-approve">2 Approve</span><span id="stage-execute">3 Execute</span><span id="stage-observe">4 Observe</span><span id="stage-review">5 Review</span><span id="stage-recall">6 Recall</span></div>
           <div id="provider-status" class="provider-status" role="status" aria-live="polite">Checking provider status…</div>
+          <section class="capability-inspector" aria-labelledby="capability-title">
+            <div class="capability-heading">
+              <div><span class="eyebrow">WEBMCP CAPABILITY INSPECTOR</span><h3 id="capability-title">Browser capability surface</h3></div>
+              <span id="webmcp-status" class="pill neutral">Detecting browser support</span>
+            </div>
+            <dl class="capability-meta">
+              <div><dt>Workflow state</dt><dd id="webmcp-state">INVESTIGATING</dd></div>
+              <div><dt>Authority owner</dt><dd id="webmcp-authority">AGENT</dd></div>
+            </dl>
+            <div class="capability-columns">
+              <div><b>Available to agent</b><ul id="webmcp-available"><li>Waiting for WebMCP registration</li></ul></div>
+              <div><b>Withheld by policy</b><ul id="webmcp-withheld"><li>Protected transitions are never exposed</li></ul></div>
+            </div>
+            <details class="webmcp-events" open><summary>WebMCP activity rail</summary><ol id="webmcp-events" aria-live="polite"></ol></details>
+          </section>
           <div id="result" class="result" role="status" aria-live="polite">
             <p class="empty">Submit the incident. The agent will retrieve governed memory, explain its choice, and require approval for any mutating action.</p>
           </div>

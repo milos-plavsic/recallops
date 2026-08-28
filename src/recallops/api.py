@@ -169,7 +169,10 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         )
         response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
         response.headers["Cross-Origin-Resource-Policy"] = "same-origin"
-        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        response.headers["Origin-Agent-Cluster"] = "?1"
+        response.headers["Permissions-Policy"] = (
+            "tools=(self), camera=(), microphone=(), geolocation=()"
+        )
         response.headers["Referrer-Policy"] = "no-referrer"
         response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         response.headers["X-Content-Type-Options"] = "nosniff"

@@ -99,6 +99,22 @@ const abstainedAnalysis = {
 
 type Analysis = typeof successfulAnalysis;
 
+async function installWebMcpHarness(page: Page) {
+  await page.addInitScript(() => {
+    const tools = new Map<string, { definition: any; options: any }>();
+    const modelContext = {
+      async registerTool(definition: any, options: any = {}) {
+        if (tools.has(definition.name)) throw new DOMException("duplicate tool", "InvalidStateError");
+        if (options.signal?.aborted) throw new DOMException("registration aborted", "AbortError");
+        tools.set(definition.name, { definition, options });
+        options.signal?.addEventListener("abort", () => tools.delete(definition.name), { once: true });
+      },
+    };
+    Object.defineProperty(document, "modelContext", { configurable: true, value: modelContext });
+    Object.defineProperty(window, "__webmcpTools", { configurable: true, value: tools });
+  });
+}
+
 async function mockApi(page: Page, analysis: Analysis = successfulAnalysis) {
   await page.route("**/v1/config", (route) =>
     route.fulfill({ json: { auth_required: false } }),
@@ -159,6 +175,7 @@ test.describe("judge console", () => {
     await expect(page.getByText(/small, synthetic, deterministic policy regression set/)).toBeVisible();
     await expect(page.getByText(/not an end-to-end retrieval benchmark/)).toBeVisible();
     await expect(page.getByText("API and memory ready")).toBeVisible();
+    await expect(page.getByText("WebMCP unavailable · manual controls remain")).toBeVisible();
     expect(consoleErrors).toEqual([]);
 
     const results = await new AxeBuilder({ page }).analyze();
@@ -205,6 +222,7 @@ test.describe("judge console", () => {
     await expect(page.getByText(/negative outcome evidence/)).toBeVisible();
     await expect(page.getByText("read only")).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeDisabled();
+    await expect(page.locator("#webmcp-state")).toHaveText("INVESTIGATING");
   });
 
   test("completes the local governed-memory loop with distinct observer and reviewer identities", async ({ page }) => {
@@ -263,5 +281,115 @@ test.describe("judge console", () => {
 
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth - innerWidth);
     expect(overflow).toBeLessThanOrEqual(0);
+  });
+
+  test("registers native tools, exposes accurate annotations, and withdraws proposal authority", async ({ page }) => {
+    await installWebMcpHarness(page);
+    await mockApi(page);
+    await page.goto("/");
+
+    await expect(page.getByText("Native WebMCP active")).toBeVisible();
+    await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
+      "inspect_incident",
+      "propose_mitigation",
+    ]);
+
+    const definitions = await page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.values()).map((entry: any) => ({
+        name: entry.definition.name,
+        annotations: entry.definition.annotations,
+        schema: entry.definition.inputSchema,
+      })),
+    );
+    expect(definitions).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        name: "inspect_incident",
+        annotations: { readOnlyHint: true, untrustedContentHint: true },
+        schema: expect.objectContaining({ additionalProperties: false }),
+      }),
+      expect.objectContaining({
+        name: "propose_mitigation",
+        annotations: { readOnlyHint: false, untrustedContentHint: true },
+        schema: expect.objectContaining({ required: ["service", "service_version", "symptom"], additionalProperties: false }),
+      }),
+    ]));
+
+    const inspection = await page.evaluate(async () => {
+      const tool = (window as any).__webmcpTools.get("inspect_incident").definition;
+      return JSON.parse((await tool.execute({})).content[0].text);
+    });
+    expect(inspection).toMatchObject({
+      incident_id: null,
+      service: "checkout",
+      workflow_state: "INVESTIGATING",
+      untrusted_fields: ["service", "service_version", "symptom"],
+    });
+
+    const proposal = await page.evaluate(async () => {
+      const entry = (window as any).__webmcpTools.get("propose_mitigation");
+      (window as any).__cachedProposalExecute = entry.definition.execute;
+      const response = await entry.definition.execute({
+        service: "checkout",
+        service_version: "2026.07.31",
+        symptom: "latency spike after connection pool exhaustion",
+      });
+      return JSON.parse(response.content[0].text);
+    });
+    expect(proposal).toMatchObject({
+      incident_id: successfulAnalysis.incident_id,
+      proposal_staged: true,
+      requires_human_approval: true,
+      proposed_action: { action_hash: "sha256:judge-action" },
+    });
+
+    await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
+    await expect(page.locator("#webmcp-state")).toHaveText("AWAITING_OPERATOR_APPROVAL");
+    await expect(page.locator("#webmcp-authority")).toHaveText("HUMAN_OPERATOR");
+    await expect(page.locator("#webmcp-withheld")).toContainText("propose_mitigation — unresolved proposal");
+    await expect(page.locator("#webmcp-events")).toContainText("propose_mitigation withdrawn");
+
+    const staleFailure = await page.evaluate(async () => {
+      try {
+        await (window as any).__cachedProposalExecute({ service: "checkout", service_version: "2026.07.31", symptom: "retry" });
+        return "unexpected success";
+      } catch (error) {
+        return (error as Error).message;
+      }
+    });
+    expect(staleFailure).toContain("unavailable in AWAITING_OPERATOR_APPROVAL");
+
+    const registeredNames = await page.evaluate(() => Array.from((window as any).__webmcpTools.keys()));
+    expect(registeredNames).not.toEqual(expect.arrayContaining([
+      "approve_proposal",
+      "apply_sandbox_mitigation",
+      "retry_observation",
+      "activate_memory",
+      "reject_memory",
+      "reset_demo",
+    ]));
+  });
+
+  test("keeps investigation available when policy abstains from a mutating proposal", async ({ page }) => {
+    await installWebMcpHarness(page);
+    await mockApi(page, abstainedAnalysis);
+    await page.goto("/");
+
+    const result = await page.evaluate(async () => {
+      const tool = (window as any).__webmcpTools.get("propose_mitigation").definition;
+      const response = await tool.execute({
+        service: "checkout",
+        service_version: "2099.01",
+        symptom: "latency spike with no compatible reviewed precedent",
+      });
+      return JSON.parse(response.content[0].text);
+    });
+
+    expect(result).toMatchObject({ proposal_staged: false, requires_human_approval: false });
+    await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
+      "inspect_incident",
+      "propose_mitigation",
+    ]);
+    await expect(page.locator("#webmcp-state")).toHaveText("INVESTIGATING");
+    await expect(page.locator("#webmcp-events")).toContainText("no mutating proposal staged");
   });
 });

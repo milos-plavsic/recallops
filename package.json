@@ -7,6 +7,7 @@
   },
   "scripts": {
     "test:browser": "playwright test",
+    "test:webmcp:native": "playwright test --config playwright.webmcp.config.ts",
     "test:browser:ui": "playwright test --ui"
   },
   "devDependencies": {

@@ -75,6 +75,21 @@ textarea { resize: vertical; }
 .timeline span { border-top: 2px solid var(--line); padding-top: .45rem; color: var(--muted); font: 700 .67rem ui-monospace, monospace; }
 .timeline span.active { border-color: var(--acid); color: var(--text); }
 .provider-status { border: 1px solid var(--line); padding: .65rem .8rem; color: var(--muted); font: 600 .72rem ui-monospace, monospace; margin-top: 1rem; }
+.capability-inspector { margin-top: 1rem; border: 1px solid #3a4a5f; border-left: 3px solid var(--cyan); padding: 1rem; background: #0b1119; }
+.capability-heading { display: flex; justify-content: space-between; align-items: start; gap: 1rem; }
+.capability-heading h3 { margin: .2rem 0 0; font-size: 1rem; }
+.capability-heading .eyebrow { margin: 0; font-size: .62rem; }
+.capability-meta { display: grid; grid-template-columns: repeat(2, 1fr); gap: .5rem; margin: .9rem 0; }
+.capability-meta div { border: 1px solid var(--line); padding: .55rem; }
+.capability-meta dt { color: var(--muted); font-size: .65rem; text-transform: uppercase; }
+.capability-meta dd { margin: .15rem 0 0; color: var(--cyan); font: 700 .76rem ui-monospace, monospace; overflow-wrap: anywhere; }
+.capability-columns { display: grid; grid-template-columns: repeat(2, 1fr); gap: 1rem; }
+.capability-columns b { font-size: .72rem; }
+.capability-columns ul { margin: .4rem 0 0; padding-left: 1.1rem; color: var(--muted); font: .7rem ui-monospace, monospace; }
+.capability-columns li { margin-block: .25rem; overflow-wrap: anywhere; }
+.webmcp-events { margin-top: .8rem; border-top: 1px solid var(--line); padding-top: .65rem; }
+.webmcp-events summary { color: var(--cyan); cursor: pointer; font-size: .72rem; font-weight: 700; }
+.webmcp-events ol { max-height: 8rem; overflow: auto; margin: .5rem 0 0; padding-left: 1.4rem; color: var(--muted); font: .68rem ui-monospace, monospace; }
 .result { padding-block: 1.5rem; }
 .result h3 { overflow-wrap: anywhere; font-size: 1.4rem; line-height: 1.25; }
 .result dl { display: grid; grid-template-columns: 9rem 1fr; gap: .45rem 1rem; }
@@ -128,5 +143,6 @@ footer { display: flex; justify-content: space-between; gap: 1rem; padding-block
   .metrics article { border-right: 0; border-bottom: 1px solid var(--line); }
   .timeline { grid-template-columns: repeat(3, 1fr); }
   .result dl { grid-template-columns: 1fr; }
+  .capability-heading, .capability-columns { display: grid; grid-template-columns: 1fr; }
   footer { flex-direction: column; }
 }

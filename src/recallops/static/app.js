@@ -5,8 +5,15 @@ const state = {
   action: null,
   key: null,
   config: null,
-  identity: null
+  identity: null,
+  webmcpPhase: sessionStorage.getItem("webmcp_phase") || "INVESTIGATING"
 };
+
+function setWebMcpPhase(phase, detail = {}) {
+  state.webmcpPhase = phase;
+  sessionStorage.setItem("webmcp_phase", phase);
+  window.dispatchEvent(new CustomEvent("recallops:webmcp-state", { detail: { phase, ...detail } }));
+}
 
 function percentage(value) { return `${Math.round(value * 100)}%`; }
 function randomBase64Url(bytes = 32) {
@@ -93,17 +100,29 @@ function renderAnalysis(analysis) {
   $("#execute").disabled = state.action.requires_approval;
   $("#observe").disabled = true;
 }
-async function analyze(event) {
-  event?.preventDefault(); $("#analyze").disabled = true; $("#analyze").setAttribute("aria-busy", "true"); $("#result").innerHTML = `<p class="muted loading">Embedding incident and applying governance gates…</p>`;
+async function runAnalysis(payload, { signal, advancePhase = true } = {}) {
+  $("#analyze").disabled = true; $("#analyze").setAttribute("aria-busy", "true"); $("#result").innerHTML = `<p class="muted loading">Embedding incident and applying governance gates…</p>`;
   try {
-    const result = await request("/v1/incidents", { method: "POST", headers: headers(), body: JSON.stringify(incidentPayload()) });
+    const result = await request("/v1/incidents", { method: "POST", headers: headers(), body: JSON.stringify(payload), signal });
     state.incidentId = result.incident_id; sessionStorage.setItem("incident_id", state.incidentId); renderAnalysis(result);
-  } catch (error) { showError(error); } finally { $("#analyze").disabled = false; $("#analyze").removeAttribute("aria-busy"); }
+    if (advancePhase) {
+      const phase = result.proposed_action.requires_approval ? "AWAITING_OPERATOR_APPROVAL" : "INVESTIGATING";
+      setWebMcpPhase(phase, { proposalHash: result.proposed_action.action_hash });
+    }
+    return result;
+  } finally {
+    $("#analyze").disabled = false; $("#analyze").removeAttribute("aria-busy");
+  }
+}
+async function analyze(event) {
+  event?.preventDefault();
+  try { await runAnalysis(incidentPayload()); } catch (error) { showError(error); }
 }
 async function approve() {
   try {
     await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers(), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), reason: "operator verified the exact action and current incident evidence" }) });
     $("#stage-approve").classList.add("active"); $("#approve").disabled = true; $("#execute").disabled = false;
+    setWebMcpPhase("APPROVED_AWAITING_EXECUTION", { incidentId: state.incidentId });
   } catch (error) { showError(error); }
 }
 async function execute() {
@@ -136,6 +155,48 @@ function loadSafeFailure() {
   state.key = null;
   $("#result").innerHTML = `<p class="muted">Safe-failure scenario loaded. Analyze it to verify that incompatible memory cannot authorize an action.</p>`;
 }
+function boundedIncidentSnapshot() {
+  return {
+    incident_id: state.incidentId || null,
+    service: $("#service").value.slice(0, 80),
+    service_version: $("#version").value.slice(0, 80),
+    symptom: $("#symptom").value.slice(0, 500),
+    workflow_state: state.webmcpPhase,
+    untrusted_fields: ["service", "service_version", "symptom"]
+  };
+}
+async function inspectForWebMcp({ signal } = {}) {
+  if (!state.incidentId) return boundedIncidentSnapshot();
+  try {
+    const incident = await request(`/v1/incidents/${state.incidentId}`, { headers: headers(), signal });
+    return {
+      ...boundedIncidentSnapshot(),
+      status: String(incident.status || "unknown").slice(0, 80),
+      diagnosis: String(incident.diagnosis || "").slice(0, 500)
+    };
+  } catch (error) {
+    if (error.name === "AbortError") throw error;
+    return { ...boundedIncidentSnapshot(), status: "snapshot_only" };
+  }
+}
+async function proposeForWebMcp(input, { signal } = {}) {
+  if (state.webmcpPhase !== "INVESTIGATING") throw new Error(`propose_mitigation is unavailable in ${state.webmcpPhase}`);
+  const service = String(input?.service || "").trim();
+  const serviceVersion = String(input?.service_version || "").trim();
+  const symptom = String(input?.symptom || "").trim();
+  if (!service || !serviceVersion || !symptom) throw new Error("service, service_version, and symptom are required");
+  if (service.length > 80 || serviceVersion.length > 80 || symptom.length > 500) throw new Error("incident input exceeds its bounded schema");
+  $("#service").value = service; $("#version").value = serviceVersion; $("#symptom").value = symptom;
+  state.key = `webmcp-${Date.now()}-${randomBase64Url(12)}`;
+  return runAnalysis(incidentPayload(), { signal, advancePhase: false });
+}
+
+window.recallOpsWebMcpHost = Object.freeze({
+  getPhase: () => state.webmcpPhase,
+  inspectIncident: inspectForWebMcp,
+  proposeMitigation: proposeForWebMcp,
+  markProposalCreated: (proposalHash) => setWebMcpPhase("AWAITING_OPERATOR_APPROVAL", { proposalHash })
+});
 async function signIn() {
   const verifier = randomBase64Url(64);
   sessionStorage.setItem("pkce_verifier", verifier);
