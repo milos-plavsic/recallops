@@ -1,5 +1,6 @@
 import hashlib
 import json
+from copy import copy
 from dataclasses import asdict
 from typing import Protocol
 from uuid import UUID
@@ -14,6 +15,7 @@ from recallops.domain import (
     ActionRisk,
     AgentPlanStep,
     AgentToolTrace,
+    ApprovalDecision,
     ApprovalRequest,
     CandidateDecision,
     CandidateDisposition,
@@ -151,6 +153,11 @@ class IncidentService:
         self._compatibility_policy_version = compatibility_policy_version
         self._diagnostic_tools = diagnostic_tools
 
+    def using_store(self, store: MemoryStore) -> "IncidentService":
+        bound = copy(self)
+        bound._store = store
+        return bound
+
     def _abstention_reasons(self, memories: list[RetrievedMemory]) -> list[str]:
         if not memories:
             return ["no_governed_memory"]
@@ -176,12 +183,14 @@ class IncidentService:
         best, runner_up = memories[:2]
         scores_are_close = best.rank_score - runner_up.rank_score < self._min_margin
         actions_differ = (
-            best.memory.action.strip().casefold()
-            != runner_up.memory.action.strip().casefold()
+            best.memory.action.strip().casefold() != runner_up.memory.action.strip().casefold()
         )
         return scores_are_close and actions_differ
 
     def analyze(self, incident: IncidentCreate) -> IncidentAnalysis:
+        return self.persist_analysis(incident, self.prepare_analysis(incident))
+
+    def prepare_analysis(self, incident: IncidentCreate) -> IncidentAnalysis:
         degraded: list[str] = []
         trace: list[AgentToolTrace] = []
         embedding_input = f"{incident.service} {incident.symptom}"
@@ -333,20 +342,22 @@ class IncidentService:
                 action_hash=action_hash(f"inspect logs and metrics for {incident.service}"),
             )
             confidence = 0.25
-        saved = self._store.save_analysis(
-            incident,
-            IncidentAnalysis(
-                diagnosis=diagnosis,
-                confidence=confidence,
-                memories=memories,
-                proposed_action=proposed,
-                agent_trace=trace,
-                plan=self._plan(self._diagnostic_tools is not None),
-                candidate_decisions=self._candidate_decisions(memories, best),
-                retrieval_abstention_reasons=abstention_reasons,
-                degraded_dependencies=degraded,
-            ),
+        return IncidentAnalysis(
+            diagnosis=diagnosis,
+            confidence=confidence,
+            memories=memories,
+            proposed_action=proposed,
+            agent_trace=trace,
+            plan=self._plan(self._diagnostic_tools is not None),
+            candidate_decisions=self._candidate_decisions(memories, best),
+            retrieval_abstention_reasons=abstention_reasons,
+            degraded_dependencies=degraded,
         )
+
+    def persist_analysis(
+        self, incident: IncidentCreate, analysis: IncidentAnalysis
+    ) -> IncidentAnalysis:
+        saved = self._store.save_analysis(incident, analysis)
         if not self._store.transactional_archive:
             try:
                 self._archive.archive(incident, saved)
@@ -463,10 +474,7 @@ class IncidentService:
                 reasons.append("service_version_incompatible")
             if candidate.memory.outcome_score <= 0:
                 reasons.append("outcome_not_positive")
-            if (
-                index == 0
-                and self._top_candidates_conflict(memories)
-            ):
+            if index == 0 and self._top_candidates_conflict(memories):
                 reasons.append("top_candidates_ambiguous")
             disposition = (
                 CandidateDisposition.SELECTED
@@ -499,7 +507,19 @@ class IncidentService:
             request.reason,
         )
 
+    def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
+        return self._store.get_approval(incident_id, tenant_id)
+
+    def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None:
+        return self._store.get_memory(memory_id, tenant_id)
+
     def attest_execution(
+        self, incident_id: UUID, request: ExecutionAttestationRequest
+    ) -> ExecutionAttestation | None:
+        execution = self.prepare_execution(incident_id, request)
+        return self.persist_execution(execution) if execution is not None else None
+
+    def prepare_execution(
         self, incident_id: UUID, request: ExecutionAttestationRequest
     ) -> ExecutionAttestation | None:
         analysis = self._store.get_analysis(incident_id, request.tenant_id)
@@ -515,11 +535,16 @@ class IncidentService:
             approval = self._store.get_approval(incident_id, request.tenant_id)
             if approval is None or not approval.approved:
                 raise IncidentWorkflowError("approved decision required before execution")
-        return self._store.record_execution(
-            ExecutionAttestation(incident_id=incident_id, **request.model_dump())
-        )
+        return ExecutionAttestation(incident_id=incident_id, **request.model_dump())
+
+    def persist_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation:
+        return self._store.record_execution(execution)
 
     def learn_outcome(self, incident_id: UUID, observation: OutcomeObservation) -> Memory | None:
+        memory = self.prepare_outcome(incident_id, observation)
+        return self.persist_outcome(memory) if memory is not None else None
+
+    def prepare_outcome(self, incident_id: UUID, observation: OutcomeObservation) -> Memory | None:
         incident = self._store.get_incident(incident_id, observation.tenant_id)
         if incident is None:
             return None
@@ -569,6 +594,9 @@ class IncidentService:
             embedding_space=self._embedder.space_id,
             embedding=embedding,
         )
+        return memory
+
+    def persist_outcome(self, memory: Memory) -> Memory:
         return self._store.save_outcome_memory(memory)
 
     def _validate_evidence(

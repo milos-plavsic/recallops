@@ -32,8 +32,8 @@ client-side phase guard before protected sandbox execution is introduced.
 
 ## Milestone 2: authoritative workflow policy
 
-**Status: authoritative core implemented and verified on 2026-08-28; authentication and atomic
-protected-transition coupling remain in progress.** See
+**Status: complete and verified on 2026-08-28.** Server-issued judge sessions and atomic
+authority-bearing CockroachDB transactions complete the authoritative core. See
 [`WEBMCP_MILESTONE_2.md`](WEBMCP_MILESTONE_2.md).
 
 - Add the eight-state workflow and monotonic epoch.
@@ -43,11 +43,11 @@ protected-transition coupling remain in progress.** See
 - Add scoped operator/reviewer demo identities and safe reset.
 - Test cancellation races and stale calls against the real server.
 
-The current increment completes the state model, server capability manifest, compare-and-swap
-epochs, browser reconciliation, safe reset invalidation, CockroachDB retry handling, and real-server
-race tests. It does not treat demo identity headers as authentication. Full acceptance additionally
-requires short-lived judge sessions, CSRF and Origin enforcement, and one transaction boundary for
-each authority-bearing domain mutation plus workflow transition.
+The implementation includes the state model, server capability manifest, compare-and-swap epochs,
+browser reconciliation, safe reset invalidation, bounded CockroachDB retries, short-lived judge
+sessions, CSRF and Origin enforcement, and one transaction boundary for every authority-bearing
+domain mutation plus workflow transition. Development header authentication remains clearly
+separate from judge mode and is not used as identity proof.
 
 ## Milestone 3: sandbox action and evidence
 

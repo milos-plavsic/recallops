@@ -47,6 +47,10 @@ function headers(actor = "demo-operator", roles = "operator", channel = "ui", ep
     "X-RecallOps-Channel": channel,
     ...(epoch ? { "X-Workflow-Epoch": String(epoch) } : {})
   };
+  if (state.config?.auth_mode === "judge") {
+    const csrf = sessionStorage.getItem("judge_csrf");
+    return { ...context, ...(channel === "ui" && csrf ? { "X-CSRF-Token": csrf } : {}) };
+  }
   return token ? { Authorization: `Bearer ${token}`, ...context } : {
     "X-Tenant-ID": $("#tenant").value,
     "X-Actor-ID": actor,
@@ -175,7 +179,7 @@ async function observe() {
 }
 async function review() {
   try {
-    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer", "reviewer", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: "demo-reviewer", action: "activate", reason: "independent review confirmed the observed recovery window" }) });
+    await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer", "reviewer", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
     await refreshWorkflow();
     $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY · ${escapeHtml(shortId(state.memoryId))}</span><h3>Independent review completed.</h3><p>The same memory is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
@@ -269,7 +273,13 @@ async function exchangeCode(code, returnedState) {
   sessionStorage.setItem("access_token", tokens.access_token);
   history.replaceState({}, "", "/");
 }
-function signOut() {
+async function signOut() {
+  if (state.config?.auth_mode === "judge") {
+    await request("/v1/judge/session/logout", { method: "POST", headers: headers() });
+    sessionStorage.removeItem("judge_csrf");
+    location.assign("/");
+    return;
+  }
   sessionStorage.removeItem("access_token");
   state.identity = null;
   const query = new URLSearchParams({ client_id: state.config.client_id, logout_uri: state.config.redirect_url });
@@ -278,11 +288,22 @@ function signOut() {
 async function initialize() {
   try {
     state.config = await request("/v1/config");
+    const fragment = new URLSearchParams(location.hash.slice(1));
+    if (state.config.auth_mode === "judge" && fragment.has("access")) {
+      const bootstrapCode = fragment.get("access");
+      history.replaceState({}, "", `${location.pathname}${location.search}`);
+      const exchanged = await request("/v1/judge/session/exchange", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: bootstrapCode })
+      });
+      sessionStorage.setItem("judge_csrf", exchanged.csrf_token);
+    }
     const query = new URLSearchParams(location.search);
     if (query.has("code")) await exchangeCode(query.get("code"), query.get("state"));
-    if (state.config.auth_required) {
+    if (state.config.auth_required || state.config.auth_mode === "judge") {
       $("#auth-controls").hidden = false; $("#token-details").hidden = true;
-      if (accessToken()) {
+      if (accessToken() || state.config.auth_mode === "judge") {
         state.identity = await request("/v1/me", { headers: headers() });
         $("#tenant").value = state.identity.tenant_id; $("#tenant").disabled = true;
         $("#auth-status").textContent = `${state.identity.roles.join(" + ")} · ${state.identity.subject.slice(0, 8)}`;

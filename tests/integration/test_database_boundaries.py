@@ -1,10 +1,15 @@
+import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from uuid import uuid4
 
 import psycopg
 import pytest
+from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
+from recallops.api import create_app
+from recallops.config import Settings
 from recallops.db_verify import verify_database_boundaries
 from recallops.domain import (
     ApprovalRequest,
@@ -35,9 +40,9 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 18
+    assert report["exact_runtime_grants"] == 24
     assert len(report["cross_tenant_constraints"]) == 7
-    assert len(report["runtime_denials"]) == 8
+    assert len(report["runtime_denials"]) == 9
 
 
 @pytest.mark.skipif(
@@ -358,3 +363,258 @@ def test_cockroach_workflow_epoch_has_one_authoritative_winner() -> None:
         assert current.state is WorkflowState.APPROVED_AWAITING_EXECUTION
     finally:
         repository.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_protected_domain_write_rolls_back_when_epoch_transition_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            "TRUNCATE judge_auth_attempts, judge_sessions, webmcp_workflows, memory_events, "
+            "execution_attestations, approvals, evidence_outbox, memories, incidents"
+        )
+    store = PostgresStore(database_url)
+    embedder = DeterministicEmbedder()
+    store.add_memory(
+        Memory(
+            tenant_id="atomic",
+            service="checkout",
+            service_version="v1",
+            symptom="latency spike",
+            action="reduce concurrency",
+            outcome="recovered",
+            outcome_score=1,
+            confidence=0.95,
+            reviewed_by="seed-reviewer",
+            embedding=embedder.embed("checkout latency spike"),
+        )
+    )
+    app = create_app(Settings(store="postgres", database_url=database_url), store)
+    client = TestClient(app, raise_server_exceptions=False)
+    headers = {
+        "X-Tenant-ID": "atomic",
+        "X-Actor-ID": "operator",
+        "X-Roles": "operator,agent",
+    }
+    incident = client.post(
+        "/v1/incidents",
+        headers={**headers, "X-RecallOps-Channel": "webmcp"},
+        json={
+            "tenant_id": "atomic",
+            "service": "checkout",
+            "service_version": "v1",
+            "symptom": "latency spike",
+            "idempotency_key": "atomic-rollback-proof",
+        },
+    ).json()
+
+    def fail_transition(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise RuntimeError("forced transition failure")
+
+    monkeypatch.setattr(PostgresWorkflowRepository, "transition", fail_transition)
+    response = client.post(
+        f"/v1/incidents/{incident['incident_id']}/approval",
+        headers={
+            **headers,
+            "X-RecallOps-Channel": "ui",
+            "X-Workflow-Epoch": "1",
+        },
+        json={
+            "tenant_id": "atomic",
+            "actor_id": "operator",
+            "approved": True,
+            "reason": "force rollback after the domain insert",
+        },
+    )
+    assert response.status_code == 500
+    with psycopg.connect(database_url) as connection:
+        approval_count = connection.execute("SELECT count(*) FROM approvals").fetchone()
+        workflow = connection.execute(
+            "SELECT state, epoch FROM webmcp_workflows WHERE workflow_id=%s",
+            (incident["incident_id"],),
+        ).fetchone()
+    assert approval_count == (0,)
+    assert workflow == ("AWAITING_OPERATOR_APPROVAL", 1)
+    app.state.workflows._repository.close()
+    store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_judge_exchange_persists_only_hashed_credentials() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    operator_code = "integration-operator-bootstrap-2026"
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute("TRUNCATE judge_auth_attempts, judge_sessions")
+    store = PostgresStore(database_url)
+    app = create_app(
+        Settings(
+            store="postgres",
+            database_url=database_url,
+            auth_mode="judge",
+            public_origin="http://testserver",
+            judge_tenant_id="judge-integration",
+            judge_operator_bootstrap_sha256=hashlib.sha256(operator_code.encode()).hexdigest(),
+            judge_reviewer_bootstrap_sha256=hashlib.sha256(
+                b"integration-reviewer-bootstrap-2026"
+            ).hexdigest(),
+            judge_rate_limit_key=SecretStr("integration-rate-limit-key"),
+            judge_cookie_secure=False,
+        ),
+        store,
+    )
+    client = TestClient(app)
+    response = client.post(
+        "/v1/judge/session/exchange",
+        headers={"Origin": "http://testserver"},
+        json={"code": operator_code},
+    )
+    assert response.status_code == 200
+    cookie = client.cookies.get("recallops_session")
+    assert cookie is not None
+    with psycopg.connect(database_url) as connection:
+        session = connection.execute(
+            "SELECT session_hash, csrf_hash, subject, role FROM judge_sessions"
+        ).fetchone()
+        attempts = connection.execute("SELECT count(*) FROM judge_auth_attempts").fetchone()
+    assert session is not None
+    assert session[0] == hashlib.sha256(cookie.encode()).hexdigest()
+    assert operator_code not in session
+    assert response.json()["csrf_token"] not in session
+    assert session[2:] == ("judge-operator", "operator")
+    assert attempts == (1,)
+    app.state.workflows._repository.close()
+    store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_review_activation_rolls_back_when_workflow_commit_fails(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            "TRUNCATE webmcp_workflows, memory_events, execution_attestations, approvals, "
+            "evidence_outbox, memories, incidents"
+        )
+    store = PostgresStore(database_url)
+    embedder = DeterministicEmbedder()
+    store.add_memory(
+        Memory(
+            tenant_id="review-atomic",
+            service="checkout",
+            service_version="v1",
+            symptom="latency spike",
+            action="reduce concurrency",
+            outcome="recovered",
+            outcome_score=1,
+            confidence=0.95,
+            reviewed_by="seed-reviewer",
+            embedding=embedder.embed("checkout latency spike"),
+        )
+    )
+    app = create_app(Settings(store="postgres", database_url=database_url), store)
+    client = TestClient(app, raise_server_exceptions=False)
+    operator = {
+        "X-Tenant-ID": "review-atomic",
+        "X-Actor-ID": "operator",
+        "X-Roles": "operator,agent",
+        "X-RecallOps-Channel": "ui",
+    }
+    incident = client.post(
+        "/v1/incidents",
+        headers=operator,
+        json={
+            "tenant_id": "review-atomic",
+            "service": "checkout",
+            "service_version": "v1",
+            "symptom": "latency spike",
+            "idempotency_key": "review-atomic-proof",
+        },
+    ).json()
+    action = incident["proposed_action"]
+    approval = client.post(
+        f"/v1/incidents/{incident['incident_id']}/approval",
+        headers={**operator, "X-Workflow-Epoch": "1"},
+        json={
+            "tenant_id": "review-atomic",
+            "actor_id": "operator",
+            "approved": True,
+            "reason": "approve bounded test action",
+        },
+    )
+    assert approval.status_code == 200
+    execution = client.post(
+        f"/v1/incidents/{incident['incident_id']}/execution",
+        headers={**operator, "X-Workflow-Epoch": "2"},
+        json={
+            "tenant_id": "review-atomic",
+            "actor_id": "operator",
+            "action_hash": action["action_hash"],
+            "action_taken": action["command"],
+            "evidence_refs": ["test://atomic-review/execution"],
+        },
+    )
+    assert execution.status_code == 201
+    outcome = client.post(
+        f"/v1/incidents/{incident['incident_id']}/outcome",
+        headers={**operator, "X-Workflow-Epoch": "3"},
+        json={
+            "tenant_id": "review-atomic",
+            "actor_id": "operator",
+            "action_taken": action["command"],
+            "outcome": "recovered",
+            "outcome_score": 1,
+            "confidence": 0.9,
+        },
+    )
+    assert outcome.status_code == 201
+    memory = outcome.json()
+
+    def fail_transition(*args: object, **kwargs: object) -> object:
+        del args, kwargs
+        raise RuntimeError("forced review transition failure")
+
+    monkeypatch.setattr(PostgresWorkflowRepository, "transition", fail_transition)
+    review = client.post(
+        f"/v1/memories/{memory['id']}/governance",
+        headers={
+            "X-Tenant-ID": "review-atomic",
+            "X-Actor-ID": "reviewer",
+            "X-Roles": "reviewer",
+            "X-RecallOps-Channel": "ui",
+            "X-Workflow-Epoch": "4",
+        },
+        json={
+            "tenant_id": "review-atomic",
+            "actor_id": "reviewer",
+            "action": "activate",
+            "reason": "force rollback after activation update",
+        },
+    )
+    assert review.status_code == 500
+    with psycopg.connect(database_url) as connection:
+        memory_row = connection.execute(
+            "SELECT state, valid FROM memories WHERE id=%s", (memory["id"],)
+        ).fetchone()
+        workflow_row = connection.execute(
+            "SELECT state, epoch FROM webmcp_workflows WHERE workflow_id=%s",
+            (incident["incident_id"],),
+        ).fetchone()
+        event_count = connection.execute("SELECT count(*) FROM memory_events").fetchone()
+    assert memory_row == ("pending_review", False)
+    assert workflow_row == ("PENDING_REVIEW", 4)
+    assert event_count == (0,)
+    app.state.workflows._repository.close()
+    store.close()

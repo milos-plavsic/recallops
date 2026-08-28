@@ -1,7 +1,6 @@
 # Milestone 2 Authoritative Workflow Core
 
-**Status:** Core complete and verified on 2026-08-28; judge-session authentication and
-transactional event receipts remain open before the full milestone is accepted.
+**Status:** Complete and verified on 2026-08-28.
 
 This increment moves capability selection from a browser-only phase flag to a
 server-authoritative workflow record. It deliberately does not claim that a request header proves
@@ -22,6 +21,13 @@ human presence or that demo-mode identities are production authentication.
 - A tenant-bound database foreign key and least-privilege runtime grants for workflow rows.
 - Bounded whole-transaction retries for CockroachDB `40001` serialization failures while retaining
   the database's default `SERIALIZABLE` isolation.
+- Role-specific bootstrap codes stored only as configured SHA-256 digests.
+- Opaque short-lived sessions stored only by hash in CockroachDB and delivered in `HttpOnly`,
+  `SameSite=Strict`, production `Secure`, `__Host-` cookies.
+- Exact-Origin validation, synchronizer CSRF tokens, HMAC-pseudonymous exchange throttling, and
+  server-side logout revocation.
+- Atomic proposal, approval, execution, outcome, and review transactions: the domain write and
+  workflow epoch either commit together or both roll back.
 
 The transaction retry policy follows CockroachDB's guidance to retry the complete transaction when
 the client receives a serialization retry error:
@@ -48,12 +54,12 @@ implementation and tests do not yet exist.
 
 | Check | Result |
 | --- | --- |
-| Python suite with CockroachDB integration enabled | `171 passed` |
-| Real CockroachDB integration tests | `4 passed` |
+| Python suite with CockroachDB integration enabled | `180 passed` |
+| Real CockroachDB integration tests | `7 passed` |
 | Concurrent incident replay | 16 calls converged to one incident, execution, memory, and outbox row |
 | Concurrent workflow transition | Exactly 1 winner and 15 stale rejections |
-| Direct database boundary verifier | 18 exact grants, 7 cross-tenant constraints, 8 denied operations |
-| Browser, accessibility, fallback, and lifecycle suite | `7 passed` |
+| Direct database boundary verifier | 24 exact grants, 7 cross-tenant constraints, 9 denied operations |
+| Browser, accessibility, fallback, auth, and lifecycle suite | `8 passed` |
 | Native Chromium WebMCP suite | `2 passed` |
 | Ruff over maintained source and tests | Passed |
 | Strict mypy | Passed; 21 source files checked |
@@ -68,19 +74,19 @@ implementation was not weakened to `READ COMMITTED`; complete transactions now r
 snapshots with a bounded exponential backoff, and the contention suite passes on CockroachDB
 `v26.2.1`.
 
-## Deliberate non-claims and remaining acceptance work
+Fault injection after an approval insert proves that both the approval and epoch remain unchanged
+when the workflow update fails. A second fault injection after memory activation proves that the
+memory stays `PENDING_REVIEW`, `valid=false`, no governance event is appended, and the workflow
+remains at the prior epoch. These checks exercise rollback rather than inferring atomicity from code.
 
-- Demo authentication still accepts development identity headers. It tests authorization logic but
-  does not prove identity. The public judge path still needs short-lived, server-issued operator and
-  reviewer sessions, CSRF protection, Origin validation, and bootstrap-code rotation.
+## Deliberate non-claims and later milestone work
+
+- Demo authentication still accepts development identity headers and is not identity proof. The
+  public judge path uses the separate `judge` authentication mode.
 - Channel labels are policy context, not proof of physical human presence or a defense against
   arbitrary browser automation.
-- Domain records and workflow epochs are fail-closed but are not yet committed in one shared SQL
-  transaction. Approval, execution, and outcome validate before writing; a later epoch conflict
-  withholds downstream capability. Review activation requires stronger transactional coupling
-  before final acceptance because activation affects retrieval authority.
 - The sandbox, observation provider, postcheck-assessment tool, reviewed-recall tool, event chain,
   and signed Authority Receipt belong to later milestones.
 
-Milestone 2 should be marked fully complete only after session authentication and atomic protected
-transition orchestration are implemented and tested against CockroachDB.
+The later signed receipt will add an append-only event chain; it is not required for the transactional
+authorization property proven here.

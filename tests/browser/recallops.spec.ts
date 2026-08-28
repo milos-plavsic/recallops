@@ -407,3 +407,55 @@ test.describe("judge console", () => {
     await expect(page.locator("#webmcp-events")).toContainText("no mutating proposal staged");
   });
 });
+
+test("judge bootstrap is removed from the URL and WebMCP receives no CSRF authority", async ({ page }) => {
+  await installWebMcpHarness(page);
+  const incidentHeaders: Record<string, string>[] = [];
+  await page.route("**/v1/config", (route) => route.fulfill({ json: {
+    auth_required: false, auth_mode: "judge",
+  } }));
+  await page.route("**/v1/judge/session/exchange", (route) => route.fulfill({ json: {
+    csrf_token: "synchronizer-token",
+    identity: { subject: "judge-operator", tenant_id: "judge", roles: ["agent", "operator"] },
+  } }));
+  await page.route("**/v1/me", (route) => route.fulfill({ json: {
+    subject: "judge-operator", tenant_id: "judge", roles: ["agent", "operator"],
+  } }));
+  await page.route("**/ready", (route) => route.fulfill({ json: { status: "ready" } }));
+  await page.route("**/v1/system/status", (route) => route.fulfill({ json: {
+    store: "memory", reasoning_provider: "deterministic", embedding_provider: "deterministic",
+    embedding_space: "deterministic-v1", evidence_archive_configured: false, auth_mode: "judge",
+  } }));
+  await page.route("**/v1/evaluation", (route) => route.fulfill({ json: {
+    passed: true, case_count: 1,
+    recallops: { top1_safe_accuracy: 1, unsafe_selection_rate: 0, isolation_violations: 0, mean_reciprocal_rank: 1 },
+    similarity_only: { top1_safe_accuracy: 0, unsafe_selection_rate: 1, isolation_violations: 0, mean_reciprocal_rank: 0 },
+  } }));
+  await page.route("**/v1/incidents", (route) => {
+    incidentHeaders.push(route.request().headers());
+    return route.fulfill({ status: 201, json: successfulAnalysis });
+  });
+  await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: {
+    workflow_id: successfulAnalysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
+    active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"],
+    protected_tools: [],
+  } }));
+
+  await page.goto("/#access=judge-bootstrap-secret");
+  await expect(page).toHaveURL(/\/$/);
+  await expect(page.locator("#auth-status")).toContainText("agent + operator · judge-op");
+  await page.evaluate(async () => {
+    const tools = (window as any).__webmcpTools as Map<string, any>;
+    await tools.get("propose_mitigation").definition.execute({
+      service: "checkout", service_version: "v1", symptom: "latency spike",
+    });
+  });
+
+  expect(incidentHeaders).toHaveLength(1);
+  expect(incidentHeaders[0]["x-recallops-channel"]).toBe("webmcp");
+  expect(incidentHeaders[0]["x-csrf-token"]).toBeUndefined();
+  expect(incidentHeaders[0]["x-roles"]).toBeUndefined();
+  expect(incidentHeaders[0]["x-actor-id"]).toBeUndefined();
+  expect(await page.evaluate(() => sessionStorage.getItem("judge_csrf"))).toBe("synchronizer-token");
+  expect(page.url()).not.toContain("judge-bootstrap-secret");
+});

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from typing import Literal
 
-from pydantic import Field
+from pydantic import Field, SecretStr
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 
@@ -37,7 +37,7 @@ class Settings(BaseSettings):
     diagnostic_ecs_service_prefix: str | None = None
     diagnostic_max_alarms: int = Field(default=5, ge=1, le=20)
     diagnostic_max_deployments: int = Field(default=5, ge=1, le=20)
-    auth_mode: Literal["demo", "oidc"] = "demo"
+    auth_mode: Literal["demo", "oidc", "judge"] = "demo"
     oidc_issuer: str | None = None
     oidc_audience: str | None = None
     oidc_tenant_claim: str = "tenant_id"
@@ -50,6 +50,15 @@ class Settings(BaseSettings):
     oidc_token_url: str | None = None
     oidc_logout_url: str | None = None
     oidc_redirect_url: str | None = None
+    public_origin: str = "http://127.0.0.1:8000"
+    judge_tenant_id: str = "judge"
+    judge_operator_bootstrap_sha256: str | None = None
+    judge_reviewer_bootstrap_sha256: str | None = None
+    judge_session_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
+    judge_exchange_attempt_limit: int = Field(default=8, ge=1, le=100)
+    judge_exchange_window_seconds: int = Field(default=300, ge=60, le=3600)
+    judge_rate_limit_key: SecretStr | None = None
+    judge_cookie_secure: bool = True
 
 
 @lru_cache

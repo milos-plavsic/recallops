@@ -35,7 +35,7 @@ extension comprises:
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | 1. Native WebMCP vertical slice | Complete 2026-08-28 at `8998b9c` | `src/recallops/static/webmcp.js`; capability inspector; API security headers; 7 browser tests; native Chromium 151 test; 155 Python tests; Ruff and mypy passing |
-| 2. Authoritative workflow policy | Core verified 2026-08-28 at `fa0110d`; final acceptance pending | Eight-state model; server epochs and manifests; CockroachDB CAS and retry tests; protected-channel rejection; 171 Python tests with integration; 7 browser tests; 2 native Chromium tests. Judge-session auth and atomic domain/workflow commits remain open. |
+| 2. Authoritative workflow policy | Complete 2026-08-28; authentication/atomicity increment awaiting commit | Eight-state model; server epochs and manifests; server-issued judge sessions; CSRF and Origin enforcement; atomic domain/workflow transactions; CockroachDB rollback fault injection; 180 Python tests with integration; 8 browser tests; 2 native Chromium tests. |
 | 3. Sandbox action and evidence | Not started | Simulator and observation tests |
 | 4. Review-gated recurrence | Not started | Separation-of-duties and retrieval tests |
 | 5. Signed proof | Not started | JWS vectors and offline verifier |

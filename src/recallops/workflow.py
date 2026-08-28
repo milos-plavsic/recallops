@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 import threading
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from enum import StrEnum
 from typing import Any, Protocol, cast
@@ -79,6 +80,14 @@ class CapabilityManifest(BaseModel):
 
 class WorkflowConflict(ValueError):
     pass
+
+
+class _BoundWorkflowPool:
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    def connection(self) -> Any:
+        return nullcontext(self._connection)
 
 
 def authority_owner(state: WorkflowState) -> str:
@@ -200,7 +209,7 @@ class PostgresWorkflowRepository:
         connect_timeout_seconds: int = 5,
         statement_timeout_seconds: int = 15,
     ) -> None:
-        self._pool = ConnectionPool(
+        self._pool: Any = ConnectionPool(
             database_url,
             open=True,
             min_size=1,
@@ -212,6 +221,19 @@ class PostgresWorkflowRepository:
                 "options": f"-c statement_timeout={statement_timeout_seconds * 1000}",
             },
         )
+        self._transaction_bound = False
+
+    @classmethod
+    def from_connection(cls, connection: Any) -> PostgresWorkflowRepository:
+        repository = object.__new__(cls)
+        repository._pool = _BoundWorkflowPool(connection)
+        repository._transaction_bound = True
+        return repository
+
+    def _run_write[T](self, operation: Callable[[], T]) -> T:
+        if getattr(self, "_transaction_bound", False):
+            return operation()
+        return run_serializable(operation)
 
     def close(self) -> None:
         self._pool.close()
@@ -250,7 +272,7 @@ class PostgresWorkflowRepository:
                 raise RuntimeError("workflow upsert returned no row")
             return self._snapshot(row)
 
-        return run_serializable(ensure_once)
+        return self._run_write(ensure_once)
 
     def get(self, workflow_id: UUID, tenant_id: str) -> WorkflowSnapshot | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -299,7 +321,7 @@ class PostgresWorkflowRepository:
                 raise WorkflowConflict("stale workflow state or epoch")
             return self._snapshot(row)
 
-        return run_serializable(transition_once)
+        return self._run_write(transition_once)
 
     def invalidate(
         self, workflow_id: UUID, tenant_id: str, expected_epoch: int
@@ -318,7 +340,7 @@ class PostgresWorkflowRepository:
                 raise WorkflowConflict("stale workflow state or epoch")
             return self._snapshot(row)
 
-        return run_serializable(invalidate_once)
+        return self._run_write(invalidate_once)
 
 
 class WorkflowCoordinator:

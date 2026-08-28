@@ -205,7 +205,7 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
     }
     monkeypatch.setattr(
         app.state.service,
-        "attest_execution",
+        "prepare_execution",
         MagicMock(side_effect=DependencyUnavailable("bedrock")),
     )
     unavailable = client.post(
@@ -214,7 +214,7 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
     assert unavailable.status_code == 503 and unavailable.headers["retry-after"] == "30"
     monkeypatch.setattr(
         app.state.service,
-        "attest_execution",
+        "prepare_execution",
         MagicMock(side_effect=IncidentWorkflowError("execution conflict")),
     )
     assert (
@@ -223,7 +223,7 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         ).status_code
         == 409
     )
-    monkeypatch.setattr(app.state.service, "attest_execution", MagicMock(return_value=None))
+    monkeypatch.setattr(app.state.service, "prepare_execution", MagicMock(return_value=None))
     assert (
         client.post(
             f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
@@ -253,14 +253,14 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
     }
     monkeypatch.setattr(
         app.state.service,
-        "learn_outcome",
+        "prepare_outcome",
         MagicMock(side_effect=DependencyUnavailable("embedding")),
     )
     unavailable = client.post(f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome)
     assert unavailable.status_code == 503 and unavailable.headers["retry-after"] == "30"
     monkeypatch.setattr(
         app.state.service,
-        "learn_outcome",
+        "prepare_outcome",
         MagicMock(side_effect=IncidentWorkflowError("outcome conflict")),
     )
     assert (

@@ -2,7 +2,8 @@ import json
 import math
 import re
 import threading
-from collections.abc import Iterable, Mapping
+from collections.abc import Callable, Iterable, Mapping
+from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any, Protocol, cast
 from uuid import UUID
@@ -109,6 +110,14 @@ def rank_memory(
 
 class MemoryGovernanceError(ValueError):
     pass
+
+
+class _BoundConnectionPool:
+    def __init__(self, connection: Any) -> None:
+        self._connection = connection
+
+    def connection(self) -> Any:
+        return nullcontext(self._connection)
 
 
 def _governance_target(
@@ -353,7 +362,8 @@ class PostgresStore:
         if retrieval_candidate_multiplier < 1:
             raise ValueError("retrieval_candidate_multiplier must be at least 1")
         self._retrieval_candidate_multiplier = retrieval_candidate_multiplier
-        self._pool = ConnectionPool(
+        self._transaction_bound = False
+        self._pool: Any = ConnectionPool(
             database_url,
             open=True,
             min_size=1,
@@ -368,6 +378,26 @@ class PostgresStore:
 
     def close(self) -> None:
         self._pool.close()
+
+    @property
+    def pool(self) -> ConnectionPool[Any]:
+        return cast(ConnectionPool[Any], self._pool)
+
+    def _run_write[T](self, operation: Callable[[], T]) -> T:
+        if getattr(self, "_transaction_bound", False):
+            return operation()
+        return run_serializable(operation)
+
+    def atomic[T](self, operation: Callable[["PostgresStore", Any], T]) -> T:
+        def transact_once() -> T:
+            with self._pool.connection() as connection:
+                bound = object.__new__(PostgresStore)
+                bound.__dict__ = {**self.__dict__}
+                bound._pool = _BoundConnectionPool(connection)
+                bound._transaction_bound = True
+                return operation(bound, connection)
+
+        return run_serializable(transact_once)
 
     def ready(self) -> bool:
         try:
@@ -430,7 +460,7 @@ class PostgresStore:
                     ),
                 )
 
-        run_serializable(add_once)
+        self._run_write(add_once)
 
     def find_memories(
         self, incident: IncidentCreate, embedding: list[float], embedding_space: str, limit: int
@@ -589,7 +619,7 @@ class PostgresStore:
                     pass
             return saved
 
-        return run_serializable(save_once)
+        return self._run_write(save_once)
 
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -687,10 +717,10 @@ class PostgresStore:
                 raise RuntimeError("outcome memory upsert returned no row")
             return self._memory(raw_row)
 
-        return run_serializable(save_once)
+        return self._run_write(save_once)
 
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
-        return run_serializable(lambda: self._govern_memory_once(memory_id, request))
+        return self._run_write(lambda: self._govern_memory_once(memory_id, request))
 
     def _govern_memory_once(
         self, memory_id: UUID, request: MemoryGovernanceRequest
@@ -781,7 +811,7 @@ class PostgresStore:
                 )
                 return cursor.fetchone() is not None
 
-        return run_serializable(record_once)
+        return self._run_write(record_once)
 
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -825,7 +855,7 @@ class PostgresStore:
                 raise MemoryGovernanceError("incident already has a different execution")
             return recorded
 
-        return run_serializable(record_once)
+        return self._run_write(record_once)
 
     def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:

@@ -52,7 +52,7 @@ def test_manifest_is_a_pure_function_of_authoritative_state() -> None:
     assert manifest(inactive).available_tools == ()
 
 
-def test_activation_failure_advances_guard_before_retrieval_authority(
+def test_activation_failure_rolls_back_retrieval_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
     incident_id = uuid4()
@@ -108,7 +108,7 @@ def test_activation_failure_advances_guard_before_retrieval_authority(
 
     assert response.status_code == 409
     guarded = app.state.workflows.get(incident_id, "demo")
-    assert guarded is not None and guarded.state is WorkflowState.REVIEWED
+    assert guarded is not None and guarded.state is WorkflowState.PENDING_REVIEW
     unchanged = store.get_memory(pending.id, "demo")
     assert unchanged is not None and unchanged.state is MemoryState.PENDING_REVIEW
     assert unchanged.valid is False
