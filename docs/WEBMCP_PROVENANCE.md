@@ -35,7 +35,7 @@ extension comprises:
 | Milestone | Status | Evidence |
 | --- | --- | --- |
 | 1. Native WebMCP vertical slice | Complete 2026-08-28 at `8998b9c` | `src/recallops/static/webmcp.js`; capability inspector; API security headers; 7 browser tests; native Chromium 151 test; 155 Python tests; Ruff and mypy passing |
-| 2. Authoritative workflow policy | Core verified 2026-08-28; final acceptance pending | Eight-state model; server epochs and manifests; CockroachDB CAS and retry tests; protected-channel rejection; 171 Python tests with integration; 7 browser tests; 2 native Chromium tests. Judge-session auth and atomic domain/workflow commits remain open. |
+| 2. Authoritative workflow policy | Core verified 2026-08-28 at `fa0110d`; final acceptance pending | Eight-state model; server epochs and manifests; CockroachDB CAS and retry tests; protected-channel rejection; 171 Python tests with integration; 7 browser tests; 2 native Chromium tests. Judge-session auth and atomic domain/workflow commits remain open. |
 | 3. Sandbox action and evidence | Not started | Simulator and observation tests |
 | 4. Review-gated recurrence | Not started | Separation-of-duties and retrieval tests |
 | 5. Signed proof | Not started | JWS vectors and offline verifier |
@@ -47,6 +47,7 @@ Milestone 1 is isolated in challenge-period commit
 [`8998b9c`](https://github.com/milos-plavsic/recallops/commit/8998b9c). Its baseline comparison is
 <https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...8998b9c>.
 
-Milestone 2 core changes are not represented as committed history until their dedicated
-challenge-period commit exists. The evidence ledger distinguishes verified working-tree results
-from committed provenance.
+Milestone 2's authoritative core is isolated in challenge-period commit
+[`fa0110d`](https://github.com/milos-plavsic/recallops/commit/fa0110d). Its incremental comparison is
+<https://github.com/milos-plavsic/recallops/compare/8998b9c...fa0110d>. The evidence ledger keeps the
+remaining acceptance work explicit rather than presenting the core increment as the final policy.
