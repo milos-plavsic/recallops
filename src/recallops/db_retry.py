@@ -30,4 +30,6 @@ def run_serializable[T](
             if attempt == max_attempts - 1:
                 raise
             sleep(BASE_RETRY_DELAY_SECONDS * (2**attempt))
-    raise AssertionError("retry loop exhausted without returning or raising")
+    raise AssertionError(  # pragma: no cover - loop exits only by return or propagated error
+        "retry loop exhausted without returning or raising"
+    )

@@ -25,7 +25,7 @@
       <div>
         <p class="eyebrow">OUTCOME-CONDITIONED AGENT MEMORY</p>
         <h1 id="hero-title">Similarity recalls.<br><em>RecallOps remembers consequences.</em></h1>
-        <p class="lede">A safety-gated incident agent that retrieves only tenant-isolated, independently reviewed operational memory—then learns from explicitly attested outcomes.</p>
+        <p class="lede">A safety-gated incident agent that retrieves only tenant-isolated, independently reviewed operational memory, then learns from immutable simulator telemetry and independent policy.</p>
         <div class="actions"><a class="button primary" href="#demo">Run the closed loop</a><a class="button" href="https://github.com/milos-plavsic/recallops">Inspect source</a></div>
       </div>
       <aside class="principle" aria-label="Core ranking equation">
@@ -47,7 +47,7 @@
     </section>
 
     <section id="demo" class="section demo" aria-labelledby="demo-title">
-      <div class="section-heading"><div><p class="eyebrow">02 / LIVE CLOSED LOOP</p><h2 id="demo-title">Turn an incident into governed memory.</h2></div><span class="pill neutral">No infrastructure mutation</span></div>
+      <div class="section-heading"><div><p class="eyebrow">02 / LIVE CLOSED LOOP</p><h2 id="demo-title">Turn an incident into governed memory.</h2></div><span class="pill neutral">Isolated deterministic simulator</span></div>
       <div class="demo-grid">
         <form id="incident-form" class="panel">
           <h3>Incident signal</h3>
@@ -61,7 +61,7 @@
           <button class="button primary" type="submit" id="analyze">Analyze incident</button>
         </form>
         <div class="panel result-panel">
-          <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-approve">2 Approve</span><span id="stage-execute">3 Execute</span><span id="stage-observe">4 Observe</span><span id="stage-review">5 Review</span><span id="stage-recall">6 Recall</span></div>
+          <div class="timeline" aria-label="Memory lifecycle"><span class="active">1 Analyze</span><span id="stage-approve">2 Approve</span><span id="stage-execute">3 Simulate</span><span id="stage-observe">4 Verify</span><span id="stage-review">5 Review</span><span id="stage-recall">6 Recall</span></div>
           <div id="provider-status" class="provider-status" role="status" aria-live="polite">Checking provider status…</div>
           <section class="capability-inspector" aria-labelledby="capability-title">
             <div class="capability-heading">
@@ -84,8 +84,9 @@
           </div>
           <div id="loop-actions" class="loop-actions" hidden>
             <button class="button" id="approve" type="button" disabled>Approve exact action</button>
-            <button class="button" id="execute" type="button" disabled>Attest execution</button>
-            <button class="button" id="observe" type="button" disabled>Record successful outcome</button>
+            <button class="button" id="execute" type="button" disabled>Apply sandbox mitigation</button>
+            <button class="button" id="observe" type="button" disabled>Agent assessment required</button>
+            <button class="button" id="retry-observation" type="button" disabled>Retry verified observation</button>
             <button class="button" id="review" type="button" disabled>Activate as reviewer</button>
             <button class="button primary" id="recall" type="button" disabled>Analyze again</button>
             <button class="button" id="reset-workflow" type="button">Reset judge workflow</button>

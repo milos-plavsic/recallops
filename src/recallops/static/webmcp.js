@@ -37,7 +37,17 @@
     availableNode.replaceChildren(...desired.map((name) => {
       const item = document.createElement("li"); item.textContent = name; return item;
     }));
-    const withheld = phase === "INVESTIGATING" ? protectedTools : ["propose_mitigation — unresolved proposal", ...protectedTools];
+    const stateReasons = {
+      INVESTIGATING: ["record_postcheck_assessment — verified observation not ready"],
+      AWAITING_OPERATOR_APPROVAL: ["propose_mitigation — unresolved proposal", "record_postcheck_assessment — verified observation not ready"],
+      APPROVED_AWAITING_EXECUTION: ["propose_mitigation — proposal already approved", "record_postcheck_assessment — sandbox evidence not ready"],
+      OBSERVING_POSTCHECK: ["propose_mitigation — observation in progress", "record_postcheck_assessment — observation not certified"],
+      POSTCHECK_READY: ["propose_mitigation — assessment required before new proposal"],
+      POSTCHECK_UNAVAILABLE: ["propose_mitigation — postcheck unavailable", "record_postcheck_assessment — no verified observation"],
+      PENDING_REVIEW: ["propose_mitigation — independent review pending", "record_postcheck_assessment — assessment already recorded"],
+      REVIEWED: ["record_postcheck_assessment — evidence lifecycle complete"]
+    };
+    const withheld = [...(stateReasons[phase] || []), ...protectedTools];
     withheldNode.replaceChildren(...withheld.map((name) => {
       const item = document.createElement("li"); item.textContent = name; return item;
     }));
@@ -96,6 +106,34 @@
           requires_human_approval: approvalRequired
         });
       }
+    },
+    record_postcheck_assessment: {
+      name: "record_postcheck_assessment",
+      title: "Assess a verified postcheck observation",
+      description: "Record a bounded agent opinion about one server-issued immutable observation. Measurements and the independent policy verdict cannot be supplied or changed by this tool. The resulting memory remains pending independent review.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          observation_id: { type: "string", format: "uuid", description: "Exact server-issued observation identifier visible in the control room." },
+          classification: { type: "string", enum: ["recovered", "not_recovered", "inconclusive"] },
+          rationale: { type: "string", minLength: 3, maxLength: 1000 }
+        },
+        required: ["observation_id", "classification", "rationale"],
+        additionalProperties: false
+      },
+      annotations: { readOnlyHint: false, untrustedContentHint: false },
+      async execute(input, agent = {}) {
+        activity("AGENT", "record_postcheck_assessment");
+        const result = await host.recordPostcheckAssessment(input, { signal: agent.signal });
+        activity("SYSTEM", `memory ${String(result.memory.id).slice(0, 8)} quarantined pending review`);
+        setTimeout(() => host.refreshWorkflow(), 0);
+        return textResult({
+          assessment: result.assessment,
+          policy_verdict: result.policy_verdict,
+          memory: { id: result.memory.id, state: result.memory.state, valid: result.memory.valid },
+          independent_review_required: true
+        });
+      }
     }
   };
 
@@ -133,5 +171,6 @@
   }
 
   window.addEventListener("recallops:webmcp-state", (event) => reconcile(event.detail.phase, event.detail.availableTools));
+  window.addEventListener("recallops:activity", (event) => activity(event.detail.actor, event.detail.message));
   reconcile(host.getPhase(), host.getCapabilities());
 })();

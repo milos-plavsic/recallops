@@ -25,7 +25,11 @@ from recallops.domain import (
     MemoryEvent,
     MemoryGovernanceRequest,
     MemoryState,
+    PolicyVerdict,
+    PostcheckAssessment,
+    PostcheckObservation,
     RetrievedMemory,
+    SandboxExecution,
 )
 
 
@@ -184,11 +188,30 @@ class MemoryStore(Protocol):
     def save_outcome_memory(self, memory: Memory) -> Memory: ...
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None: ...
     def record_approval(
-        self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
+        self,
+        incident_id: UUID,
+        tenant_id: str,
+        actor_id: str,
+        approved: bool,
+        proposal_hash: str,
+        reason: str,
     ) -> bool: ...
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None: ...
     def record_execution(self, execution: ExecutionAttestation) -> ExecutionAttestation: ...
     def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None: ...
+    def record_sandbox_execution(self, execution: SandboxExecution) -> SandboxExecution: ...
+    def get_sandbox_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> SandboxExecution | None: ...
+    def record_postcheck(
+        self, observation: PostcheckObservation, verdict: PolicyVerdict
+    ) -> tuple[PostcheckObservation, PolicyVerdict]: ...
+    def get_postcheck(
+        self, incident_id: UUID, tenant_id: str
+    ) -> tuple[PostcheckObservation, PolicyVerdict] | None: ...
+    def record_postcheck_assessment(
+        self, assessment: PostcheckAssessment
+    ) -> PostcheckAssessment: ...
 
 
 class InMemoryStore:
@@ -203,6 +226,11 @@ class InMemoryStore:
         self.memory_events: list[MemoryEvent] = []
         self.approvals: dict[tuple[str, UUID], ApprovalDecision] = {}
         self.executions: dict[tuple[str, UUID], ExecutionAttestation] = {}
+        self.sandbox_executions: dict[tuple[str, UUID], SandboxExecution] = {}
+        self.postchecks: dict[
+            tuple[str, UUID], tuple[PostcheckObservation, PolicyVerdict]
+        ] = {}
+        self.postcheck_assessments: dict[tuple[str, UUID], PostcheckAssessment] = {}
         self._lock = threading.RLock()
 
     def ready(self) -> bool:
@@ -318,7 +346,13 @@ class InMemoryStore:
         return updated
 
     def record_approval(
-        self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
+        self,
+        incident_id: UUID,
+        tenant_id: str,
+        actor_id: str,
+        approved: bool,
+        proposal_hash: str,
+        reason: str,
     ) -> bool:
         key = (tenant_id, incident_id)
         if key not in self.analyses or key in self.approvals:
@@ -328,6 +362,7 @@ class InMemoryStore:
             tenant_id=tenant_id,
             actor_id=actor_id,
             approved=approved,
+            proposal_hash=proposal_hash,
             reason=reason,
         )
         return True
@@ -347,6 +382,59 @@ class InMemoryStore:
 
     def get_execution(self, incident_id: UUID, tenant_id: str) -> ExecutionAttestation | None:
         return self.executions.get((tenant_id, incident_id))
+
+    def record_sandbox_execution(self, execution: SandboxExecution) -> SandboxExecution:
+        key = (execution.tenant_id, execution.incident_id)
+        existing = self.sandbox_executions.get(key)
+        if existing is not None:
+            if (
+                existing.proposal_hash != execution.proposal_hash
+                or existing.idempotency_key != execution.idempotency_key
+            ):
+                raise MemoryGovernanceError("incident already has a different sandbox execution")
+            return existing
+        self.sandbox_executions[key] = execution
+        return execution
+
+    def get_sandbox_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> SandboxExecution | None:
+        return self.sandbox_executions.get((tenant_id, incident_id))
+
+    def record_postcheck(
+        self, observation: PostcheckObservation, verdict: PolicyVerdict
+    ) -> tuple[PostcheckObservation, PolicyVerdict]:
+        key = (observation.tenant_id, observation.incident_id)
+        existing = self.postchecks.get(key)
+        if existing is not None:
+            if existing[0].observation_digest != observation.observation_digest:
+                raise MemoryGovernanceError("incident already has a different postcheck")
+            return existing
+        if verdict.observation_digest != observation.observation_digest:
+            raise MemoryGovernanceError("policy verdict is not bound to the observation")
+        self.postchecks[key] = (observation, verdict)
+        return observation, verdict
+
+    def get_postcheck(
+        self, incident_id: UUID, tenant_id: str
+    ) -> tuple[PostcheckObservation, PolicyVerdict] | None:
+        return self.postchecks.get((tenant_id, incident_id))
+
+    def record_postcheck_assessment(
+        self, assessment: PostcheckAssessment
+    ) -> PostcheckAssessment:
+        key = (assessment.tenant_id, assessment.observation_id)
+        existing = self.postcheck_assessments.get(key)
+        if existing is not None:
+            if (
+                existing.agent_subject != assessment.agent_subject
+                or existing.classification != assessment.classification
+                or existing.rationale != assessment.rationale
+            ):
+                raise MemoryGovernanceError("observation already has a different assessment")
+            return existing
+        self.postcheck_assessments[key] = assessment
+        return assessment
 
 
 class PostgresStore:
@@ -416,6 +504,20 @@ class PostgresStore:
         row = dict(cast(Mapping[str, Any], raw_row))
         row["embedding"] = [float(value) for value in row["embedding"].strip("[]").split(",")]
         return Memory.model_validate(row)
+
+    @staticmethod
+    def _sandbox_execution(raw_row: object) -> SandboxExecution:
+        row = dict(cast(Mapping[str, Any], raw_row))
+        row["before"] = row.pop("before_metrics")
+        row["after"] = row.pop("after_metrics")
+        return SandboxExecution.model_validate(row)
+
+    @staticmethod
+    def _postcheck_observation(raw_row: object) -> PostcheckObservation:
+        row = dict(cast(Mapping[str, Any], raw_row))
+        row["before"] = row.pop("before_metrics")
+        row["after"] = row.pop("after_metrics")
+        return PostcheckObservation.model_validate(row)
 
     def add_memory(self, memory: Memory) -> None:
         def add_once() -> None:
@@ -799,15 +901,23 @@ class PostgresStore:
         return self._memory(raw_updated)
 
     def record_approval(
-        self, incident_id: UUID, tenant_id: str, actor_id: str, approved: bool, reason: str
+        self,
+        incident_id: UUID,
+        tenant_id: str,
+        actor_id: str,
+        approved: bool,
+        proposal_hash: str,
+        reason: str,
     ) -> bool:
         def record_once() -> bool:
             with self._pool.connection() as connection, connection.cursor() as cursor:
                 cursor.execute(
-                    """INSERT INTO approvals (incident_id, tenant_id, actor_id, approved, reason)
-                SELECT id, tenant_id, %s, %s, %s FROM incidents WHERE id=%s AND tenant_id=%s
+                    """INSERT INTO approvals
+                (incident_id, tenant_id, actor_id, approved, proposal_hash, reason)
+                SELECT id, tenant_id, %s, %s, %s, %s FROM incidents
+                WHERE id=%s AND tenant_id=%s
                 ON CONFLICT (incident_id) DO NOTHING RETURNING incident_id""",
-                    (actor_id, approved, reason, incident_id, tenant_id),
+                    (actor_id, approved, proposal_hash, reason, incident_id, tenant_id),
                 )
                 return cursor.fetchone() is not None
 
@@ -816,7 +926,8 @@ class PostgresStore:
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
         with self._pool.connection() as connection, connection.cursor() as cursor:
             cursor.execute(
-                """SELECT incident_id, tenant_id, actor_id, approved, reason, created_at
+                """SELECT incident_id, tenant_id, actor_id, approved, proposal_hash,
+                reason, created_at
                 FROM approvals WHERE incident_id=%s AND tenant_id=%s""",
                 (incident_id, tenant_id),
             )
@@ -872,3 +983,225 @@ class PostgresStore:
         evidence = result["evidence_refs"]
         result["evidence_refs"] = evidence.get("evidence_refs", evidence)
         return ExecutionAttestation.model_validate(result)
+
+    def record_sandbox_execution(self, execution: SandboxExecution) -> SandboxExecution:
+        def record_once() -> SandboxExecution:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO sandbox_executions
+                    (id, incident_id, tenant_id, actor_id, proposal_hash, action_id,
+                     simulator_version, idempotency_key, before_metrics, after_metrics,
+                     execution_digest, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s::JSONB,%s,%s)
+                    ON CONFLICT (incident_id) DO NOTHING
+                    RETURNING id, incident_id, tenant_id, actor_id, proposal_hash, action_id,
+                     simulator_version, idempotency_key, before_metrics, after_metrics,
+                     execution_digest, created_at""",
+                    (
+                        execution.id,
+                        execution.incident_id,
+                        execution.tenant_id,
+                        execution.actor_id,
+                        execution.proposal_hash,
+                        execution.action_id,
+                        execution.simulator_version,
+                        execution.idempotency_key,
+                        execution.before.model_dump_json(),
+                        execution.after.model_dump_json(),
+                        execution.execution_digest,
+                        execution.created_at,
+                    ),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    cursor.execute(
+                        """SELECT id, incident_id, tenant_id, actor_id, proposal_hash,
+                         action_id, simulator_version, idempotency_key, before_metrics,
+                         after_metrics, execution_digest, created_at
+                         FROM sandbox_executions WHERE incident_id=%s AND tenant_id=%s""",
+                        (execution.incident_id, execution.tenant_id),
+                    )
+                    row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("sandbox execution upsert returned no row")
+            recorded = self._sandbox_execution(row)
+            if (
+                recorded.proposal_hash != execution.proposal_hash
+                or recorded.idempotency_key != execution.idempotency_key
+            ):
+                raise MemoryGovernanceError("incident already has a different sandbox execution")
+            return recorded
+
+        return self._run_write(record_once)
+
+    def get_sandbox_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> SandboxExecution | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, incident_id, tenant_id, actor_id, proposal_hash, action_id,
+                 simulator_version, idempotency_key, before_metrics, after_metrics,
+                 execution_digest, created_at FROM sandbox_executions
+                 WHERE incident_id=%s AND tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        return self._sandbox_execution(row) if row is not None else None
+
+    def record_postcheck(
+        self, observation: PostcheckObservation, verdict: PolicyVerdict
+    ) -> tuple[PostcheckObservation, PolicyVerdict]:
+        if verdict.observation_digest != observation.observation_digest:
+            raise MemoryGovernanceError("policy verdict is not bound to the observation")
+
+        def record_once() -> tuple[PostcheckObservation, PolicyVerdict]:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO postcheck_observations
+                    (id, execution_id, incident_id, tenant_id, proposal_hash, execution_digest,
+                     source, observation_window_seconds, before_metrics, after_metrics,
+                     observation_digest, observed_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s::JSONB,%s,%s)
+                    ON CONFLICT (incident_id) DO NOTHING
+                    RETURNING id, execution_id, incident_id, tenant_id, proposal_hash,
+                     execution_digest, source, observation_window_seconds, before_metrics,
+                     after_metrics, observation_digest, observed_at""",
+                    (
+                        observation.id,
+                        observation.execution_id,
+                        observation.incident_id,
+                        observation.tenant_id,
+                        observation.proposal_hash,
+                        observation.execution_digest,
+                        observation.source,
+                        observation.observation_window_seconds,
+                        observation.before.model_dump_json(),
+                        observation.after.model_dump_json(),
+                        observation.observation_digest,
+                        observation.observed_at,
+                    ),
+                )
+                observation_row = cursor.fetchone()
+                if observation_row is None:
+                    cursor.execute(
+                        """SELECT id, execution_id, incident_id, tenant_id, proposal_hash,
+                         execution_digest, source, observation_window_seconds, before_metrics,
+                         after_metrics, observation_digest, observed_at
+                         FROM postcheck_observations
+                         WHERE incident_id=%s AND tenant_id=%s""",
+                        (observation.incident_id, observation.tenant_id),
+                    )
+                    observation_row = cursor.fetchone()
+                if observation_row is None:
+                    raise RuntimeError("postcheck observation upsert returned no row")
+                recorded_observation = self._postcheck_observation(observation_row)
+                if recorded_observation.observation_digest != observation.observation_digest:
+                    raise MemoryGovernanceError("incident already has a different postcheck")
+                cursor.execute(
+                    """INSERT INTO postcheck_policy_verdicts
+                    (observation_id, incident_id, tenant_id, classification, policy_version,
+                     checks_passed, checks_failed, observation_digest, computed_at)
+                    VALUES (%s,%s,%s,%s,%s,%s::JSONB,%s::JSONB,%s,%s)
+                    ON CONFLICT (observation_id) DO NOTHING
+                    RETURNING classification, policy_version, checks_passed, checks_failed,
+                     observation_digest, computed_at""",
+                    (
+                        recorded_observation.id,
+                        recorded_observation.incident_id,
+                        recorded_observation.tenant_id,
+                        verdict.classification,
+                        verdict.policy_version,
+                        json.dumps(verdict.checks_passed),
+                        json.dumps(verdict.checks_failed),
+                        verdict.observation_digest,
+                        verdict.computed_at,
+                    ),
+                )
+                verdict_row = cursor.fetchone()
+                if verdict_row is None:
+                    cursor.execute(
+                        """SELECT classification, policy_version, checks_passed, checks_failed,
+                         observation_digest, computed_at FROM postcheck_policy_verdicts
+                         WHERE observation_id=%s AND tenant_id=%s""",
+                        (recorded_observation.id, recorded_observation.tenant_id),
+                    )
+                    verdict_row = cursor.fetchone()
+            if verdict_row is None:
+                raise RuntimeError("postcheck verdict upsert returned no row")
+            recorded_verdict = PolicyVerdict.model_validate(dict(verdict_row))
+            if recorded_verdict.observation_digest != verdict.observation_digest:
+                raise MemoryGovernanceError("observation already has a different policy verdict")
+            return recorded_observation, recorded_verdict
+
+        return self._run_write(record_once)
+
+    def get_postcheck(
+        self, incident_id: UUID, tenant_id: str
+    ) -> tuple[PostcheckObservation, PolicyVerdict] | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT o.id, o.execution_id, o.incident_id, o.tenant_id,
+                 o.proposal_hash, o.execution_digest, o.source,
+                 o.observation_window_seconds, o.before_metrics, o.after_metrics,
+                 o.observation_digest, o.observed_at, v.classification, v.policy_version,
+                 v.checks_passed, v.checks_failed, v.computed_at
+                 FROM postcheck_observations AS o
+                 JOIN postcheck_policy_verdicts AS v ON v.observation_id=o.id
+                 WHERE o.incident_id=%s AND o.tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        values = dict(row)
+        observation = self._postcheck_observation(values)
+        verdict = PolicyVerdict.model_validate(values)
+        return observation, verdict
+
+    def record_postcheck_assessment(
+        self, assessment: PostcheckAssessment
+    ) -> PostcheckAssessment:
+        def record_once() -> PostcheckAssessment:
+            with self._pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """INSERT INTO postcheck_assessments
+                    (id, observation_id, incident_id, tenant_id, agent_subject,
+                     classification, rationale, observation_digest, created_at)
+                    VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)
+                    ON CONFLICT (observation_id) DO NOTHING
+                    RETURNING id, observation_id, incident_id, tenant_id, agent_subject,
+                     classification, rationale, observation_digest, created_at""",
+                    (
+                        assessment.id,
+                        assessment.observation_id,
+                        assessment.incident_id,
+                        assessment.tenant_id,
+                        assessment.agent_subject,
+                        assessment.classification,
+                        assessment.rationale,
+                        assessment.observation_digest,
+                        assessment.created_at,
+                    ),
+                )
+                row = cursor.fetchone()
+                if row is None:
+                    cursor.execute(
+                        """SELECT id, observation_id, incident_id, tenant_id, agent_subject,
+                         classification, rationale, observation_digest, created_at
+                         FROM postcheck_assessments
+                         WHERE observation_id=%s AND tenant_id=%s""",
+                        (assessment.observation_id, assessment.tenant_id),
+                    )
+                    row = cursor.fetchone()
+            if row is None:
+                raise RuntimeError("postcheck assessment upsert returned no row")
+            recorded = PostcheckAssessment.model_validate(dict(row))
+            if (
+                recorded.agent_subject != assessment.agent_subject
+                or recorded.classification != assessment.classification
+                or recorded.rationale != assessment.rationale
+            ):
+                raise MemoryGovernanceError("observation already has a different assessment")
+            return recorded
+
+        return self._run_write(record_once)

@@ -4,11 +4,14 @@ from types import SimpleNamespace
 import jwt
 import pytest
 from cryptography.hazmat.primitives.asymmetric import rsa
+from pydantic import SecretStr
 
 from recallops.auth import (
     AuthenticationError,
     DemoAuthenticator,
+    JudgeSessionAuthenticator,
     OidcAuthenticator,
+    Principal,
     create_authenticator,
 )
 from recallops.config import Settings
@@ -128,3 +131,36 @@ def test_oidc_role_claim_shapes(roles: object, expected: frozenset[str]) -> None
 
 def test_authenticator_factory_selects_mode() -> None:
     assert isinstance(create_authenticator(Settings(auth_mode="demo")), DemoAuthenticator)
+    assert isinstance(
+        create_authenticator(
+            Settings(
+                auth_mode="oidc",
+                oidc_issuer="https://issuer.example/",
+                oidc_audience="recallops-client",
+            )
+        ),
+        OidcAuthenticator,
+    )
+    with pytest.raises(ValueError, match="repository is required"):
+        create_authenticator(Settings(auth_mode="judge"))
+
+
+def test_judge_authenticator_requires_rate_key_and_ignores_non_session_revoke() -> None:
+    settings = Settings(
+        auth_mode="judge",
+        judge_operator_bootstrap_sha256="0" * 64,
+        judge_reviewer_bootstrap_sha256="1" * 64,
+    )
+    with pytest.raises(ValueError, match="rate-limit HMAC key"):
+        JudgeSessionAuthenticator(settings, object())  # type: ignore[arg-type]
+
+    configured = settings.model_copy(update={"judge_rate_limit_key": SecretStr("test-rate-key")})
+    verifier = JudgeSessionAuthenticator(configured, object())  # type: ignore[arg-type]
+    verifier.revoke(
+        Principal(
+            subject="demo",
+            tenant_id="demo",
+            roles=frozenset({"operator"}),
+            auth_method="test",
+        )
+    )

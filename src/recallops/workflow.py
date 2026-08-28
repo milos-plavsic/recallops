@@ -416,9 +416,20 @@ class WorkflowCoordinator:
         actor_subject: str,
         role: str,
     ) -> WorkflowSnapshot:
-        if channel is not RequestChannel.UI:
-            raise WorkflowConflict("protected transition is not authorized through WebMCP")
-        required_role = "reviewer" if expected_state is WorkflowState.PENDING_REVIEW else "operator"
+        if expected_state is WorkflowState.OBSERVING_POSTCHECK:
+            if channel is not RequestChannel.SYSTEM or role != "system":
+                raise WorkflowConflict("postcheck state transition requires system authority")
+            required_role = "system"
+        elif expected_state is WorkflowState.POSTCHECK_READY:
+            if channel is not RequestChannel.WEBMCP or role != "agent":
+                raise WorkflowConflict("postcheck assessment requires WebMCP agent authority")
+            required_role = "agent"
+        else:
+            if channel is not RequestChannel.UI:
+                raise WorkflowConflict("protected transition is not authorized through WebMCP")
+            required_role = (
+                "reviewer" if expected_state is WorkflowState.PENDING_REVIEW else "operator"
+            )
         if role != required_role:
             raise WorkflowConflict(f"{required_role} role required for workflow transition")
         current = self.get(workflow_id, tenant_id)

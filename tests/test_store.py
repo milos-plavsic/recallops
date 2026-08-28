@@ -12,6 +12,10 @@ from recallops.domain import (
     Memory,
     MemoryGovernanceRequest,
     MemoryState,
+    PolicyVerdict,
+    PostcheckAssessment,
+    PostcheckObservation,
+    SandboxExecution,
 )
 from recallops.embedding import DeterministicEmbedder
 from recallops.service import DeterministicReasoner, IncidentService
@@ -159,6 +163,20 @@ def database_row(memory: Memory) -> dict[str, Any]:
     return row
 
 
+def sandbox_row(execution: SandboxExecution) -> dict[str, Any]:
+    row = execution.model_dump()
+    row["before_metrics"] = row.pop("before")
+    row["after_metrics"] = row.pop("after")
+    return row
+
+
+def observation_row(observation: PostcheckObservation) -> dict[str, Any]:
+    row = observation.model_dump()
+    row["before_metrics"] = row.pop("before")
+    row["after_metrics"] = row.pop("after")
+    return row
+
+
 def test_postgres_constructor_and_readiness_fail_closed() -> None:
     with pytest.raises(ValueError, match="candidate_multiplier"):
         PostgresStore("postgres://unused", retrieval_candidate_multiplier=0)
@@ -229,3 +247,104 @@ def test_postgres_get_memory_is_tenant_scoped() -> None:
     memory = active_memory()
     assert postgres_with_rows([database_row(memory)]).get_memory(memory.id, "demo") == memory
     assert postgres_with_rows([None]).get_memory(memory.id, "other") is None
+
+
+def test_postgres_immutable_evidence_replay_and_failure_paths() -> None:
+    from recallops.domain import SandboxMetrics
+
+    metrics = SandboxMetrics(
+        worker_concurrency=24,
+        saturated_connections=3,
+        latency_p95_ms=210,
+        error_rate=0.004,
+    )
+    execution = SandboxExecution(
+        incident_id=uuid4(),
+        tenant_id="demo",
+        actor_id="operator",
+        proposal_hash="0" * 64,
+        action_id="checkout.reduce_concurrency_and_recycle.v1",
+        simulator_version="test-v1",
+        idempotency_key="immutable-execution",
+        before=metrics,
+        after=metrics,
+        execution_digest="1" * 64,
+    )
+    row = sandbox_row(execution)
+    assert postgres_with_rows([None, row]).record_sandbox_execution(execution) == execution
+    with pytest.raises(RuntimeError, match="sandbox execution upsert"):
+        postgres_with_rows([None, None]).record_sandbox_execution(execution)
+    with pytest.raises(MemoryGovernanceError, match="different sandbox execution"):
+        postgres_with_rows(
+            [None, {**row, "idempotency_key": "other-execution"}]
+        ).record_sandbox_execution(execution)
+    assert (
+        postgres_with_rows([row]).get_sandbox_execution(execution.incident_id, "demo") == execution
+    )
+    assert postgres_with_rows([None]).get_sandbox_execution(execution.incident_id, "other") is None
+
+    observation = PostcheckObservation(
+        execution_id=execution.id,
+        incident_id=execution.incident_id,
+        tenant_id="demo",
+        proposal_hash=execution.proposal_hash,
+        execution_digest=execution.execution_digest,
+        source="test-observer",
+        observation_window_seconds=60,
+        before=metrics,
+        after=metrics,
+        observation_digest="2" * 64,
+    )
+    verdict = PolicyVerdict(
+        classification="recovered",
+        policy_version="test-policy-v1",
+        checks_passed=["TEST_CHECK"],
+        checks_failed=[],
+        observation_digest=observation.observation_digest,
+    )
+    o_row = observation_row(observation)
+    v_row = verdict.model_dump()
+    assert postgres_with_rows([None, o_row, None, v_row]).record_postcheck(
+        observation, verdict
+    ) == (observation, verdict)
+    with pytest.raises(MemoryGovernanceError, match="not bound"):
+        postgres_with_rows([]).record_postcheck(
+            observation, verdict.model_copy(update={"observation_digest": "f" * 64})
+        )
+    with pytest.raises(RuntimeError, match="observation upsert"):
+        postgres_with_rows([None, None]).record_postcheck(observation, verdict)
+    with pytest.raises(MemoryGovernanceError, match="different postcheck"):
+        postgres_with_rows([None, {**o_row, "observation_digest": "f" * 64}]).record_postcheck(
+            observation, verdict
+        )
+    with pytest.raises(RuntimeError, match="verdict upsert"):
+        postgres_with_rows([o_row, None, None]).record_postcheck(observation, verdict)
+    with pytest.raises(MemoryGovernanceError, match="different policy verdict"):
+        postgres_with_rows(
+            [o_row, None, {**v_row, "observation_digest": "f" * 64}]
+        ).record_postcheck(observation, verdict)
+
+    joined = {**o_row, **v_row}
+    assert postgres_with_rows([joined]).get_postcheck(observation.incident_id, "demo") == (
+        observation,
+        verdict,
+    )
+    assert postgres_with_rows([None]).get_postcheck(observation.incident_id, "other") is None
+
+    assessment = PostcheckAssessment(
+        observation_id=observation.id,
+        incident_id=observation.incident_id,
+        tenant_id="demo",
+        agent_subject="agent",
+        classification="recovered",
+        rationale="Evidence satisfies the bounded policy thresholds.",
+        observation_digest=observation.observation_digest,
+    )
+    a_row = assessment.model_dump()
+    assert postgres_with_rows([None, a_row]).record_postcheck_assessment(assessment) == assessment
+    with pytest.raises(RuntimeError, match="assessment upsert"):
+        postgres_with_rows([None, None]).record_postcheck_assessment(assessment)
+    with pytest.raises(MemoryGovernanceError, match="different assessment"):
+        postgres_with_rows(
+            [None, {**a_row, "rationale": "conflicting replay"}]
+        ).record_postcheck_assessment(assessment)

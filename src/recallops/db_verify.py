@@ -37,6 +37,14 @@ EXPECTED_GRANTS = {
     ("recallops_api", "memories", "SELECT"),
     ("recallops_api", "memories", "UPDATE"),
     ("recallops_api", "memory_events", "INSERT"),
+    ("recallops_api", "postcheck_assessments", "INSERT"),
+    ("recallops_api", "postcheck_assessments", "SELECT"),
+    ("recallops_api", "postcheck_observations", "INSERT"),
+    ("recallops_api", "postcheck_observations", "SELECT"),
+    ("recallops_api", "postcheck_policy_verdicts", "INSERT"),
+    ("recallops_api", "postcheck_policy_verdicts", "SELECT"),
+    ("recallops_api", "sandbox_executions", "INSERT"),
+    ("recallops_api", "sandbox_executions", "SELECT"),
     ("recallops_api", "webmcp_workflows", "INSERT"),
     ("recallops_api", "webmcp_workflows", "SELECT"),
     ("recallops_api", "webmcp_workflows", "UPDATE"),
@@ -49,7 +57,9 @@ def _vector() -> str:
     return "[" + ",".join(["0"] * 1024) + "]"
 
 
-def _seed_boundary_rows(cursor: psycopg.Cursor[Any]) -> tuple[UUID, UUID, UUID, UUID]:
+def _seed_boundary_rows(
+    cursor: psycopg.Cursor[Any],
+) -> tuple[UUID, UUID, UUID, UUID, UUID, UUID]:
     incident_a, incident_b = uuid4(), uuid4()
     memory_a, memory_b = uuid4(), uuid4()
     for incident_id, tenant in ((incident_a, "boundary_a"), (incident_b, "boundary_b")):
@@ -69,7 +79,27 @@ def _seed_boundary_rows(cursor: psycopg.Cursor[Any]) -> tuple[UUID, UUID, UUID, 
                        'probe', 0, 0.5, %s::VECTOR)""",
             (memory_id, tenant, _vector()),
         )
-    return incident_a, incident_b, memory_a, memory_b
+    execution_id, observation_id = uuid4(), uuid4()
+    cursor.execute(
+        """INSERT INTO sandbox_executions
+           (id, incident_id, tenant_id, actor_id, proposal_hash, action_id,
+            simulator_version, idempotency_key, before_metrics, after_metrics,
+            execution_digest)
+           VALUES (%s,%s,'boundary_a','probe',%s,
+                   'checkout.reduce_concurrency_and_recycle.v1','probe-v1','boundary-execution',
+                   '{}'::JSONB,'{}'::JSONB,%s)""",
+        (execution_id, incident_a, "0" * 64, "1" * 64),
+    )
+    cursor.execute(
+        """INSERT INTO postcheck_observations
+           (id, execution_id, incident_id, tenant_id, proposal_hash, execution_digest,
+            source, observation_window_seconds, before_metrics, after_metrics,
+            observation_digest)
+           VALUES (%s,%s,%s,'boundary_a',%s,%s,'probe',60,
+                   '{}'::JSONB,'{}'::JSONB,%s)""",
+        (observation_id, execution_id, incident_a, "0" * 64, "1" * 64, "2" * 64),
+    )
+    return incident_a, incident_b, memory_a, memory_b, execution_id, observation_id
 
 
 def _expect_fk_rejection(
@@ -97,14 +127,21 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
     with psycopg.connect(database_url, autocommit=False) as connection:
         try:
             with connection.cursor() as cursor:
-                incident_a, _, memory_a, memory_b = _seed_boundary_rows(cursor)
+                (
+                    incident_a,
+                    incident_b,
+                    memory_a,
+                    memory_b,
+                    execution_a,
+                    observation_a,
+                ) = _seed_boundary_rows(cursor)
             checks = [
                 _expect_fk_rejection(
                     connection,
                     """INSERT INTO approvals
-                       (incident_id, tenant_id, actor_id, approved, reason)
-                       VALUES (%s, 'boundary_b', 'probe', true, 'boundary probe')""",
-                    (incident_a,),
+                       (incident_id, tenant_id, actor_id, approved, proposal_hash, reason)
+                       VALUES (%s, 'boundary_b', 'probe', true, %s, 'boundary probe')""",
+                    (incident_a, "0" * 64),
                     "approvals_incident_tenant_fk",
                 ),
                 _expect_fk_rejection(
@@ -157,6 +194,48 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                        VALUES (%s, 'boundary_b', 'INVESTIGATING', 1)""",
                     (incident_a,),
                     "webmcp_workflow_incident_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO sandbox_executions
+                       (id, incident_id, tenant_id, actor_id, proposal_hash, action_id,
+                        simulator_version, idempotency_key, before_metrics, after_metrics,
+                        execution_digest)
+                       VALUES (%s,%s,'boundary_b','probe',%s,
+                       'checkout.reduce_concurrency_and_recycle.v1','probe-v1','cross-sandbox',
+                       '{}'::JSONB,'{}'::JSONB,%s)""",
+                    (uuid4(), incident_a, "0" * 64, "1" * 64),
+                    "sandbox_execution_incident_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO postcheck_observations
+                       (id, execution_id, incident_id, tenant_id, proposal_hash,
+                        execution_digest, source, observation_window_seconds, before_metrics,
+                        after_metrics, observation_digest)
+                       VALUES (%s,%s,%s,'boundary_b',%s,%s,'probe',60,
+                       '{}'::JSONB,'{}'::JSONB,%s)""",
+                    (uuid4(), execution_a, incident_b, "0" * 64, "1" * 64, "2" * 64),
+                    "postcheck_execution_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO postcheck_policy_verdicts
+                       (observation_id, incident_id, tenant_id, classification, policy_version,
+                        checks_passed, checks_failed, observation_digest)
+                       VALUES (%s,%s,'boundary_b','recovered','probe-v1','[]'::JSONB,
+                       '[]'::JSONB,%s)""",
+                    (observation_a, incident_b, "2" * 64),
+                    "verdict_observation_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO postcheck_assessments
+                       (id, observation_id, incident_id, tenant_id, agent_subject,
+                        classification, rationale, observation_digest)
+                       VALUES (%s,%s,%s,'boundary_b','probe','recovered','probe',%s)""",
+                    (uuid4(), observation_a, incident_b, "2" * 64),
+                    "assessment_observation_tenant_fk",
                 ),
             ]
         finally:
@@ -228,6 +307,17 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "CREATE TABLE runtime_privilege_escape (id INT PRIMARY KEY)"),
         ("recallops_api", "DELETE FROM webmcp_workflows WHERE false"),
         ("recallops_api", "DELETE FROM judge_sessions WHERE false"),
+        ("recallops_api", "UPDATE sandbox_executions SET actor_id=actor_id WHERE false"),
+        ("recallops_api", "DELETE FROM sandbox_executions WHERE false"),
+        ("recallops_api", "UPDATE postcheck_observations SET source=source WHERE false"),
+        ("recallops_api", "DELETE FROM postcheck_observations WHERE false"),
+        (
+            "recallops_api",
+            "UPDATE postcheck_policy_verdicts SET policy_version=policy_version WHERE false",
+        ),
+        ("recallops_api", "DELETE FROM postcheck_policy_verdicts WHERE false"),
+        ("recallops_api", "UPDATE postcheck_assessments SET rationale=rationale WHERE false"),
+        ("recallops_api", "DELETE FROM postcheck_assessments WHERE false"),
         ("recallops_outbox", "SELECT * FROM incidents LIMIT 0"),
         ("recallops_outbox", "INSERT INTO incidents DEFAULT VALUES"),
         ("recallops_outbox", "CREATE TABLE worker_privilege_escape (id INT PRIMARY KEY)"),

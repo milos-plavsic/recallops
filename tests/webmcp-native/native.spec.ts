@@ -5,12 +5,12 @@ const analysis = {
   diagnosis: "Compatible reviewed memory supports a bounded pool-size mitigation.",
   confidence: 0.86,
   proposed_action: {
-    name: "increase_pool_size",
-    command: "increase checkout pool size and observe latency",
+    name: "apply_prior_remediation",
+    command: "reduce worker concurrency to 24 and recycle saturated connections",
     risk: "mutating_requires_approval",
     rationale: "Compatible reviewed recovery evidence exists",
     requires_approval: true,
-    action_hash: "sha256:native-webmcp-action",
+    action_hash: "9e6e4ae5688cc8c38c60f730139bacc895a485eade9b28a154672b38b0e78be9",
   },
   memories: [],
   retrieval_abstention_reasons: [],
@@ -89,6 +89,88 @@ test("Chromium discovers, invokes, and observes withdrawal of native tools", asy
   await expect(page.locator("#webmcp-state")).toHaveText("AWAITING_OPERATOR_APPROVAL");
   await expect(page.locator("#webmcp-epoch")).toHaveText("1");
   await expect(page.locator("#webmcp-authority")).toHaveText("HUMAN_OPERATOR");
+});
+
+test("native Chromium exposes assessment only after server-issued evidence", async ({ page }) => {
+  const observationId = "00000000-0000-0000-0000-000000000040";
+  let assessmentRequest: { headers: Record<string, string>; body: any } | null = null;
+  await page.route("**/v1/config", (route) => route.fulfill({ json: { auth_required: false } }));
+  await page.route("**/ready", (route) => route.fulfill({ json: { status: "ready" } }));
+  await page.route("**/v1/system/status", (route) => route.fulfill({ json: {
+    store: "memory", reasoning_provider: "deterministic", embedding_provider: "deterministic",
+    embedding_space: "deterministic-v1", evidence_archive_configured: false, auth_mode: "demo",
+  } }));
+  await page.route("**/v1/evaluation", (route) => route.fulfill({ json: {
+    passed: true, case_count: 1,
+    recallops: { top1_safe_accuracy: 1, unsafe_selection_rate: 0, isolation_violations: 0, mean_reciprocal_rank: 1 },
+    similarity_only: { top1_safe_accuracy: 0, unsafe_selection_rate: 1, isolation_violations: 0, mean_reciprocal_rank: 0 },
+  } }));
+  await page.route("**/v1/incidents", (route) => route.fulfill({ status: 201, json: analysis }));
+  await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: {
+    workflow_id: analysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
+    active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"], protected_tools: [],
+  } }));
+  await page.route("**/v1/incidents/*/approval", (route) => route.fulfill({ json: {
+    recorded: true,
+    workflow: { workflow_id: analysis.incident_id, state: "APPROVED_AWAITING_EXECUTION", epoch: 2,
+      active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"], protected_tools: [] },
+  } }));
+  await page.route("**/v1/incidents/*/sandbox-execution", (route) => route.fulfill({ status: 201, json: {
+    execution: { id: "00000000-0000-0000-0000-000000000030" },
+    observation: { id: observationId,
+      before: { latency_p95_ms: 1420, error_rate: 0.031 },
+      after: { latency_p95_ms: 210, error_rate: 0.004 } },
+    policy_verdict: { classification: "recovered", policy_version: "checkout-recovery-policy-v1" },
+    workflow: { workflow_id: analysis.incident_id, state: "POSTCHECK_READY", epoch: 4,
+      active: true, authority_owner: "AGENT",
+      available_tools: ["inspect_incident", "record_postcheck_assessment"], protected_tools: [] },
+  } }));
+  await page.route("**/v1/incidents/*/postcheck-assessment", async (route) => {
+    assessmentRequest = { headers: route.request().headers(), body: route.request().postDataJSON() };
+    await route.fulfill({ status: 201, json: {
+      assessment: { observation_id: observationId, classification: "recovered", rationale: "verified" },
+      policy_verdict: { classification: "recovered" },
+      memory: { id: "00000000-0000-0000-0000-000000000050", state: "pending_review", valid: false },
+      workflow: { workflow_id: analysis.incident_id, state: "PENDING_REVIEW", epoch: 5,
+        active: true, authority_owner: "HUMAN_REVIEWER", available_tools: ["inspect_incident"], protected_tools: [] },
+    } });
+  });
+
+  await page.goto("/");
+  await page.evaluate(async () => {
+    const context = (document as any).modelContext;
+    const proposal = (await context.getTools()).find((tool: any) => tool.name === "propose_mitigation");
+    await context.executeTool(proposal, JSON.stringify({
+      service: "checkout", service_version: "2026.07.31",
+      symptom: "latency spike after connection pool exhaustion",
+    }));
+  });
+  await page.getByRole("button", { name: "Approve exact action" }).click();
+  await page.getByRole("button", { name: "Apply sandbox mitigation" }).click();
+
+  await expect.poll(() => page.evaluate(async () =>
+    (await (document as any).modelContext.getTools()).map((tool: any) => tool.name)))
+    .toEqual(["inspect_incident", "record_postcheck_assessment"]);
+  const result = await page.evaluate(async (id) => {
+    const context = (document as any).modelContext;
+    const tool = (await context.getTools()).find((entry: any) => entry.name === "record_postcheck_assessment");
+    const raw = await context.executeTool(tool, JSON.stringify({
+      observation_id: id,
+      classification: "recovered",
+      rationale: "All three bounded recovery checks passed.",
+    }));
+    await new Promise((resolve) => setTimeout(resolve, 100));
+    return { payload: JSON.parse(JSON.parse(raw).content[0].text),
+      tools: (await context.getTools()).map((entry: any) => entry.name) };
+  }, observationId);
+  expect(result.payload).toMatchObject({ independent_review_required: true,
+    memory: { state: "pending_review", valid: false } });
+  expect(result.tools).toEqual(["inspect_incident"]);
+  expect(assessmentRequest).not.toBeNull();
+  expect(assessmentRequest!.headers["x-recallops-channel"]).toBe("webmcp");
+  expect(assessmentRequest!.headers["x-workflow-epoch"]).toBe("4");
+  expect(assessmentRequest!.body).toEqual({ observation_id: observationId,
+    classification: "recovered", rationale: "All three bounded recovery checks passed." });
 });
 
 test("native Chromium and the real server enforce the same authority boundary", async ({ page, request }) => {
@@ -185,6 +267,7 @@ test("native Chromium and the real server enforce the same authority boundary", 
       tenant_id: "native",
       actor_id: "native-agent",
       approved: true,
+      proposal_hash: result.payload.proposed_action.action_hash,
       reason: "this WebMCP authority bypass must fail",
     },
   });

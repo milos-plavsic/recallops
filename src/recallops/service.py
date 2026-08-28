@@ -29,8 +29,13 @@ from recallops.domain import (
     MemoryGovernanceRequest,
     MemoryState,
     OutcomeObservation,
+    PolicyVerdict,
+    PostcheckAssessment,
+    PostcheckClassification,
+    PostcheckObservation,
     ProposedAction,
     RetrievedMemory,
+    SandboxExecution,
     ToolStatus,
 )
 from recallops.embedding import Embedder
@@ -499,11 +504,17 @@ class IncidentService:
             return False
         if not analysis.proposed_action.requires_approval:
             raise IncidentWorkflowError("read-only action does not require approval")
+        proposal_hash = analysis.proposed_action.action_hash
+        if proposal_hash is None:
+            raise IncidentWorkflowError("analysis lacks a proposal digest")
+        if request.proposal_hash != proposal_hash:
+            raise IncidentWorkflowError("approval does not match the proposed action")
         return self._store.record_approval(
             incident_id,
             request.tenant_id,
             request.actor_id,
             request.approved,
+            proposal_hash,
             request.reason,
         )
 
@@ -512,6 +523,24 @@ class IncidentService:
 
     def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None:
         return self._store.get_memory(memory_id, tenant_id)
+
+    def get_sandbox_execution(
+        self, incident_id: UUID, tenant_id: str
+    ) -> SandboxExecution | None:
+        return self._store.get_sandbox_execution(incident_id, tenant_id)
+
+    def persist_sandbox_execution(self, execution: SandboxExecution) -> SandboxExecution:
+        return self._store.record_sandbox_execution(execution)
+
+    def persist_postcheck(
+        self, observation: PostcheckObservation, verdict: PolicyVerdict
+    ) -> tuple[PostcheckObservation, PolicyVerdict]:
+        return self._store.record_postcheck(observation, verdict)
+
+    def get_postcheck(
+        self, incident_id: UUID, tenant_id: str
+    ) -> tuple[PostcheckObservation, PolicyVerdict] | None:
+        return self._store.get_postcheck(incident_id, tenant_id)
 
     def attest_execution(
         self, incident_id: UUID, request: ExecutionAttestationRequest
@@ -599,6 +628,87 @@ class IncidentService:
     def persist_outcome(self, memory: Memory) -> Memory:
         return self._store.save_outcome_memory(memory)
 
+    def prepare_verified_outcome(
+        self,
+        incident_id: UUID,
+        observation: PostcheckObservation,
+        verdict: PolicyVerdict,
+        assessment: PostcheckAssessment,
+    ) -> Memory | None:
+        incident = self._store.get_incident(incident_id, observation.tenant_id)
+        if incident is None:
+            return None
+        execution = self._store.get_sandbox_execution(incident_id, observation.tenant_id)
+        if execution is None:
+            raise IncidentWorkflowError("sandbox execution required before postcheck assessment")
+        if (
+            observation.incident_id != incident_id
+            or observation.execution_id != execution.id
+            or observation.proposal_hash != execution.proposal_hash
+            or observation.execution_digest != execution.execution_digest
+        ):
+            raise IncidentWorkflowError("observation is not bound to the sandbox execution")
+        if (
+            verdict.observation_digest != observation.observation_digest
+            or assessment.observation_id != observation.id
+            or assessment.observation_digest != observation.observation_digest
+            or assessment.incident_id != incident_id
+            or assessment.tenant_id != observation.tenant_id
+        ):
+            raise IncidentWorkflowError("assessment or verdict is not bound to the observation")
+        try:
+            embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+        except DependencyUnavailable as error:
+            structlog.get_logger().warning("dependency_degraded", dependency=error.dependency)
+            raise
+        outcomes = {
+            PostcheckClassification.RECOVERED: (
+                "verified recovery after sandbox remediation",
+                1.0,
+            ),
+            PostcheckClassification.NOT_RECOVERED: (
+                "verified postcheck failure after sandbox remediation",
+                -1.0,
+            ),
+            PostcheckClassification.INCONCLUSIVE: (
+                "verified postcheck was inconclusive",
+                0.0,
+            ),
+        }
+        outcome, outcome_score = outcomes[verdict.classification]
+        return Memory(
+            tenant_id=incident.tenant_id,
+            service=incident.service,
+            service_version=incident.service_version,
+            compatibility_policy=self._default_compatibility_policy,
+            compatibility_policy_version=self._compatibility_policy_version,
+            symptom=incident.symptom,
+            action=analysis_action(self._store, incident_id, incident.tenant_id),
+            outcome=outcome,
+            outcome_score=outcome_score,
+            confidence=1.0,
+            valid=False,
+            state=MemoryState.PENDING_REVIEW,
+            source_incident_id=incident_id,
+            observed_by=assessment.agent_subject,
+            evidence_verification=EvidenceVerification.SYSTEM_OBSERVED,
+            evidence_refs=[
+                f"urn:recallops:observation:{observation.id}",
+                f"urn:recallops:policy:{verdict.policy_version}",
+                f"urn:recallops:assessment:{assessment.id}",
+            ],
+            observation_window_seconds=observation.observation_window_seconds,
+            postconditions=[*verdict.checks_passed, *verdict.checks_failed],
+            embedding_space=self._embedder.space_id,
+            embedding=embedding,
+        )
+
+    def persist_verified_outcome(
+        self, assessment: PostcheckAssessment, memory: Memory
+    ) -> tuple[PostcheckAssessment, Memory]:
+        recorded = self._store.record_postcheck_assessment(assessment)
+        return recorded, self._store.save_outcome_memory(memory)
+
     def _validate_evidence(
         self, verification: EvidenceVerification, evidence_refs: list[str]
     ) -> None:
@@ -607,3 +717,10 @@ class IncidentService:
 
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
         return self._store.govern_memory(memory_id, request)
+
+
+def analysis_action(store: MemoryStore, incident_id: UUID, tenant_id: str) -> str:
+    analysis = store.get_analysis(incident_id, tenant_id)
+    if analysis is None:
+        raise IncidentWorkflowError("analysis not found")
+    return analysis.proposed_action.command

@@ -93,6 +93,14 @@ def test_health() -> None:
     assert client.get("/ready").json() == {"status": "ready"}
 
 
+def test_judge_session_routes_are_absent_outside_judge_mode() -> None:
+    client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
+    assert client.post("/v1/judge/session/exchange", json={"code": "x" * 20}).status_code == 404
+    assert client.post(
+        "/v1/judge/session/logout", headers={"X-Tenant-ID": "demo"}
+    ).status_code == 404
+
+
 def test_system_status_distinguishes_configuration_from_runtime_verification() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     response = client.get("/v1/system/status")
@@ -170,8 +178,15 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         "tenant_id": "demo",
         "actor_id": "operator",
         "approved": True,
+        "proposal_hash": "0" * 64,
         "reason": "reviewed",
     }
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/approval", headers=headers, json=approval
+        ).status_code
+        == 404
+    )
     monkeypatch.setattr(
         app.state.service,
         "decide_approval",
@@ -230,6 +245,18 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         ).status_code
         == 404
     )
+    monkeypatch.setattr(app.state.service, "prepare_execution", MagicMock(return_value=object()))
+    monkeypatch.setattr(
+        app.state.service,
+        "persist_execution",
+        MagicMock(side_effect=LookupError("execution vanished")),
+    )
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/execution", headers=headers, json=execution
+        ).status_code
+        == 404
+    )
 
     app.state.workflows.transition(
         workflow_id,
@@ -269,6 +296,51 @@ def test_workflow_failures_map_to_safe_http_responses(monkeypatch: pytest.Monkey
         ).status_code
         == 409
     )
+    monkeypatch.setattr(app.state.service, "prepare_outcome", MagicMock(return_value=None))
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome
+        ).status_code
+        == 404
+    )
+    monkeypatch.setattr(app.state.service, "prepare_outcome", MagicMock(return_value=object()))
+    monkeypatch.setattr(
+        app.state.service,
+        "persist_outcome",
+        MagicMock(side_effect=LookupError("outcome vanished")),
+    )
+    assert (
+        client.post(
+            f"/v1/incidents/{incident_id}/outcome", headers=headers, json=outcome
+        ).status_code
+        == 404
+    )
+
+
+def test_execution_fails_if_analysis_exists_without_authoritative_workflow(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(Settings(store="memory"), InMemoryStore())
+    client = TestClient(app)
+    monkeypatch.setattr(app.state.service, "prepare_execution", MagicMock(return_value=object()))
+    response = client.post(
+        "/v1/incidents/00000000-0000-0000-0000-000000000001/execution",
+        headers={
+            "X-Tenant-ID": "demo",
+            "X-Actor-ID": "operator",
+            "X-Roles": "operator",
+            "X-RecallOps-Channel": "ui",
+            "X-Workflow-Epoch": "1",
+        },
+        json={
+            "tenant_id": "demo",
+            "actor_id": "operator",
+            "action_hash": "0" * 64,
+            "action_taken": "inspect",
+            "evidence_refs": ["test://execution"],
+        },
+    )
+    assert response.status_code == 404
 
 
 def test_execution_rejects_actor_mismatch_before_service_call() -> None:
@@ -331,6 +403,7 @@ def test_incident_read_and_single_approval() -> None:
         "tenant_id": "demo",
         "approved": True,
         "actor_id": "operator-1",
+        "proposal_hash": incident["proposed_action"]["action_hash"],
         "reason": "diagnostic evidence verified",
     }
     assert (
@@ -369,10 +442,65 @@ def test_approval_rejects_cross_tenant_payload() -> None:
             "tenant_id": "demo",
             "approved": False,
             "actor_id": "operator-1",
+            "proposal_hash": "0" * 64,
             "reason": "tenant mismatch must be rejected",
         },
     )
     assert response.status_code == 403
+
+
+def test_approval_for_unknown_workflow_and_legacy_preconditions_fail_closed() -> None:
+    app = create_app(Settings(store="memory"), InMemoryStore())
+    client = TestClient(app)
+    incident_id = "00000000-0000-0000-0000-000000000001"
+    base = {
+        "X-Tenant-ID": "demo",
+        "X-Actor-ID": "operator-1",
+        "X-Roles": "operator",
+        "X-RecallOps-Channel": "ui",
+        "X-Workflow-Epoch": "1",
+    }
+    approval = client.post(
+        f"/v1/incidents/{incident_id}/approval",
+        headers=base,
+        json={
+            "tenant_id": "demo",
+            "approved": True,
+            "actor_id": "operator-1",
+            "proposal_hash": "0" * 64,
+            "reason": "unknown workflow must fail",
+        },
+    )
+    assert approval.status_code == 404
+
+    app.state.workflows.ensure_for_analysis("demo", UUID(incident_id), "0" * 64, mutating=True)
+
+    no_epoch = {key: value for key, value in base.items() if key != "X-Workflow-Epoch"}
+    execution = client.post(
+        f"/v1/incidents/{incident_id}/execution",
+        headers=no_epoch,
+        json={
+            "tenant_id": "demo",
+            "actor_id": "operator-1",
+            "action_hash": "0" * 64,
+            "action_taken": "inspect",
+            "evidence_refs": ["test://execution"],
+        },
+    )
+    assert execution.status_code == 428
+    outcome = client.post(
+        f"/v1/incidents/{incident_id}/outcome",
+        headers=no_epoch,
+        json={
+            "tenant_id": "demo",
+            "actor_id": "operator-1",
+            "action_taken": "inspect",
+            "outcome": "unknown",
+            "outcome_score": 0,
+            "confidence": 0.5,
+        },
+    )
+    assert outcome.status_code == 428
 
 
 def test_outcome_is_learned_once_and_embedding_is_not_exposed() -> None:

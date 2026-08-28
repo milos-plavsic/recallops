@@ -1,4 +1,5 @@
 import hashlib
+from datetime import UTC, datetime, timedelta
 
 from fastapi.testclient import TestClient
 from pydantic import SecretStr
@@ -55,7 +56,6 @@ def test_judge_exchange_uses_opaque_cookie_and_server_derived_identity() -> None
         ).status_code
         == 403
     )
-
     result = exchange(client, OPERATOR_CODE)
 
     assert result["identity"] == {
@@ -75,6 +75,13 @@ def test_judge_exchange_uses_opaque_cookie_and_server_derived_identity() -> None
         ).headers["set-cookie"]
     )
     assert client.get("/v1/me").json()["subject"] == "judge-operator"
+
+
+def test_in_memory_session_attempt_window_and_missing_revoke() -> None:
+    repository = InMemoryJudgeSessionRepository()
+    repository._attempts["client"] = (datetime.now(UTC) - timedelta(seconds=61), 99)
+    assert repository.consume_attempt("client", limit=1, window_seconds=60)
+    repository.revoke("missing")
 
 
 def test_judge_protected_transition_requires_origin_and_csrf() -> None:
@@ -108,6 +115,7 @@ def test_judge_protected_transition_requires_origin_and_csrf() -> None:
         "tenant_id": "judge",
         "actor_id": "judge-operator",
         "approved": True,
+        "proposal_hash": incident["proposed_action"]["action_hash"],
         "reason": "reviewed exact proposal",
     }
     path = f"/v1/incidents/{incident['incident_id']}/approval"
@@ -125,6 +133,14 @@ def test_judge_protected_transition_requires_origin_and_csrf() -> None:
         ).status_code
         == 403
     )
+    assert (
+        client.post(
+            path,
+            headers={**base_headers, "Origin": "http://testserver"},
+            json=approval,
+        ).status_code
+        == 403
+    )
     accepted = client.post(
         path,
         headers={
@@ -135,6 +151,35 @@ def test_judge_protected_transition_requires_origin_and_csrf() -> None:
         json=approval,
     )
     assert accepted.status_code == 200
+
+
+def test_judge_mode_disables_manual_execution_and_operator_supplied_outcomes() -> None:
+    client = TestClient(create_app(settings(), InMemoryStore()))
+    exchange(client, OPERATOR_CODE)
+    incident_id = "00000000-0000-0000-0000-000000000001"
+    execution = client.post(
+        f"/v1/incidents/{incident_id}/execution",
+        json={
+            "tenant_id": "judge",
+            "actor_id": "judge-operator",
+            "action_hash": "0" * 64,
+            "action_taken": "untrusted operator text",
+            "evidence_refs": ["manual://claim"],
+        },
+    )
+    outcome = client.post(
+        f"/v1/incidents/{incident_id}/outcome",
+        json={
+            "tenant_id": "judge",
+            "actor_id": "judge-operator",
+            "action_taken": "untrusted operator text",
+            "outcome": "unverified success claim",
+            "outcome_score": 1,
+            "confidence": 1,
+        },
+    )
+    assert execution.status_code == 410
+    assert outcome.status_code == 410
 
 
 def test_judge_exchange_is_rate_limited_and_roles_cannot_be_supplied() -> None:
@@ -155,6 +200,16 @@ def test_judge_exchange_is_rate_limited_and_roles_cannot_be_supplied() -> None:
         json={"code": OPERATOR_CODE},
     )
     assert limited.status_code == 429
+
+
+def test_judge_exchange_rejects_malformed_bootstrap_body() -> None:
+    client = TestClient(create_app(settings(), InMemoryStore()))
+    response = client.post(
+        "/v1/judge/session/exchange",
+        headers={"Origin": "http://testserver"},
+        json={"code": "short"},
+    )
+    assert response.status_code == 400
 
 
 def test_judge_logout_revokes_server_session() -> None:

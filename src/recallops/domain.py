@@ -48,6 +48,12 @@ class CandidateDisposition(StrEnum):
     REJECTED = "rejected"
 
 
+class PostcheckClassification(StrEnum):
+    RECOVERED = "recovered"
+    NOT_RECOVERED = "not_recovered"
+    INCONCLUSIVE = "inconclusive"
+
+
 class CompatibilityPolicy(StrEnum):
     EXACT = "exact"
     SEMVER_PATCH = "semver_patch"
@@ -157,11 +163,13 @@ class ApprovalRequest(BaseModel):
     tenant_id: str = Field(min_length=1, max_length=80)
     approved: bool
     actor_id: str = Field(min_length=1, max_length=120)
+    proposal_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     reason: str = Field(min_length=3, max_length=1000)
 
 
 class ApprovalDecision(ApprovalRequest):
     incident_id: UUID
+    proposal_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
@@ -176,6 +184,82 @@ class ExecutionAttestationRequest(BaseModel):
 
 class ExecutionAttestation(ExecutionAttestationRequest):
     incident_id: UUID
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class SandboxExecutionRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    actor_id: str = Field(min_length=1, max_length=120)
+    proposal_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    idempotency_key: str = Field(min_length=8, max_length=200)
+
+
+class PostcheckRetryRequest(BaseModel):
+    tenant_id: str = Field(min_length=1, max_length=80, pattern=r"^[a-zA-Z0-9_-]+$")
+    actor_id: str = Field(min_length=1, max_length=120)
+
+
+class SandboxMetrics(BaseModel):
+    worker_concurrency: int = Field(ge=1, le=1024)
+    saturated_connections: int = Field(ge=0, le=100_000)
+    latency_p95_ms: int = Field(ge=0, le=120_000)
+    error_rate: float = Field(ge=0, le=1)
+
+
+class SandboxExecution(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    incident_id: UUID
+    tenant_id: str
+    actor_id: str
+    proposal_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    action_id: str = Field(pattern=r"^[a-z0-9_.-]+$", max_length=120)
+    simulator_version: str = Field(min_length=3, max_length=80)
+    idempotency_key: str = Field(min_length=8, max_length=200)
+    before: SandboxMetrics
+    after: SandboxMetrics
+    execution_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class PolicyVerdict(BaseModel):
+    classification: PostcheckClassification
+    policy_version: str = Field(min_length=3, max_length=80)
+    checks_passed: list[str] = Field(default_factory=list, max_length=20)
+    checks_failed: list[str] = Field(default_factory=list, max_length=20)
+    observation_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    computed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class PostcheckObservation(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    execution_id: UUID
+    incident_id: UUID
+    tenant_id: str
+    proposal_hash: str = Field(pattern=r"^[a-f0-9]{64}$")
+    execution_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    source: str = Field(min_length=3, max_length=120)
+    observation_window_seconds: int = Field(ge=1, le=3600)
+    before: SandboxMetrics
+    after: SandboxMetrics
+    observation_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
+    observed_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
+
+
+class PostcheckAssessmentRequest(BaseModel):
+    observation_id: UUID
+    classification: PostcheckClassification
+    rationale: str = Field(min_length=3, max_length=1000)
+
+
+class PostcheckAssessment(BaseModel):
+    id: UUID = Field(default_factory=uuid4)
+    observation_id: UUID
+    incident_id: UUID
+    tenant_id: str
+    agent_subject: str = Field(min_length=1, max_length=200)
+    classification: PostcheckClassification
+    rationale: str = Field(min_length=3, max_length=1000)
+    observation_digest: str = Field(pattern=r"^[a-f0-9]{64}$")
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 

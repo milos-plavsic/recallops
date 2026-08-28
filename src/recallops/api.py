@@ -36,11 +36,23 @@ from recallops.domain import (
     Memory,
     MemoryGovernanceRequest,
     OutcomeObservation,
+    PostcheckAssessment,
+    PostcheckAssessmentRequest,
+    PostcheckRetryRequest,
+    SandboxExecution,
+    SandboxExecutionRequest,
 )
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
 from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
 from recallops.resilience import DependencyUnavailable
+from recallops.sandbox import (
+    CheckoutSandbox,
+    DeterministicObservationProvider,
+    ObservationProvider,
+    SandboxPolicyError,
+    evaluate_observation,
+)
 from recallops.service import (
     BedrockReasoner,
     DeterministicReasoner,
@@ -55,11 +67,18 @@ from recallops.workflow import (
     RequestChannel,
     WorkflowConflict,
     WorkflowCoordinator,
+    WorkflowSnapshot,
     WorkflowState,
 )
 
 
-def create_app(settings: Settings | None = None, store: MemoryStore | None = None) -> FastAPI:
+def create_app(
+    settings: Settings | None = None,
+    store: MemoryStore | None = None,
+    *,
+    checkout_sandbox: CheckoutSandbox | None = None,
+    observation_provider: ObservationProvider | None = None,
+) -> FastAPI:
     settings = settings or get_settings()
     store = store or (
         PostgresStore(
@@ -174,12 +193,16 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         else InMemoryWorkflowRepository()
     )
     workflows = WorkflowCoordinator(workflow_repository)
+    checkout_sandbox = checkout_sandbox or CheckoutSandbox()
+    observation_provider = observation_provider or DeterministicObservationProvider()
     authority_lock = threading.RLock()
 
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
     app.state.store = store
     app.state.service = service
     app.state.workflows = workflows
+    app.state.checkout_sandbox = checkout_sandbox
+    app.state.observation_provider = observation_provider
 
     def authority_transaction(
         operation: Callable[[IncidentService, WorkflowCoordinator], object],
@@ -261,7 +284,9 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             return
         if request.headers.get("origin") != settings.public_origin:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
-        if not isinstance(authenticator, JudgeSessionAuthenticator):
+        if not isinstance(authenticator, JudgeSessionAuthenticator):  # pragma: no cover
+            # Construction binds judge mode to this authenticator; retain a fail-closed
+            # invariant guard in case future dependency injection violates that contract.
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "judge auth unavailable")
         try:
             authenticator.validate_csrf(identity, csrf_token)
@@ -469,7 +494,6 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident or workflow not found")
         if x_workflow_epoch is None:
             raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
-
         def approve_atomically(
             tx_service: IncidentService, tx_workflows: WorkflowCoordinator
         ) -> object:
@@ -484,13 +508,7 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
             )
             recorded = tx_service.decide_approval(incident_id, payload)
             if not recorded:
-                existing = tx_service.get_approval(incident_id, identity.tenant_id)
-                if (
-                    existing is None
-                    or existing.actor_id != identity.subject
-                    or existing.approved != payload.approved
-                ):
-                    raise LookupError("incident not found or already decided")
+                raise LookupError("incident not found or already decided")
             workflow = tx_workflows.transition(
                 incident_id,
                 identity.tenant_id,
@@ -512,6 +530,360 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         except LookupError as error:
             raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
 
+    @app.post("/v1/incidents/{incident_id}/sandbox-execution", status_code=status.HTTP_201_CREATED)
+    def apply_sandbox_mitigation(
+        incident_id: UUID,
+        payload: SandboxExecutionRequest,
+        identity: AuthenticatedPrincipal,
+        request: Request,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        require_protected_request(request, identity, x_csrf_token)
+        require_role(identity, "operator")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        if x_workflow_epoch is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+        analysis = store.get_analysis(incident_id, identity.tenant_id)
+        if analysis is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        try:
+            prepared_execution = checkout_sandbox.prepare_execution(incident_id, analysis, payload)
+        except SandboxPolicyError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+        def execute_sandbox_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            current = tx_workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.APPROVED_AWAITING_EXECUTION,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="operator",
+            )
+            approval = tx_service.get_approval(incident_id, identity.tenant_id)
+            if (
+                current.proposal_hash != payload.proposal_hash
+                or approval is None
+                or not approval.approved
+                or approval.proposal_hash != payload.proposal_hash
+            ):
+                raise IncidentWorkflowError("approval is not bound to this proposal")
+            execution = tx_service.persist_sandbox_execution(prepared_execution)
+            workflow = tx_workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.APPROVED_AWAITING_EXECUTION,
+                WorkflowState.OBSERVING_POSTCHECK,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="operator",
+            )
+            return execution, workflow
+
+        try:
+            execution, observing = cast(
+                tuple[SandboxExecution, WorkflowSnapshot],
+                authority_transaction(execute_sandbox_atomically),
+            )
+        except (IncidentWorkflowError, MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+        try:
+            observation = observation_provider.collect(execution)
+        except DependencyUnavailable as error:
+            def mark_unavailable(
+                tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+            ) -> object:
+                del tx_service
+                return tx_workflows.transition(
+                    incident_id,
+                    identity.tenant_id,
+                    observing.epoch,
+                    WorkflowState.OBSERVING_POSTCHECK,
+                    WorkflowState.POSTCHECK_UNAVAILABLE,
+                    channel=RequestChannel.SYSTEM,
+                    actor_subject="recallops-observer",
+                    role="system",
+                )
+
+            try:
+                authority_transaction(mark_unavailable)
+            except WorkflowConflict as conflict:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(conflict)) from conflict
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"{error.dependency} unavailable; no observation or memory was created",
+                headers={"Retry-After": "30"},
+            ) from error
+
+        verdict = evaluate_observation(observation)
+
+        def record_observation_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            tx_workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                observing.epoch,
+                WorkflowState.OBSERVING_POSTCHECK,
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-observer",
+                role="system",
+            )
+            recorded_observation, recorded_verdict = tx_service.persist_postcheck(
+                observation, verdict
+            )
+            workflow = tx_workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                observing.epoch,
+                WorkflowState.OBSERVING_POSTCHECK,
+                WorkflowState.POSTCHECK_READY,
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-observer",
+                role="system",
+            )
+            return {
+                "execution": execution,
+                "observation": recorded_observation,
+                "policy_verdict": recorded_verdict,
+                "workflow": workflow,
+            }
+
+        try:
+            return cast(dict[str, object], authority_transaction(record_observation_atomically))
+        except (MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.post("/v1/incidents/{incident_id}/postcheck-retry")
+    def retry_postcheck(
+        incident_id: UUID,
+        payload: PostcheckRetryRequest,
+        identity: AuthenticatedPrincipal,
+        request: Request,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        require_protected_request(request, identity, x_csrf_token)
+        require_role(identity, "operator")
+        if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "identity and payload actor differ")
+        if channel(x_recallops_channel) is not RequestChannel.UI:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "protected transition is not authorized through WebMCP",
+            )
+        if x_workflow_epoch is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+
+        def start_retry_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            tx_workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.POSTCHECK_UNAVAILABLE,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="operator",
+            )
+            execution = tx_service.get_sandbox_execution(incident_id, identity.tenant_id)
+            if execution is None:
+                raise LookupError("sandbox execution not found")
+            workflow = tx_workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.POSTCHECK_UNAVAILABLE,
+                WorkflowState.OBSERVING_POSTCHECK,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="operator",
+            )
+            return execution, workflow
+
+        try:
+            execution, observing = cast(
+                tuple[SandboxExecution, WorkflowSnapshot],
+                authority_transaction(start_retry_atomically),
+            )
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        except LookupError as error:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, str(error)) from error
+
+        try:
+            observation = observation_provider.collect(execution)
+        except DependencyUnavailable as error:
+            def retry_unavailable(
+                tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+            ) -> object:
+                del tx_service
+                return tx_workflows.transition(
+                    incident_id,
+                    identity.tenant_id,
+                    observing.epoch,
+                    WorkflowState.OBSERVING_POSTCHECK,
+                    WorkflowState.POSTCHECK_UNAVAILABLE,
+                    channel=RequestChannel.SYSTEM,
+                    actor_subject="recallops-observer",
+                    role="system",
+                )
+
+            try:
+                authority_transaction(retry_unavailable)
+            except WorkflowConflict as conflict:
+                raise HTTPException(status.HTTP_409_CONFLICT, str(conflict)) from conflict
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"{error.dependency} unavailable; no observation or memory was created",
+                headers={"Retry-After": "30"},
+            ) from error
+
+        verdict = evaluate_observation(observation)
+
+        def complete_retry_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            tx_workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                observing.epoch,
+                WorkflowState.OBSERVING_POSTCHECK,
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-observer",
+                role="system",
+            )
+            recorded_observation, recorded_verdict = tx_service.persist_postcheck(
+                observation, verdict
+            )
+            workflow = tx_workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                observing.epoch,
+                WorkflowState.OBSERVING_POSTCHECK,
+                WorkflowState.POSTCHECK_READY,
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-observer",
+                role="system",
+            )
+            return {
+                "execution": execution,
+                "observation": recorded_observation,
+                "policy_verdict": recorded_verdict,
+                "workflow": workflow,
+            }
+
+        try:
+            return cast(dict[str, object], authority_transaction(complete_retry_atomically))
+        except (MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.get("/v1/incidents/{incident_id}/postcheck")
+    def get_postcheck(incident_id: UUID, identity: AuthenticatedPrincipal) -> dict[str, object]:
+        result = service.get_postcheck(incident_id, identity.tenant_id)
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "postcheck not found")
+        observation, verdict = result
+        return {"observation": observation, "policy_verdict": verdict}
+
+    @app.post("/v1/incidents/{incident_id}/postcheck-assessment", status_code=201)
+    def record_postcheck_assessment(
+        incident_id: UUID,
+        payload: PostcheckAssessmentRequest,
+        identity: AuthenticatedPrincipal,
+        x_workflow_epoch: int | None = Header(default=None, ge=1),
+        x_recallops_channel: str | None = Header(default=None, max_length=20),
+    ) -> dict[str, object]:
+        require_role(identity, "agent")
+        if channel(x_recallops_channel) is not RequestChannel.WEBMCP:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "postcheck assessment is authorized only through WebMCP",
+            )
+        if x_workflow_epoch is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+        result = service.get_postcheck(incident_id, identity.tenant_id)
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "postcheck not found")
+        observation, verdict = result
+        if payload.observation_id != observation.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "stale or mismatched observation")
+        assessment = PostcheckAssessment(
+            observation_id=observation.id,
+            incident_id=incident_id,
+            tenant_id=identity.tenant_id,
+            agent_subject=identity.subject,
+            classification=payload.classification,
+            rationale=payload.rationale,
+            observation_digest=observation.observation_digest,
+        )
+        try:
+            memory = service.prepare_verified_outcome(
+                incident_id, observation, verdict, assessment
+            )
+        except DependencyUnavailable as error:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                f"{error.dependency} unavailable; assessment and memory were not persisted",
+                headers={"Retry-After": "30"},
+            ) from error
+        except IncidentWorkflowError as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        if memory is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+
+        def assess_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            tx_workflows.validate_transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.POSTCHECK_READY,
+                channel=RequestChannel.WEBMCP,
+                actor_subject=identity.subject,
+                role="agent",
+            )
+            recorded_assessment, recorded_memory = tx_service.persist_verified_outcome(
+                assessment, memory
+            )
+            workflow = tx_workflows.transition(
+                incident_id,
+                identity.tenant_id,
+                x_workflow_epoch,
+                WorkflowState.POSTCHECK_READY,
+                WorkflowState.PENDING_REVIEW,
+                channel=RequestChannel.WEBMCP,
+                actor_subject=identity.subject,
+                role="agent",
+            )
+            return {
+                "assessment": recorded_assessment,
+                "policy_verdict": verdict,
+                "memory": recorded_memory,
+                "workflow": workflow,
+            }
+
+        try:
+            return cast(dict[str, object], authority_transaction(assess_atomically))
+        except (IncidentWorkflowError, MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
     @app.post(
         "/v1/incidents/{incident_id}/execution",
         response_model=ExecutionAttestation,
@@ -526,6 +898,11 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         x_recallops_channel: str | None = Header(default=None, max_length=20),
         x_csrf_token: str | None = Header(default=None, max_length=200),
     ) -> ExecutionAttestation:
+        if settings.auth_mode == "judge":
+            raise HTTPException(
+                status.HTTP_410_GONE,
+                "manual execution attestation is disabled in the judge workflow",
+            )
         require_protected_request(request, identity, x_csrf_token)
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
@@ -605,6 +982,11 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
         x_recallops_channel: str | None = Header(default=None, max_length=20),
         x_csrf_token: str | None = Header(default=None, max_length=200),
     ) -> Memory:
+        if settings.auth_mode == "judge":
+            raise HTTPException(
+                status.HTTP_410_GONE,
+                "operator-supplied outcomes are disabled in the judge workflow",
+            )
         require_protected_request(request, identity, x_csrf_token)
         require_role(identity, "operator")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:
@@ -639,9 +1021,9 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
                 identity.tenant_id,
                 x_workflow_epoch,
                 WorkflowState.OBSERVING_POSTCHECK,
-                channel=RequestChannel.UI,
-                actor_subject=identity.subject,
-                role="operator",
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-legacy-observer",
+                role="system",
             )
             memory = tx_service.persist_outcome(prepared_memory)
             tx_workflows.transition(
@@ -650,9 +1032,9 @@ def create_app(settings: Settings | None = None, store: MemoryStore | None = Non
                 x_workflow_epoch,
                 WorkflowState.OBSERVING_POSTCHECK,
                 WorkflowState.PENDING_REVIEW,
-                channel=RequestChannel.UI,
-                actor_subject=identity.subject,
-                role="operator",
+                channel=RequestChannel.SYSTEM,
+                actor_subject="recallops-legacy-observer",
+                role="system",
             )
             return memory
 

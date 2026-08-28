@@ -52,6 +52,45 @@ def test_manifest_is_a_pure_function_of_authoritative_state() -> None:
     assert manifest(inactive).available_tools == ()
 
 
+@pytest.mark.parametrize(
+    ("state", "channel", "role", "message"),
+    [
+        (
+            WorkflowState.OBSERVING_POSTCHECK,
+            RequestChannel.WEBMCP,
+            "agent",
+            "system authority",
+        ),
+        (
+            WorkflowState.POSTCHECK_READY,
+            RequestChannel.UI,
+            "agent",
+            "WebMCP agent authority",
+        ),
+    ],
+)
+def test_evidence_transitions_reject_the_wrong_authority_channel(
+    state: WorkflowState,
+    channel: RequestChannel,
+    role: str,
+    message: str,
+) -> None:
+    current = snapshot(state)
+    repository = InMemoryWorkflowRepository()
+    repository.ensure(current)
+    coordinator = WorkflowCoordinator(repository)
+    with pytest.raises(WorkflowConflict, match=message):
+        coordinator.validate_transition(
+            current.workflow_id,
+            current.tenant_id,
+            current.epoch,
+            current.state,
+            channel=channel,
+            actor_subject="wrong-authority",
+            role=role,
+        )
+
+
 def test_activation_failure_rolls_back_retrieval_authority(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -423,6 +462,7 @@ def test_api_rejects_webmcp_authority_and_stale_epochs() -> None:
         "tenant_id": "demo",
         "actor_id": "demo-agent",
         "approved": True,
+        "proposal_hash": created.json()["proposed_action"]["action_hash"],
         "reason": "agent must never be allowed to approve",
     }
     denied = client.post(
@@ -521,6 +561,7 @@ def test_authoritative_api_rejects_invalid_channels_roles_and_epochs() -> None:
         "tenant_id": "demo",
         "actor_id": "operator",
         "approved": True,
+        "proposal_hash": action["action_hash"],
         "reason": "exact proposal reviewed",
     }
     operator = {"X-Tenant-ID": "demo", "X-Actor-ID": "operator", "X-Roles": "operator"}
@@ -550,6 +591,7 @@ def test_authoritative_api_rejects_invalid_channels_roles_and_epochs() -> None:
         "tenant_id": "demo",
         "actor_id": "other-operator",
         "approved": True,
+        "proposal_hash": action["action_hash"],
         "reason": "cannot replace the recorded operator",
     }
     assert (

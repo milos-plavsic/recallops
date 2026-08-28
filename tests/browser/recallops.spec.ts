@@ -20,9 +20,9 @@ const successfulAnalysis = {
   diagnosis: "Checkout latency matches a previously recovered pool exhaustion incident.",
   confidence: 0.86,
   proposed_action: {
-    command: "increase checkout pool size and observe latency",
+    command: "reduce worker concurrency to 24 and recycle saturated connections",
     requires_approval: true,
-    action_hash: "sha256:judge-action",
+    action_hash: "9e6e4ae5688cc8c38c60f730139bacc895a485eade9b28a154672b38b0e78be9",
   },
   memories: [selectedMemory],
   retrieval_abstention_reasons: [],
@@ -218,7 +218,7 @@ test.describe("judge console", () => {
     await expect(page.getByText(/independently reviewed yes/)).toBeVisible();
     await expect(page.getByText(/semantic similarity .* → governed rank/)).toBeVisible();
     await expect(page.getByRole("button", { name: "Approve exact action" })).toBeEnabled();
-    await expect(page.getByRole("button", { name: "Attest execution" })).toBeDisabled();
+    await expect(page.getByRole("button", { name: "Apply sandbox mitigation" })).toBeDisabled();
   });
 
   test("explains abstention and candidate rejection instead of presenting an unsafe action", async ({ page }) => {
@@ -239,22 +239,50 @@ test.describe("judge console", () => {
   });
 
   test("completes the local governed-memory loop with distinct observer and reviewer identities", async ({ page }) => {
+    await installWebMcpHarness(page);
     await mockApi(page);
     const identities: Array<{ path: string; header: string | null; actor: string }> = [];
     await page.route("**/v1/incidents/*/approval", (route) =>
       route.fulfill({ json: { recorded: true } }),
     );
-    await page.route("**/v1/incidents/*/execution", (route) =>
-      route.fulfill({ status: 201, json: { recorded: true } }),
-    );
-    await page.route("**/v1/incidents/*/outcome", async (route) => {
+    await page.route("**/v1/incidents/*/sandbox-execution", async (route) => {
       const body = route.request().postDataJSON();
       identities.push({
-        path: "outcome",
+        path: "sandbox",
         header: route.request().headers()["x-actor-id"] ?? null,
         actor: body.actor_id,
       });
-      await route.fulfill({ status: 201, json: { id: "00000000-0000-0000-0000-000000000020" } });
+      await route.fulfill({ status: 201, json: {
+        execution: { id: "00000000-0000-0000-0000-000000000030" },
+        observation: {
+          id: "00000000-0000-0000-0000-000000000040",
+          before: { latency_p95_ms: 1420, error_rate: 0.031 },
+          after: { latency_p95_ms: 210, error_rate: 0.004 },
+        },
+        policy_verdict: { classification: "recovered", policy_version: "checkout-recovery-policy-v1" },
+        workflow: {
+          workflow_id: successfulAnalysis.incident_id, state: "POSTCHECK_READY", epoch: 4,
+          active: true, authority_owner: "AGENT",
+          available_tools: ["inspect_incident", "record_postcheck_assessment"], protected_tools: [],
+        },
+      } });
+    });
+    await page.route("**/v1/incidents/*/postcheck-assessment", async (route) => {
+      identities.push({
+        path: "assessment",
+        header: route.request().headers()["x-actor-id"] ?? null,
+        actor: "demo-agent",
+      });
+      await route.fulfill({ status: 201, json: {
+        assessment: { classification: "recovered" },
+        policy_verdict: { classification: "recovered" },
+        memory: { id: "00000000-0000-0000-0000-000000000020", state: "pending_review", valid: false },
+        workflow: {
+          workflow_id: successfulAnalysis.incident_id, state: "PENDING_REVIEW", epoch: 5,
+          active: true, authority_owner: "HUMAN_REVIEWER",
+          available_tools: ["inspect_incident"], protected_tools: [],
+        },
+      } });
     });
     await page.route("**/v1/memories/*/governance", async (route) => {
       const body = route.request().postDataJSON();
@@ -269,14 +297,25 @@ test.describe("judge console", () => {
 
     await page.getByRole("button", { name: "Analyze incident" }).click();
     await page.getByRole("button", { name: "Approve exact action" }).click();
-    await page.getByRole("button", { name: "Attest execution" }).click();
-    await page.getByRole("button", { name: "Record successful outcome" }).click();
+    await page.getByRole("button", { name: "Apply sandbox mitigation" }).click();
+    await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
+      "inspect_incident", "record_postcheck_assessment",
+    ]);
+    await page.evaluate(async () => {
+      const tool = (window as any).__webmcpTools.get("record_postcheck_assessment").definition;
+      await tool.execute({
+        observation_id: "00000000-0000-0000-0000-000000000040",
+        classification: "recovered",
+        rationale: "The bounded latency, error-rate, and saturation checks all recovered.",
+      });
+    });
     await expect(page.getByText(/PENDING REVIEW · MEMORY 00000000/)).toBeVisible();
     await page.getByRole("button", { name: "Activate as reviewer" }).click();
     await expect(page.getByText(/ACTIVE MEMORY · 00000000/)).toBeVisible();
 
     expect(identities).toEqual([
-      { path: "outcome", header: "demo-operator", actor: "demo-operator" },
+      { path: "sandbox", header: "demo-operator", actor: "demo-operator" },
+      { path: "assessment", header: "demo-agent", actor: "demo-agent" },
       { path: "governance", header: "demo-reviewer", actor: "demo-reviewer" },
     ]);
   });
@@ -352,7 +391,7 @@ test.describe("judge console", () => {
       incident_id: successfulAnalysis.incident_id,
       proposal_staged: true,
       requires_human_approval: true,
-      proposed_action: { action_hash: "sha256:judge-action" },
+      proposed_action: { action_hash: successfulAnalysis.proposed_action.action_hash },
     });
 
     await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);

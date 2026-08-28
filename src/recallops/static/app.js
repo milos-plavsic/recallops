@@ -2,6 +2,7 @@ const $ = (selector) => document.querySelector(selector);
 const state = {
   incidentId: sessionStorage.getItem("incident_id"),
   memoryId: sessionStorage.getItem("memory_id"),
+  observationId: sessionStorage.getItem("observation_id"),
   action: null,
   key: null,
   config: null,
@@ -26,6 +27,9 @@ function setWebMcpPhase(phase, detail = {}) {
     authorityOwner: state.authorityOwner,
     ...detail
   } }));
+}
+function emitActivity(actor, message) {
+  window.dispatchEvent(new CustomEvent("recallops:activity", { detail: { actor, message } }));
 }
 
 function percentage(value) { return `${Math.round(value * 100)}%`; }
@@ -157,31 +161,57 @@ async function analyze(event) {
 }
 async function approve() {
   try {
-    const result = await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), reason: "operator verified the exact action and current incident evidence" }) });
+    const result = await request(`/v1/incidents/${state.incidentId}/approval`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), approved: true, actor_id: actor(), proposal_hash: state.action.action_hash, reason: "operator verified the exact proposal digest and current incident evidence" }) });
     $("#stage-approve").classList.add("active"); $("#approve").disabled = true; $("#execute").disabled = false;
+    emitActivity("HUMAN", `approved exact proposal ${shortId(state.action.action_hash)}`);
     if (result.workflow) applyWorkflowManifest(result.workflow); else await refreshWorkflow();
   } catch (error) { showError(error); }
 }
 async function execute() {
   try {
-    await request(`/v1/incidents/${state.incidentId}/execution`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), action_hash: state.action.action_hash, action_taken: state.action.command, evidence_refs: [`urn:recallops:execution:${Date.now()}`] }) });
-    $("#stage-execute").classList.add("active"); $("#execute").disabled = true; $("#observe").disabled = false;
-    await refreshWorkflow();
+    const result = await request(`/v1/incidents/${state.incidentId}/sandbox-execution`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), proposal_hash: state.action.action_hash, idempotency_key: `sandbox-${state.incidentId}` }) });
+    state.observationId = result.observation.id;
+    sessionStorage.setItem("observation_id", state.observationId);
+    $("#stage-execute").classList.add("active"); $("#stage-observe").classList.add("active");
+    $("#execute").disabled = true; $("#observe").disabled = true;
+    emitActivity("HUMAN", `applied allowlisted sandbox action ${result.execution.action_id || "checkout action"}`);
+    emitActivity("SYSTEM", `verified observation ${shortId(state.observationId)} · policy ${result.policy_verdict.classification}`);
+    applyWorkflowManifest(result.workflow);
+    const before = result.observation.before; const after = result.observation.after;
+    $("#result").innerHTML = `<span class="confidence">VERIFIED OBSERVATION · ${escapeHtml(shortId(state.observationId))}</span><h3>Sandbox mutation measured independently.</h3><dl><dt>Latency p95</dt><dd>${before.latency_p95_ms} ms → ${after.latency_p95_ms} ms</dd><dt>Error rate</dt><dd>${(before.error_rate * 100).toFixed(1)}% → ${(after.error_rate * 100).toFixed(1)}%</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)} · ${escapeHtml(result.policy_verdict.policy_version)}</dd></dl><p>The agent can now assess this immutable observation. Its opinion cannot change the policy verdict.</p>`;
+  } catch (error) {
+    try {
+      const manifest = await refreshWorkflow();
+      if (manifest?.state === "POSTCHECK_UNAVAILABLE") $("#retry-observation").disabled = false;
+    } catch (_refreshError) { /* preserve the original safe-failure message */ }
+    showError(error);
+  }
+}
+async function retryObservation() {
+  try {
+    const result = await request(`/v1/incidents/${state.incidentId}/postcheck-retry`, {
+      method: "POST",
+      headers: headers("demo-operator", "operator", "ui", state.workflowEpoch),
+      body: JSON.stringify({ tenant_id: tenant(), actor_id: actor() })
+    });
+    state.observationId = result.observation.id;
+    sessionStorage.setItem("observation_id", state.observationId);
+    $("#retry-observation").disabled = true;
+    emitActivity("SYSTEM", `verified observation retry ${shortId(state.observationId)} · policy ${result.policy_verdict.classification}`);
+    applyWorkflowManifest(result.workflow);
+    const before = result.observation.before; const after = result.observation.after;
+    $("#result").innerHTML = `<span class="confidence">VERIFIED OBSERVATION · ${escapeHtml(shortId(state.observationId))}</span><h3>Observation retry succeeded without repeating the mutation.</h3><dl><dt>Latency p95</dt><dd>${before.latency_p95_ms} ms → ${after.latency_p95_ms} ms</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)}</dd></dl><p>The agent assessment capability is now available.</p>`;
   } catch (error) { showError(error); }
 }
 async function observe() {
-  try {
-    const result = await request(`/v1/incidents/${state.incidentId}/outcome`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), action_taken: state.action.command, outcome: "latency and error rate remained at baseline for the observation window", outcome_score: 1, confidence: .97, actor_id: actor("demo-operator") }) });
-    state.memoryId = result.id; sessionStorage.setItem("memory_id", state.memoryId); $("#stage-observe").classList.add("active"); $("#review").disabled = false; $("#observe").disabled = true;
-    await refreshWorkflow();
-    $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Outcome captured, but excluded from retrieval.</h3><p>Sign out and enter with the reviewer identity. Four-eyes policy prevents the observer from activating their own evidence.</p>`;
-  } catch (error) { showError(error); }
+  showError(new Error("Postcheck assessment is available only to the visiting agent through WebMCP."));
 }
 async function review() {
   try {
     await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer", "reviewer", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
     await refreshWorkflow();
+    emitActivity("HUMAN", `reviewer activated memory ${shortId(state.memoryId)}`);
     $("#result").innerHTML = `<span class="confidence">ACTIVE MEMORY · ${escapeHtml(shortId(state.memoryId))}</span><h3>Independent review completed.</h3><p>The same memory is now eligible for tenant-scoped retrieval and will decay with age without losing provenance.</p>`;
   } catch (error) { showError(error); }
 }
@@ -197,7 +227,7 @@ async function resetWorkflow() {
         headers: headers("demo-operator", "operator", "ui", state.workflowEpoch)
       });
     }
-    for (const key of ["incident_id", "memory_id", "webmcp_phase", "workflow_epoch"]) {
+    for (const key of ["incident_id", "memory_id", "observation_id", "webmcp_phase", "workflow_epoch"]) {
       sessionStorage.removeItem(key);
     }
     location.assign("/");
@@ -245,12 +275,35 @@ async function proposeForWebMcp(input, { signal } = {}) {
   return runAnalysis(incidentPayload(), { signal, channel: "webmcp", refresh: false });
 }
 
+async function recordPostcheckForWebMcp(input, { signal } = {}) {
+  if (state.webmcpPhase !== "POSTCHECK_READY") throw new Error(`record_postcheck_assessment is unavailable in ${state.webmcpPhase}`);
+  const observationId = String(input?.observation_id || "").trim();
+  const classification = String(input?.classification || "").trim();
+  const rationale = String(input?.rationale || "").trim();
+  if (!observationId || observationId !== state.observationId) throw new Error("observation_id is stale or mismatched");
+  if (!["recovered", "not_recovered", "inconclusive"].includes(classification)) throw new Error("invalid assessment classification");
+  if (rationale.length < 3 || rationale.length > 1000) throw new Error("rationale must contain 3 to 1000 characters");
+  const result = await request(`/v1/incidents/${state.incidentId}/postcheck-assessment`, {
+    method: "POST",
+    headers: headers("demo-agent", "agent", "webmcp", state.workflowEpoch),
+    body: JSON.stringify({ observation_id: observationId, classification, rationale }),
+    signal
+  });
+  state.memoryId = result.memory.id;
+  sessionStorage.setItem("memory_id", state.memoryId);
+  $("#review").disabled = false;
+  $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Agent assessment recorded separately from policy.</h3><dl><dt>Agent assessment</dt><dd>${escapeHtml(result.assessment.classification)}</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)}</dd></dl><p>The memory remains excluded from retrieval until an independent reviewer acts.</p>`;
+  setTimeout(() => applyWorkflowManifest(result.workflow), 0);
+  return result;
+}
+
 window.recallOpsWebMcpHost = Object.freeze({
   getPhase: () => state.webmcpPhase,
   getCapabilities: () => [...state.webmcpTools],
   getAuthorityOwner: () => state.authorityOwner,
   inspectIncident: inspectForWebMcp,
   proposeMitigation: proposeForWebMcp,
+  recordPostcheckAssessment: recordPostcheckForWebMcp,
   refreshWorkflow
 });
 async function signIn() {
@@ -333,4 +386,5 @@ $("#safe-failure").addEventListener("click", loadSafeFailure);
 $("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
 $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("click", signOut);
 $("#reset-workflow").addEventListener("click", resetWorkflow);
+$("#retry-observation").addEventListener("click", retryObservation);
 initialize();

@@ -268,6 +268,7 @@ def test_mutating_execution_requires_approval_for_exact_action() -> None:
             tenant_id="demo",
             actor_id="operator-1",
             approved=True,
+            proposal_hash=analysis.proposed_action.action_hash,
             reason="exact action reviewed against current evidence",
         ),
     )
@@ -633,7 +634,11 @@ def test_workflow_rejects_missing_and_non_executable_analyses() -> None:
     missing = IncidentService(InMemoryStore(), embedder, DeterministicReasoner())
     analysis = service.analyze(incident())
     request = ApprovalRequest(
-        tenant_id="demo", actor_id="reviewer", approved=True, reason="reviewed"
+        tenant_id="demo",
+        actor_id="reviewer",
+        approved=True,
+        proposal_hash="0" * 64,
+        reason="reviewed",
     )
     assert missing.decide_approval(analysis.incident_id, request) is False
     with pytest.raises(IncidentWorkflowError, match="does not require approval"):
