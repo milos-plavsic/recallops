@@ -16,7 +16,8 @@ the numbered lifecycle already displayed in the result panel:
 
 1. Click **Analyze incident**. Open **Candidate evidence** to compare the raw semantic candidates
    with the final policy decision and its rejection reasons.
-2. Approve the exact proposed action, attest its execution, and record the observed outcome.
+2. Approve the exact proposed action, apply it to the labeled checkout simulator, and inspect the
+   independently collected postcheck.
 3. Confirm that the resulting memory is **PENDING REVIEW** and therefore retrieval-ineligible.
 4. Switch to the independent reviewer identity and activate it.
 5. Click **Analyze again** and confirm that the reviewed outcome now participates in the decision.
@@ -26,9 +27,9 @@ That proves the product's central claim in one causal path:
 > retrieve evidence → propose and approve → observe outcome → hold learning for review → independently
 > activate → recall during the next incident
 
-No infrastructure mutation is performed in this milestone. “Execution” is explicitly an operator
-attestation; the safety contribution is governed memory and deterministic authorization around the
-reasoning layer.
+No production infrastructure mutation is performed. The challenge extension mutates only an
+isolated deterministic checkout simulator through one exact allowlisted action; arbitrary text is
+never executed.
 
 ### What changes the recommendation
 
@@ -38,7 +39,7 @@ reasoning layer.
 | Eligibility gates | Tenant, service, active state, validity, and compatibility policy | Excludes memories that must never reach ranking. |
 | Policy ranking | Observed outcome, version compatibility, confidence, and age | Promotes compatible successes and preserves known-failure penalties. |
 | Action control | Typed risk plus persisted human approval | Prevents the LLM or deterministic reasoner from authorizing a mutation. |
-| Outcome learning | Operator attestation plus independent review | Creates quarantined evidence that becomes retrievable only after four-eyes activation. |
+| Outcome learning | Immutable observation, separate agent assessment and policy verdict, plus independent review | Creates quarantined evidence that becomes retrievable only after four-eyes activation. |
 
 **Concrete cloud proof:** CockroachDB stores the incident, embedding, decision, approval, outcome,
 memory state, and governance event transactionally. The deployed application runs on Amazon ECS
@@ -63,7 +64,8 @@ This is a new project for the CockroachDB × AWS Build with Agentic Memory Hacka
   constraints, and separate least-privilege migration/API/outbox database roles.
 - Outcome, confidence, and service-version-aware memory ranking.
 - Idempotent incident ingestion.
-- Closed-loop outcome learning: operator-attested outcomes become idempotent, attributable vector memories.
+- Closed-loop outcome learning: simulator measurements, agent assessment, and policy verdict remain
+  separately attributable and create only review-gated vector memories.
 - Four-eyes memory governance with quarantine, activation, revocation, supersession, and audit events.
 - Conservative confidence decay: positive evidence ages while known failure penalties persist.
 - RS256 OIDC authentication with issuer, expiry, application, access-token, tenant, and role checks.
@@ -135,7 +137,12 @@ headers or request fields. Operators may approve and observe outcomes; reviewers
 
 ## Safety boundary
 
-RecallOps does not execute infrastructure mutations in this milestone. It proposes a typed action, labels it as read-only or mutating, and persists at most one human decision per incident. Execution adapters will require allowlisted operations, least-privilege roles, timeouts, and postcondition checks.
+RecallOps does not execute production infrastructure mutations. Its WebMCP challenge path proposes a
+typed action, binds operator approval to its digest, applies one fixed allowlisted mutation to an
+isolated checkout simulator, and collects deterministic postconditions under system authority. The
+agent never receives approval, execution, observation-retry, or memory-activation tools. A production
+adapter would require a separate threat model, least-privilege credentials, operational interlocks,
+timeouts, postconditions, and staged deployment; simulator trust must not be inherited.
 
 ## Validation
 

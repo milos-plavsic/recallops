@@ -59,14 +59,13 @@ supply ARNs, queries, or operation names. Only bounded status fields and opaque 
 are persisted. Each dependency degrades independently, and the provider remains disabled
 unless all deployment prefixes are configured.
 
-The service proposes and records decisions but does not execute infrastructure mutations. The current
-demo's execution endpoint is an operator attestation, not proof that infrastructure ran. Elevated
-evidence claims fail closed unless the server verifies an OK CloudWatch alarm or an object in the
-configured evidence bucket. It closes the memory lifecycle with pending-review learning,
-independent review, revocation, supersession, and confidence decay. Production identity is verified
-with signed OIDC access tokens and tenant scope is derived from immutable claims. Allowlisted execution
-execution adapters and automatic postcondition collection remain future vertical increments; until
-they exist, mutation stays behind explicit human approval and evidence strength is labeled accordingly.
+The WebMCP challenge workflow executes no production infrastructure mutation. It applies one exact,
+digest-bound action to an isolated checkout simulator after authenticated operator approval. A
+separate deterministic observer records immutable before/after metrics and a versioned policy verdict;
+the agent can submit only a bounded assessment referencing that observation. These three evidence
+layers remain separate and create only pending-review memory. Production identity is verified with
+signed OIDC access tokens and tenant scope is derived from immutable claims. A production execution
+adapter and production telemetry connector remain out of scope and must not inherit simulator trust.
 
 ```mermaid
 flowchart LR

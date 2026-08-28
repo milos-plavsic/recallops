@@ -36,7 +36,7 @@ extension comprises:
 | --- | --- | --- |
 | 1. Native WebMCP vertical slice | Complete 2026-08-28 at `8998b9c` | `src/recallops/static/webmcp.js`; capability inspector; API security headers; 7 browser tests; native Chromium 151 test; 155 Python tests; Ruff and mypy passing |
 | 2. Authoritative workflow policy | Complete 2026-08-28 at `fa0110d` + `adbaa15` | Eight-state model; server epochs and manifests; server-issued judge sessions; CSRF and Origin enforcement; atomic domain/workflow transactions; CockroachDB rollback fault injection; 180 Python tests with integration; 8 browser tests; 2 native Chromium tests. |
-| 3. Sandbox action and evidence | Not started | Simulator and observation tests |
+| 3. Sandbox action and evidence | Complete 2026-08-29 at `d804584` | Exact allowlisted simulator; digest-bound approval/execution; immutable observation, policy verdict, and agent assessment; fail-closed retry; 196 Python tests plus 8 real CockroachDB integration tests; 100% branch-aware coverage; 8 Playwright tests; 3 native Chromium WebMCP tests; 32 exact grants, 11 cross-tenant composite-FK rejections, one same-tenant cross-incident rejection, and 17 forbidden runtime operations. See `docs/WEBMCP_MILESTONE_3.md`. |
 | 4. Review-gated recurrence | Not started | Separation-of-duties and retrieval tests |
 | 5. Signed proof | Not started | JWS vectors and offline verifier |
 | 6. Final evaluation/deployment | Not started | Live browser matrix, final image digest, video and submission audit |
@@ -55,3 +55,7 @@ remaining acceptance work explicit rather than presenting the core increment as 
 Milestone 2 authentication and atomicity are isolated in challenge-period commit
 [`adbaa15`](https://github.com/milos-plavsic/recallops/commit/adbaa15). Its incremental comparison is
 <https://github.com/milos-plavsic/recallops/compare/639817a...adbaa15>.
+
+Milestone 3's verified sandbox evidence loop is isolated in challenge-period commit
+[`d804584`](https://github.com/milos-plavsic/recallops/commit/d804584). Its incremental comparison is
+<https://github.com/milos-plavsic/recallops/compare/1921207...d804584>.

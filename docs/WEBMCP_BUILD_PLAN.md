@@ -51,6 +51,9 @@ separate from judge mode and is not used as identity proof.
 
 ## Milestone 3: sandbox action and evidence
 
+**Status: complete and verified on 2026-08-29.** See
+[`WEBMCP_MILESTONE_3.md`](WEBMCP_MILESTONE_3.md).
+
 - Add an allowlisted checkout simulator mutation.
 - Bind operator approval to the exact proposal digest.
 - Collect independent deterministic telemetry.
