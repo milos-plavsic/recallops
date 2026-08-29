@@ -193,6 +193,12 @@
       "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } }
     },
     {
+      "Sid": "AssociateWafWithRecallOpsLoadBalancer",
+      "Effect": "Allow",
+      "Action": "elasticloadbalancing:SetWebACL",
+      "Resource": "arn:aws:elasticloadbalancing:us-east-1:158363272009:loadbalancer/app/recall-*/*"
+    },
+    {
       "Sid": "ManageRecallOpsHttpApi",
       "Effect": "Allow",
       "Action": "apigateway:*",
