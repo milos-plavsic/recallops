@@ -1048,67 +1048,30 @@ class PostgresStore:
                 raw_replacement = cursor.fetchone()
                 if raw_replacement is not None:
                     candidates.append(self._memory(raw_replacement))
-            target = _governance_target(memory, request, candidates)
-            reviewed_at = datetime.now(UTC)
-            cursor.execute(  # nosec B608  # nosemgrep
-                """UPDATE memories SET state=%s, valid=%s, reviewed_by=%s, reviewed_at=%s,
-                superseded_by=%s, governance_version=governance_version+1,
-                superseded_at=CASE WHEN %s='superseded' THEN %s ELSE superseded_at END,
-                revoked_at=CASE WHEN %s='revoked' THEN %s ELSE revoked_at END,
-                expires_at=CASE WHEN %s='expired' THEN COALESCE(expires_at,%s) ELSE expires_at END
-                WHERE id=%s AND tenant_id=%s
-                RETURNING """
-                + columns,  # nosec B608
+            _governance_target(memory, request, candidates)
+            cursor.execute(
+                """SELECT recallops_govern_memory(%s,%s,%s,%s,%s,%s,%s)
+                AS memory_id""",
                 (
-                    target,
-                    target is MemoryState.ACTIVE,
-                    request.actor_id,
-                    reviewed_at,
-                    request.replacement_memory_id,
-                    target,
-                    reviewed_at,
-                    target,
-                    reviewed_at,
-                    target,
-                    reviewed_at,
                     memory_id,
                     request.tenant_id,
+                    request.actor_id,
+                    request.action,
+                    request.reason,
+                    request.reason_code,
+                    request.replacement_memory_id,
                 ),
+            )
+            function_row = cursor.fetchone()
+            if function_row is None or dict(function_row).get("memory_id") is None:
+                raise RuntimeError("memory governance function returned no row")
+            cursor.execute(  # nosec B608  # nosemgrep
+                f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s",  # nosec B608
+                (memory_id, request.tenant_id),
             )
             raw_updated = cursor.fetchone()
             if raw_updated is None:
                 raise RuntimeError("memory governance update returned no row")
-            event = MemoryEvent(
-                memory_id=memory.id,
-                tenant_id=memory.tenant_id,
-                actor_id=request.actor_id,
-                action=request.action,
-                reason=request.reason,
-                reason_code=request.reason_code,
-                memory_digest=cast(str, memory.memory_digest),
-                from_state=memory.state,
-                to_state=target,
-                created_at=reviewed_at,
-            )
-            cursor.execute(
-                """INSERT INTO memory_events
-                (id, memory_id, tenant_id, actor_id, action, reason, reason_code,
-                 memory_digest, from_state, to_state, created_at)
-                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
-                (
-                    event.id,
-                    event.memory_id,
-                    event.tenant_id,
-                    event.actor_id,
-                    event.action,
-                    event.reason,
-                    event.reason_code,
-                    event.memory_digest,
-                    event.from_state,
-                    event.to_state,
-                    event.created_at,
-                ),
-            )
         return self._memory(raw_updated)
 
     def record_approval(

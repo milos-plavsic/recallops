@@ -47,10 +47,15 @@ EXPECTED_GRANTS = {
     ("recallops_api", "judge_runs", "INSERT"),
     ("recallops_api", "judge_runs", "SELECT"),
     ("recallops_api", "judge_runs", "UPDATE"),
+    ("recallops_governor", "judge_runs", "SELECT"),
     ("recallops_api", "memories", "INSERT"),
     ("recallops_api", "memories", "SELECT"),
-    ("recallops_api", "memories", "UPDATE"),
-    ("recallops_api", "memory_events", "INSERT"),
+    ("recallops_governor", "incidents", "SELECT"),
+    ("recallops_governor", "memories", "SELECT"),
+    ("recallops_governor", "memories", "UPDATE"),
+    ("recallops_governor", "memory_events", "INSERT"),
+    ("recallops_governor", "memory_events", "SELECT"),
+    ("recallops_governor", "review_handoffs", "SELECT"),
     ("recallops_api", "postcheck_assessments", "INSERT"),
     ("recallops_api", "postcheck_assessments", "SELECT"),
     ("recallops_api", "postcheck_observations", "INSERT"),
@@ -382,7 +387,7 @@ def _verify_exact_grants(cursor: psycopg.Cursor[Any]) -> int:
     cursor.execute(
         """SELECT grantee, table_name, privilege_type
            FROM information_schema.table_privileges
-           WHERE grantee IN ('recallops_api', 'recallops_outbox')"""
+           WHERE grantee IN ('recallops_api', 'recallops_outbox', 'recallops_governor')"""
     )
     actual = {(str(row[0]), str(row[1]), str(row[2])) for row in cursor.fetchall()}
     if actual != EXPECTED_GRANTS:
@@ -396,7 +401,7 @@ def _verify_role_attributes(cursor: psycopg.Cursor[Any]) -> list[dict[str, objec
     cursor.execute(
         """SELECT rolname, rolcanlogin, rolcreaterole, rolcreatedb, rolbypassrls
            FROM pg_catalog.pg_roles
-           WHERE rolname IN ('recallops_api', 'recallops_outbox')
+           WHERE rolname IN ('recallops_api', 'recallops_outbox', 'recallops_governor')
            ORDER BY rolname"""
     )
     roles = [
@@ -409,13 +414,58 @@ def _verify_role_attributes(cursor: psycopg.Cursor[Any]) -> list[dict[str, objec
         }
         for row in cursor.fetchall()
     ]
-    if len(roles) != 2 or any(
+    if len(roles) != 3 or any(
         role[attribute]
         for role in roles
         for attribute in ("login", "create_role", "create_database", "bypass_rls")
     ):
         raise AssertionError(f"unsafe runtime role attributes: {roles}")
     return roles
+
+
+def _verify_governance_routine(cursor: psycopg.Cursor[Any]) -> dict[str, object]:
+    signature = "recallops_govern_memory(UUID,STRING,STRING,STRING,STRING,STRING,UUID)"
+    cursor.execute("SHOW CREATE FUNCTION recallops_govern_memory")
+    create_row = cursor.fetchone()
+    create_statement = str(create_row[1]) if create_row and len(create_row) > 1 else ""
+    if "SECURITY DEFINER" not in create_statement.upper():
+        raise AssertionError("governance routine is not SECURITY DEFINER")
+
+    cursor.execute(
+        """SELECT pg_get_userbyid(proowner)
+           FROM pg_catalog.pg_proc
+           WHERE proname='recallops_govern_memory'"""
+    )
+    owners = {str(row[0]) for row in cursor.fetchall()}
+    if owners != {"recallops_governor"}:
+        raise AssertionError(f"unsafe governance routine owner: {sorted(owners)}")
+
+    cursor.execute(f"SHOW GRANTS ON FUNCTION {signature}")
+    grants = {(str(row[4]), str(row[5]), bool(row[6])) for row in cursor.fetchall()}
+    api_grants = {grant for grant in grants if grant[0] == "recallops_api"}
+    public_grants = {grant for grant in grants if grant[0] == "public"}
+    if api_grants != {("recallops_api", "EXECUTE", False)} or public_grants:
+        raise AssertionError(
+            f"unsafe governance routine grants: api={sorted(api_grants)}, "
+            f"public={sorted(public_grants)}"
+        )
+
+    cursor.execute("SHOW GRANTS ON SCHEMA public")
+    schema_grants = {
+        (str(row[2]), str(row[3]), bool(row[4]))
+        for row in cursor.fetchall()
+        if str(row[2]) == "recallops_governor"
+    }
+    if schema_grants != {("recallops_governor", "USAGE", False)}:
+        raise AssertionError(f"unsafe governor schema grants: {sorted(schema_grants)}")
+    return {
+        "name": "recallops_govern_memory",
+        "owner": "recallops_governor",
+        "security": "DEFINER",
+        "api_execute_only": True,
+        "public_execute": False,
+        "governor_schema_create": False,
+    }
 
 
 def _expect_insufficient_privilege(database_url: str, role: str, statement: str) -> None:
@@ -435,6 +485,8 @@ def _expect_insufficient_privilege(database_url: str, role: str, statement: str)
 def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
     probes = (
         ("recallops_api", "DELETE FROM incidents WHERE false"),
+        ("recallops_api", "UPDATE memories SET state=state WHERE false"),
+        ("recallops_api", "INSERT INTO memory_events DEFAULT VALUES"),
         ("recallops_api", "SELECT * FROM schema_migrations LIMIT 0"),
         ("recallops_api", "UPDATE evidence_outbox SET attempts=attempts WHERE false"),
         ("recallops_api", "CREATE TABLE runtime_privilege_escape (id INT PRIMARY KEY)"),
@@ -487,6 +539,7 @@ def verify_database_boundaries(database_url: str) -> dict[str, object]:
         database, version = cursor.fetchone() or (None, None)
         grant_count = _verify_exact_grants(cursor)
         roles = _verify_role_attributes(cursor)
+        governance_routine = _verify_governance_routine(cursor)
     constraints = _verify_cross_tenant_constraints(database_url)
     denials = _verify_runtime_denials(database_url)
     return {
@@ -495,6 +548,7 @@ def verify_database_boundaries(database_url: str) -> dict[str, object]:
         "database": str(database),
         "database_version": str(version).split(" (", 1)[0],
         "runtime_roles": roles,
+        "governance_routine": governance_routine,
         "exact_runtime_grants": grant_count,
         "cross_tenant_constraints": constraints,
         "runtime_denials": denials,

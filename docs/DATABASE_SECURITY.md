@@ -1,14 +1,15 @@
 # CockroachDB authorization and tenant-boundary evidence
 
-RecallOps deliberately separates three database identities:
+RecallOps deliberately separates four database identities:
 
 | Identity | Purpose | Required access |
 | --- | --- | --- |
 | Migration owner | Ordered schema migrations only | Object ownership and role/grant administration |
 | `recallops_api` member | API runtime | Exact table-level `SELECT`/`INSERT`/`UPDATE` grants in migration 019 |
 | `recallops_outbox` member | Evidence delivery worker | `SELECT` and `UPDATE` on `evidence_outbox` only |
+| `recallops_governor` | Non-login security definer | Minimum reads required for FK validation, memory lifecycle update, and atomic memory-event insert |
 
-`recallops_api` and `recallops_outbox` are `NOLOGIN` privilege bundles. CockroachDB
+All three runtime bundles are `NOLOGIN` roles. CockroachDB
 creates roles as `NOLOGIN` by default. Neither role can create roles or databases, bypass
 row-level security, delete application rows, change the schema, or read the migration ledger.
 Migration 019 also revokes `CREATE` on the dedicated application's `public` schema from
@@ -46,6 +47,16 @@ least-privilege production deployment.
 Every future migration that adds a runtime table must explicitly update the role grants. There
 are intentionally no broad default-table grants: an unreviewed new table remains inaccessible.
 
+Migration 031 removes direct `UPDATE` on `memories` and direct `INSERT` on `memory_events` from
+the API role. The API can only execute `recallops_govern_memory`, a `SECURITY DEFINER` routine
+owned by `recallops_governor`. The routine independently enforces bounded inputs, tenant binding,
+the lifecycle transition graph, observer/reviewer separation, certification and revocation reason
+codes, and replacement-memory compatibility, then updates the lifecycle and appends its immutable
+audit event atomically. Its owner cannot log in or create schema objects; `PUBLIC` has no execute
+grant. The governor's read grants on `incidents`, `judge_runs`, and `review_handoffs` are the exact
+foreign-key validation dependencies CockroachDB exercises when updating a memory and inserting its
+event—not application read authority.
+
 ## What the tenant constraints prove
 
 Tenant-aware unique keys and composite foreign keys reject cross-tenant relationships at the
@@ -66,9 +77,12 @@ recallops-db-verify \
   --output database-boundaries.json
 ```
 
-It opens real SQL transactions, attempts all six cross-tenant writes, requires rejection by the
-exact named foreign key, checks the exact grant allowlist and safe role attributes, and executes
-seven forbidden statements under the effective runtime roles. Synthetic rows are rolled back.
+It opens real SQL transactions, attempts 17 cross-tenant writes, requires rejection by the
+exact named foreign key, checks all 69 exact table grants and safe role attributes, verifies the
+definer owner/security/execute/schema metadata, and executes 38 forbidden statements under the
+effective runtime roles. A separate direct-SQL test proves rejected self-review, invalid
+certification, cross-tenant non-disclosure, and one valid transition with an atomic audit row.
+Synthetic rows are rolled back.
 The sanitized report contains no URL, credential, row payload, or cluster identifier. CI runs the
 same verifier against CockroachDB and retains the report as an assurance artifact.
 
@@ -96,3 +110,4 @@ Primary references:
 - [CockroachDB authorization](https://www.cockroachlabs.com/docs/v26.2/security-reference/authorization)
 - [CockroachDB `CREATE POLICY`](https://www.cockroachlabs.com/docs/v26.2/create-policy)
 - [CockroachDB `GRANT`](https://www.cockroachlabs.com/docs/v26.2/grant)
+- [CockroachDB `CREATE FUNCTION` and `SECURITY DEFINER`](https://www.cockroachlabs.com/docs/v26.2/create-function)

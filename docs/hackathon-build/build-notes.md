@@ -771,3 +771,11 @@
   authority on `memory_events`. The fix hashes the complete rate-limit namespace and uses
   insert-or-read with exact memory-digest equality. The API role remains unable to read governance
   events; a conflicting outcome memory now fails closed instead of being overwritten or reused.
+- The next live reviewer transition exposed CockroachDB's reverse-foreign-key read requirement for
+  parent updates. Migration 031 keeps that authority out of the API credential: direct API updates
+  and event inserts are revoked, and a dedicated non-login `recallops_governor` owns one
+  `SECURITY DEFINER` lifecycle routine. The function re-enforces the complete transition policy and
+  writes state plus audit event atomically. Its owner has no schema-create authority; API-only
+  execute and no-PUBLIC-execute are verified from live database metadata. A fresh database applied
+  migrations 001–031, all 29 integration tests passed, and the combined suite passed 479 tests with
+  5,392/5,392 statements and 1,206/1,206 branches (100.00%).

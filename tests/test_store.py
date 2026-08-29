@@ -208,8 +208,12 @@ def test_postgres_write_paths_reject_missing_returned_rows() -> None:
         action=GovernanceAction.REVOKE,
         reason="verified unsafe",
     )
-    with pytest.raises(RuntimeError, match="governance update"):
+    with pytest.raises(RuntimeError, match="governance function"):
         postgres_with_rows([database_row(memory), None]).govern_memory(memory.id, request)
+    with pytest.raises(RuntimeError, match="governance update"):
+        postgres_with_rows(
+            [database_row(memory), {"memory_id": memory.id}, None]
+        ).govern_memory(memory.id, request)
     missing_replacement = request.model_copy(
         update={
             "action": GovernanceAction.SUPERSEDE,

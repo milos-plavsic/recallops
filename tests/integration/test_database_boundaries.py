@@ -396,9 +396,139 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 64
+    assert report["exact_runtime_grants"] == 69
+    assert report["governance_routine"] == {
+        "name": "recallops_govern_memory",
+        "owner": "recallops_governor",
+        "security": "DEFINER",
+        "api_execute_only": True,
+        "public_execute": False,
+        "governor_schema_create": False,
+    }
     assert len(report["cross_tenant_constraints"]) == 17
-    assert len(report["runtime_denials"]) == 36
+    assert len(report["runtime_denials"]) == 38
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_governance_definer_enforces_policy_and_atomic_audit() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    incident_id, memory_id = uuid4(), uuid4()
+    tenant = f"definer_{memory_id.hex}"
+    digest = hashlib.sha256(str(memory_id).encode()).hexdigest()
+    vector = "[" + ",".join(["0"] * 1024) + "]"
+    with psycopg.connect(database_url, autocommit=False) as connection:
+        try:
+            connection.execute(
+                """INSERT INTO incidents
+                   (id,tenant_id,service,service_version,symptom,idempotency_key,status,analysis)
+                   VALUES (%s,%s,'checkout','2.4.1','latency',%s,'open','{}')""",
+                (incident_id, tenant, f"definer-{incident_id}"),
+            )
+            connection.execute(
+                """INSERT INTO memories
+                   (id,tenant_id,service,service_version,symptom,action,outcome,
+                    outcome_score,confidence,valid,state,source_incident_id,observed_by,
+                    memory_digest,embedding)
+                   VALUES (%s,%s,'checkout','2.4.1','latency','bounded rollback',
+                           'recovered',1,0.9,false,'pending_review',%s,
+                           'agent-assessor',%s,%s::VECTOR)""",
+                (memory_id, tenant, incident_id, digest, vector),
+            )
+            connection.execute("SET ROLE recallops_api")
+
+            with (
+                pytest.raises(
+                    psycopg.errors.RaiseException,
+                    match="independent reviewer required",
+                ),
+                connection.transaction(),
+            ):
+                connection.execute(
+                    "SELECT recallops_govern_memory(%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        memory_id,
+                        tenant,
+                        "agent-assessor",
+                        "activate",
+                        "self approval forbidden",
+                        "OTHER_BOUNDED",
+                        None,
+                    ),
+                )
+
+            with (
+                pytest.raises(
+                    psycopg.errors.RaiseException,
+                    match="certification requires EVIDENCE_ACCEPTED",
+                ),
+                connection.transaction(),
+            ):
+                connection.execute(
+                    "SELECT recallops_govern_memory(%s,%s,%s,%s,%s,%s,%s)",
+                    (
+                        memory_id,
+                        tenant,
+                        "reviewer-independent",
+                        "certify",
+                        "wrong certification reason",
+                        "OTHER_BOUNDED",
+                        None,
+                    ),
+                )
+
+            cross_tenant = connection.execute(
+                "SELECT recallops_govern_memory(%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    memory_id,
+                    "different-tenant",
+                    "reviewer-independent",
+                    "activate",
+                    "cross tenant attempt",
+                    "OTHER_BOUNDED",
+                    None,
+                ),
+            ).fetchone()
+            assert cross_tenant == (None,)
+
+            governed = connection.execute(
+                "SELECT recallops_govern_memory(%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    memory_id,
+                    tenant,
+                    "reviewer-independent",
+                    "activate",
+                    "independent evidence review",
+                    "OTHER_BOUNDED",
+                    None,
+                ),
+            ).fetchone()
+            assert governed == (memory_id,)
+            state = connection.execute(
+                "SELECT state,valid,reviewed_by,governance_version FROM memories "
+                "WHERE id=%s AND tenant_id=%s",
+                (memory_id, tenant),
+            ).fetchone()
+            assert state == ("active", True, "reviewer-independent", 2)
+
+            connection.execute("RESET ROLE")
+            event = connection.execute(
+                """SELECT actor_id,action,reason_code,memory_digest,from_state,to_state
+                   FROM memory_events WHERE memory_id=%s AND tenant_id=%s""",
+                (memory_id, tenant),
+            ).fetchone()
+            assert event == (
+                "reviewer-independent",
+                "activate",
+                "OTHER_BOUNDED",
+                digest,
+                "pending_review",
+                "active",
+            )
+        finally:
+            connection.rollback()
 
 
 @pytest.mark.skipif(

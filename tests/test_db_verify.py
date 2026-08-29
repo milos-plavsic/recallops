@@ -25,6 +25,65 @@ def test_grant_and_role_drift_fail_closed() -> None:
         db_verify._verify_role_attributes(cursor_with(unsafe_roles))
 
 
+def routine_cursor(
+    *,
+    create_statement: str = "CREATE FUNCTION x() SECURITY DEFINER AS 'SELECT 1'",
+    owners: list[tuple[object, ...]] | None = None,
+    function_grants: list[tuple[object, ...]] | None = None,
+    schema_grants: list[tuple[object, ...]] | None = None,
+) -> MagicMock:
+    cursor = MagicMock()
+    cursor.fetchone.return_value = ("recallops_govern_memory", create_statement)
+    cursor.fetchall.side_effect = [
+        owners if owners is not None else [("recallops_governor",)],
+        function_grants
+        if function_grants is not None
+        else [
+            ("db", "public", 1, "signature", "recallops_api", "EXECUTE", False),
+            ("db", "public", 1, "signature", "recallops_governor", "ALL", False),
+        ],
+        schema_grants
+        if schema_grants is not None
+        else [("db", "public", "recallops_governor", "USAGE", False)],
+    ]
+    return cursor
+
+
+def test_governance_routine_metadata_is_verified_exactly() -> None:
+    assert db_verify._verify_governance_routine(routine_cursor()) == {
+        "name": "recallops_govern_memory",
+        "owner": "recallops_governor",
+        "security": "DEFINER",
+        "api_execute_only": True,
+        "public_execute": False,
+        "governor_schema_create": False,
+    }
+
+    with pytest.raises(AssertionError, match="not SECURITY DEFINER"):
+        db_verify._verify_governance_routine(
+            routine_cursor(create_statement="CREATE FUNCTION x() SECURITY INVOKER")
+        )
+    with pytest.raises(AssertionError, match="unsafe governance routine owner"):
+        db_verify._verify_governance_routine(routine_cursor(owners=[("root",)]))
+    with pytest.raises(AssertionError, match="unsafe governance routine grants"):
+        db_verify._verify_governance_routine(
+            routine_cursor(
+                function_grants=[
+                    ("db", "public", 1, "signature", "public", "EXECUTE", False)
+                ]
+            )
+        )
+    with pytest.raises(AssertionError, match="unsafe governor schema grants"):
+        db_verify._verify_governance_routine(
+            routine_cursor(
+                schema_grants=[
+                    ("db", "public", "recallops_governor", "CREATE", False),
+                    ("db", "public", "recallops_governor", "USAGE", False),
+                ]
+            )
+        )
+
+
 def test_expected_database_rejections_must_actually_reject(monkeypatch: pytest.MonkeyPatch) -> None:
     connection = MagicMock()
     connection.transaction.return_value.__enter__.return_value = None
