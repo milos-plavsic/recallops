@@ -519,3 +519,28 @@
 - Checkpoint verification passed: Ruff, strict mypy over 31 source files, the full Python suite
   against CockroachDB, 10/10 browser tests, 2/2 judge-mode journeys, 4/4 native Chromium lifecycle
   tests, and all 15 fixed offline-verifier vectors with their exact expected result codes.
+
+### Item 8 — immutable production finalizer checkpoint
+
+- Added the production receipt material loader and finalization worker. It claims one immutable
+  request, reloads the exact genesis-to-review Cockroach prefix and current head, verifies the
+  frozen run/release identity, independently recomputes assessment, policy-verdict, and memory
+  digests, verifies disposition against governed memory state, and constructs policy/evaluation/
+  claim evidence before KMS is allowed to sign.
+- Made retry output byte-stable by deriving the asserted signing time from the immutable receipt-
+  request creation timestamp. The resulting Ed25519 signature and deterministic ZIP can be safely
+  reconciled with the same write-once S3 key if a worker loses its database lease after upload.
+- Added the no-fallback production composition and `recallops-receipt-worker` CLI. Startup requires
+  the repository-pinned trust registry, exact KMS release key, versioned private S3 bucket/key,
+  canonical release artifacts, and a canonical base64url pseudonym key of at least 256 bits.
+- A real Cockroach integration proof now completes request claim → immutable material load → local
+  Ed25519 KMS-boundary signing → deterministic bundle validation → versioned archive result →
+  atomic signed/public receipt and delivered request. A subsequent post-review assessment mutation
+  is detected and rejected rather than signed.
+- Full functional verification passed with Ruff, strict mypy over 32 source files, the complete
+  Python/Cockroach suite, 4/4 native Chromium tests, and all 15 verifier vectors. The first honest
+  full branch-coverage measurement is 92.57% (287 statements and 148 partial branches remain), so
+  the 100.00% item-10 gate remains red; no exclusions, threshold changes, or rounded claim were used.
+- The remaining item-8 external boundary is unchanged: run the same production worker against the
+  release-pinned AWS KMS key and versioned private S3 bucket, then download and independently verify
+  that exact live object version. Local emulation is not represented as live AWS proof.

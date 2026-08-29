@@ -15,6 +15,7 @@ import re
 from collections.abc import Mapping, Sequence
 from datetime import datetime
 from pathlib import Path
+from types import MappingProxyType
 from typing import Literal, Protocol, cast
 from uuid import UUID
 
@@ -627,6 +628,7 @@ class KmsReceiptSigner:
         self._release_id = release_id
         self._trusted_keys = trusted_keys
         self._public_key: Ed25519PublicKey | None = None
+        self._public_jwk: Mapping[str, str] | None = None
         self._kid: str | None = None
         self._kms_key_id: str | None = None
 
@@ -635,6 +637,16 @@ class KmsReceiptSigner:
         if self._kid is None:
             raise ReceiptPreflightError("KMS receipt signer has not passed preflight")
         return self._kid
+
+    @property
+    def public_jwk(self) -> Mapping[str, str]:
+        if self._public_jwk is None:
+            raise ReceiptPreflightError("KMS receipt signer has not passed preflight")
+        return self._public_jwk
+
+    @property
+    def trusted_keys(self) -> TrustedKeyRegistry:
+        return self._trusted_keys
 
     def preflight(self) -> str:
         try:
@@ -664,6 +676,7 @@ class KmsReceiptSigner:
         if not isinstance(returned_key_id, str) or not returned_key_id:
             raise ReceiptPreflightError("KMS GetPublicKey did not return a key ARN")
         self._public_key = public_key_from_jwk(jwk)
+        self._public_jwk = MappingProxyType(dict(jwk))
         self._kid = kid
         self._kms_key_id = returned_key_id
         return kid

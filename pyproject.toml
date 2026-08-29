@@ -40,6 +40,7 @@ recallops-reembed = "recallops.reembed:main"
 recallops-outbox = "recallops.outbox:main"
 recallops-db-verify = "recallops.db_verify:main"
 recallops-receipt-preflight = "recallops.receipts:main"
+recallops-receipt-worker = "recallops.receipt_finalizer:main"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/recallops"]

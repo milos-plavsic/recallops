@@ -436,6 +436,8 @@ def test_kms_signing_uses_exact_profile_and_verifies_returned_signature_locally(
     kms = FakeKms(key)
     signer = KmsReceiptSigner(kms, "alias/recallops-receipt", RELEASE_ID, registry)
     kid = signer.preflight()
+    assert signer.public_jwk == public_jwk_from_der(public_der(key))
+    assert signer.trusted_keys is registry
     manifest = manifest_for(kid)
     compact = signer.sign_manifest(manifest)
     assert verify_receipt_jws(compact, registry, release_id=RELEASE_ID) == manifest

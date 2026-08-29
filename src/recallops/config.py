@@ -70,6 +70,8 @@ class Settings(BaseSettings):
     receipt_kms_key_id: str | None = None
     receipt_release_id: str | None = Field(default=None, min_length=3, max_length=100)
     receipt_trusted_keys_path: Path = Path("tools/trusted-receipt-keys.json")
+    receipt_release_artifacts_path: Path = Path("artifacts/release")
+    receipt_subject_pseudonym_key_b64: SecretStr | None = None
     receipt_policy_version: str = Field(
         default="authority-receipt-policy-v1", min_length=3, max_length=80
     )

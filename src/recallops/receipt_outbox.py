@@ -24,10 +24,12 @@ class ReceiptRequest:
     target_ledger_hash: str
     publish_public: bool
     attempts: int
+    created_at: datetime
     receipt_policy_version: str
     source_sha: str
     image_digest: str
     evaluation_version: str
+    synthetic: bool
 
 
 @dataclass(frozen=True)
@@ -55,7 +57,7 @@ def claim_receipt_request(
               ORDER BY created_at,request_id LIMIT 1 FOR UPDATE
             )
             RETURNING request_id,receipt_id,run_id,tenant_id,target_sequence,
-              target_ledger_hash,publish_public,attempts""",
+              target_ledger_hash,publish_public,attempts,created_at""",
             (worker_id, lease_seconds),
         ).fetchone()
         if row is None:
@@ -63,12 +65,14 @@ def claim_receipt_request(
         receipt = connection.execute(
             """UPDATE authority_receipts SET status='pending',failure_code=NULL
             WHERE receipt_id=%s AND run_id=%s AND tenant_id=%s AND status='failed'
-            RETURNING receipt_policy_version,source_sha,image_digest,evaluation_version""",
+            RETURNING receipt_policy_version,source_sha,image_digest,evaluation_version,
+              synthetic""",
             (row["receipt_id"], row["run_id"], row["tenant_id"]),
         ).fetchone()
         if receipt is None:
             receipt = connection.execute(
-                """SELECT receipt_policy_version,source_sha,image_digest,evaluation_version
+                """SELECT receipt_policy_version,source_sha,image_digest,evaluation_version,
+                synthetic
                 FROM authority_receipts WHERE receipt_id=%s AND run_id=%s AND tenant_id=%s
                 AND status='pending'""",
                 (row["receipt_id"], row["run_id"], row["tenant_id"]),
