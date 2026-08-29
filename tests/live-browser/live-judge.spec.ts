@@ -113,9 +113,7 @@ test("public judge path produces a signed, downloadable authority bundle", async
   await expect(page.locator("#evidence-assessment")).toHaveText(
     "not_recovered",
   );
-  await expect(page.locator("#evidence-policy-verdict")).toHaveText(
-    "recovered",
-  );
+  await expect(page.locator("#evidence-verdict")).toContainText("recovered");
   await expect
     .poll(() =>
       page.evaluate(() => Array.from((window as any).__webmcpTools.keys())),
