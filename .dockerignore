@@ -8,6 +8,8 @@
 .ruff_cache
 .hypothesis
 .tools
+.video-tools
+.video-production
 __pycache__
 *.pyc
 .coverage
