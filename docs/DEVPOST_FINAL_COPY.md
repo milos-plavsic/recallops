@@ -1,97 +1,161 @@
-# Devpost final copy
+# Devpost final copy — The WebMCP Challenge
 
-This is the paste-ready submission draft. Replace the video placeholder only after public or unlisted
-playback succeeds without an account. Do not describe Bedrock as active unless the recorded status
-endpoint reports it.
+This is the tracked paste-ready draft. Replace bracketed fields only with evidence from the frozen
+deployed release. Nothing in this file has been sent to Devpost.
 
 ## Title
 
-RecallOps — Memory That Must Earn the Right to Be Recalled
+RecallOps — The Incident Co-Control Room
 
 ## Tagline
 
-A governed SRE agent that remembers outcomes, rejects unsafe precedents, and proves who reviewed what.
+The website gives agents tools to investigate and prepare—then withdraws capabilities exactly where
+human authority must begin.
+
+## One-line summary
+
+RecallOps demonstrates **Capability Sculpting**: a WebMCP incident room whose authoritative state
+continuously changes what its visiting agent can do as control moves between agent, operator,
+application, and reviewer.
+
+## Problem
+
+Operational agents often mistake semantic similarity for permission. The closest historical fix may
+target the wrong service version, have a known failed outcome, belong to another tenant, or contain
+unreviewed experience. Asking an agent to “be careful” does not create an authority boundary, and an
+agent that can approve its own proposal or promote its own memories can turn one unverified outcome
+into future operational authority.
+
+## Solution
+
+RecallOps is one surgical human-agent workflow. The agent can inspect an incident, compare at most
+three policy-evaluated memories, stage an exact remediation proposal, and interpret a server-created
+postcheck. It cannot approve the proposal, attest execution, activate memory, switch role, or override
+policy. Those protected transitions remain server-enforced UI actions for distinct operator and
+reviewer identities.
+
+The application derives its WebMCP registry from authoritative workflow state. When the agent stages
+a proposal, `stage_remediation` is withdrawn. Only after exact human approval, an allowlisted
+simulation, and an immutable observation does `record_verified_postcheck` appear. The agent submits
+an attributable assessment, while the backend independently computes the policy verdict. The new
+memory remains `PENDING_REVIEW` and retrieval-ineligible until an independent reviewer decides its
+disposition.
+
+## Why WebMCP is essential
+
+This is not a chatbot with a static tool list. WebMCP lets the website and visiting agent collaborate
+over the same incident state while the website retains control of the capability surface. Native
+`document.modelContext.registerTool` registrations are lifecycle-bound with separate
+`AbortController`s, reconciled against server epochs, and withdrawn on state changes. Stale callbacks
+and guessed protected operations fail server-side even if a client retained old JavaScript state.
+
+The page makes protocol behavior judge-visible through a Capability Inspector and chronological
+Activity Rail. Judges can watch authority move without opening DevTools.
+
+## What humans and agents can now do together
+
+The agent rapidly investigates bounded evidence and prepares a precise, digest-bound proposal. The
+operator owns authorization and attests only the isolated simulator action. The application owns
+measurement and policy evaluation. The agent interprets—but cannot invent—the observation. A
+different reviewer governs whether the experience may influence a future incident. The resulting
+Authority Receipt links evidence, proposal, approval, observation, assessment, policy verdict, and
+review in one independently verifiable chain.
+
+## Four WebMCP tools
+
+1. `inspect_incident` — bounded, read-only incident and workflow state.
+2. `compare_memory_candidates` — at most three candidates; similarity is separate from eligibility,
+   with machine-readable rejection codes.
+3. `stage_remediation` — proposal-only mutation bound to incident, evidence, idempotency key, and
+   action hash; it cannot approve or execute.
+4. `record_verified_postcheck` — appears only after verified prerequisites; accepts an observation ID
+   plus assessment and can create only a pending-review memory.
+
+## Human-only operations
+
+Approve/reject proposal, attest the simulator action, certify/quarantine/reject/revoke memory, role
+handoff, and policy override are never WebMCP tools. Separation of duties is enforced by authenticated
+subjects and database/API invariants, not by hiding buttons. The claim is deliberately scoped to
+WebMCP-mediated authority; RecallOps does not claim to prevent general browser automation or prove
+physical-person independence.
+
+## Demonstrated impact
+
+The headline synthetic case uses one identical candidate set. Similarity-only retrieval selects
+`mem_47` at `0.94`, even though it is version-incompatible and has a known failed outcome. RecallOps
+rejects it before ranking and selects reviewed compatible `mem_12` at `0.81`.
+
+Across the committed 12-case governed benchmark, similarity-only retrieval makes 11 unsafe selections
+and leaks two pending memories; RecallOps makes zero unsafe selections, leaks zero pending memories,
+and produces all three expected abstentions. These are deterministic synthetic policy-regression
+results—not production incident-rate or universal-safety claims.
+
+## Execution and proof
+
+The no-signup judge flow is isolated per run and deterministic. It covers successful recurrence,
+observation unavailability, stale tools, replay/idempotency, separate reviewer authority, refresh,
+reset, and constrained layout. Local assurance currently reports:
+
+- 415 unit/API tests and 28 real CockroachDB integration tests;
+- 100.00% Python statement and branch coverage: 5,288/5,288 statements and 1,172/1,172 branches;
+- 73.95% mutation score: 1,493/2,019 killed, with zero untested mutations;
+- 10/10 browser, 2/2 judge-journey, and 4/4 native Chromium WebMCP tests;
+- 15/15 exact independent-verifier outcomes across one valid and 14 materially tampered bundles;
+- zero known vulnerabilities in the production and development lock audits.
+
+The receipt signature proves integrity and policy consistency of the supplied authority chain. It does
+not prove external truth, physical presence, trusted time, or completeness against a compromised
+signer. The product states those limitations next to the proof.
+
+## How Codex was used
+
+OpenAI Codex helped convert the frozen product requirements into transactional and protocol
+boundaries, implement the WebMCP lifecycle, red-team authority paths, expand tests, identify real
+TOCTOU and production-lock defects, verify coverage and mutations, and generate deterministic
+evidence. Claims were accepted only when backed by executable checks or explicit external proof;
+missing AWS or client observations remain red rather than being inferred.
 
 ## Links
 
-- Live app: https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
-- Source: https://github.com/milos-plavsic/recallops
-- Demo video: `REPLACE_WITH_PUBLIC_YOUTUBE_OR_VIMEO_URL`
-- Judge evidence: https://github.com/milos-plavsic/recallops/blob/main/docs/EVIDENCE_INDEX.md
+- Live URL: `[REPLACE_WITH_FROZEN_RELEASE_URL]`
+- Public repository: `https://github.com/milos-plavsic/recallops`
+- Demo video: `[REPLACE_WITH_PUBLIC_YOUTUBE_URL_UNDER_3_MINUTES]`
+- Judge guide: `https://github.com/milos-plavsic/recallops/blob/main/docs/JUDGE_GUIDE.md`
+- Evidence index: `https://github.com/milos-plavsic/recallops/blob/main/docs/EVIDENCE_INDEX.md`
+- Existing-project comparison: `https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...74d7cff203cfc69ecd3e956f792eefaf6e686b19`
 
-## Inspiration
+## Exact testing instructions for judges
 
-Operational agents often treat vector similarity as permission. That is dangerous: the closest past
-incident may belong to another tenant, target an incompatible release, or recommend an action that
-made the outage worse. RecallOps starts from a stricter idea: memory is evidence, and evidence must
-remain governed throughout its lifecycle.
+1. Open the live URL; no signup or credentials are required.
+2. Start the deterministic judge scenario for `checkout-latency-42`.
+3. In ChatGPT's in-app browser or WebMCP-enabled Chrome, ask the agent to find a safe response and
+   stage it without authorizing or executing anything.
+4. Confirm `mem_47` is visible but rejected for `SERVICE_VERSION_MISMATCH` and
+   `KNOWN_FAILED_OUTCOME`, while `mem_12` remains eligible.
+5. After staging, confirm `stage_remediation` disappears and authority changes to operator.
+6. Use the operator controls to approve the exact proposal and attest the labeled simulation.
+7. Confirm `record_verified_postcheck` appears only after the server-created observation; let the
+   agent record its assessment and confirm the memory is `PENDING_REVIEW`.
+8. Open the purpose-bound reviewer handoff. Confirm the reviewer page exposes zero WebMCP tools and
+   activate the memory as the distinct reviewer.
+9. Open `checkout-latency-43`; confirm the reviewed memory now changes the recommendation.
+10. Download the Authority Receipt and run the documented network-free verifier if desired.
 
-## What it does
+## Official form answers requiring entrant confirmation
 
-RecallOps analyzes an incident, retrieves semantically related operational memories, and applies
-deterministic tenant, validity, compatibility, governance, and outcome controls before ranking. It
-then proposes a typed action. Mutating proposals require exact-action human approval.
+- Submitter Type (28249): `[CONFIRM INDIVIDUAL/TEAM/ORGANIZATION]`
+- Country (28250): `[CONFIRM COUNTRY]`
+- Organization (28251): `[BLANK UNLESS APPLICABLE]`
+- App Status (28252): `Existing`
+- Existing update (28253): use the challenge-period extension and provenance comparison above.
+- Live URL (28254): `[FROZEN_RELEASE_URL]`
+- Testing instructions (28255): use the exact sequence above.
+- Public repository (28256): `https://github.com/milos-plavsic/recallops`
+- Tested clients (28257): `[ADD EXACT CHROME VERSION/DATE AND DIRECT CHATGPT RESULT]`
+- AI tools (28258): `OpenAI Codex` plus only tools actually used.
+- Learning (28259): `[CONFIRM NONE/MODERATE/SIGNIFICANT]`
+- Career AI value (28260): `[CONFIRM YES/NO]`
 
-After an operator attests the externally performed action and records the result, RecallOps creates a
-new memory in `pending_review`. That memory is excluded from future retrieval until a different
-Cognito identity activates it. The next incident can then recall the same reviewed memory with its
-source incident, observed outcome, and governance provenance. Revocation removes it from active
-retrieval immediately while retaining the audit history.
+## Closing line
 
-## How we built it
-
-CockroachDB is the persistent memory system, not a replaceable metadata store. One transactional
-record connects the incident, vector candidate, decision, approval, execution attestation, outcome,
-memory state, and governance event. A tenant-prefixed 1,024-dimensional vector index generates
-candidates; deterministic SQL and application policy decide eligibility and rank.
-
-The public application runs on Amazon ECS Fargate behind API Gateway and an internal load balancer.
-Amazon Cognito supplies signed identity and separates operator from reviewer roles. Amazon S3 stores
-encrypted, versioned evidence; CloudWatch provides logs, metrics, and server-verifiable alarm
-evidence; Secrets Manager injects database credentials. Deterministic reasoning and embeddings keep
-the judge path reproducible. Amazon Bedrock is supported as an optional bounded provider, but is not
-required or misrepresented as active in the public demo.
-
-We used two qualifying CockroachDB tools directly:
-
-1. Distributed Vector Indexing, with a managed query-plan artifact that shows vector search through
-   `memories_embedding_v2`.
-2. The official `designing-application-transactions` Agent Skill, pinned to a reproducible revision;
-   it shaped atomic incident/outbox persistence, provider calls outside transactions, and bounded
-   serialization retries.
-
-## Challenges we ran into
-
-The hardest problem was preventing semantic retrieval from becoming an authorization bypass. We had
-to align the query boundary, compatibility policy, four-eyes governance state machine, idempotency,
-and audit provenance so a retry or concurrent request could not create conflicting truth. We also
-kept evidence claims deliberately fail-closed: production claims require server-verifiable AWS
-evidence, while local attestations are labeled as such.
-
-## Accomplishments that we're proud of
-
-- A complete visible store → govern → retrieve → act loop whose stable memory ID can be followed
-  through the UI and CockroachDB.
-- Safe abstention when no reviewed compatible success exists.
-- Immediate revocation from active recall with retained history.
-- Four-eyes review enforced by verified identities rather than a UI convention.
-- 100% combined Python statement and branch coverage, browser accessibility tests, live CockroachDB
-  boundary tests, and a safety-critical mutation-testing gate.
-- Reproducible, release-stamped evidence with explicit limitations rather than inflated claims.
-- An open-source CockroachDB memory-retrieval safety contribution proposed upstream, separately from
-  the accepted official skill used for eligibility.
-
-## What we learned
-
-Agent memory needs database semantics more than it needs a larger prompt. Similarity should discover
-candidates; authorization, compatibility, observed outcomes, identity, and lifecycle state should
-decide whether any candidate may influence an action. We also learned that judge-facing evidence is
-strongest when one causal identifier connects the product interaction, database row, audit event,
-and deployment release.
-
-## What's next
-
-The next vertical increment is an allowlisted executor with least-privilege task roles and automatic
-postcondition collection. We would also expand independent human review of retrieval decisions,
-test larger managed-cluster datasets, and contribute the reusable retrieval-safety verifier through
-the CockroachDB Agent Skills process.
+**Similarity can discover experience. Only reviewed evidence earns authority.**

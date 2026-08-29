@@ -1,47 +1,87 @@
-# Submission readiness and rule compliance
+# WebMCP Challenge submission readiness
 
-Verified against the official rules and overview on 2026-08-10. The submission deadline is
-2026-08-18 at 17:00 EDT. Re-check the [official rules](https://cockroachdb-ai.devpost.com/rules)
-immediately before final submission because the organizer may amend them.
+Official Devpost requirements and criteria were fetched through the authenticated Devpost connector
+on `2026-08-29T07:20:09Z`. The account is registered for **The WebMCP Challenge**. Submissions close
+`2026-09-03T20:00:00Z`; judging runs from `2026-09-04T17:00:00Z` through
+`2026-09-22T00:00:00Z`.
 
-| Requirement | Evidence | Status |
+## Required deliverables
+
+| Requirement | Current evidence | Status |
 | --- | --- | --- |
-| New agentic application built during submission period | Git history and `docs/PROVENANCE.md` | Ready |
-| CockroachDB is the persistent memory layer | `migrations/`, `store.py`, architecture ADR | Ready |
-| At least two CockroachDB tools | Distributed Vector Indexing in application; pinned official `designing-application-transactions` Agent Skill attestation under `evidence/agent-skills/` | Ready; managed CockroachDB and source-review evidence captured |
-| At least one AWS service meaningfully integrated | ECS agent runtime, versioned S3 evidence, API Gateway, Cognito, and CloudWatch | Ready; Bedrock is optional |
-| Functional, consistently installable project | Docker one-command demo, checksum migrations, CI | Ready |
-| Public open-source repository and visible license | `https://github.com/milos-plavsic/recallops`, MIT | Ready |
-| Source, README, dependencies, examples, dataset, setup/run instructions | Repository root, `.env.example`, evaluation dataset, judge guide | Ready |
-| Functional demo URL free for judges through judging | https://ltfrottcxj.execute-api.us-east-1.amazonaws.com | Ready; `/health`, `/ready`, build SHA, providers, and policy gate verified |
-| English project description | `docs/JUDGE_GUIDE.md` submission narrative | Ready |
-| Public YouTube/Vimeo demo under three minutes | `docs/JUDGE_GUIDE.md` video plan | **Pending recording/upload** |
-| Video shows functioning project and CockroachDB memory | Shot plan explicitly includes live loop and memory layer | Pending video |
-| Identify CockroachDB tools and actual use | `docs/COCKROACH_TOOLS.md` plus sanitized run artifacts | **Pending run artifacts** |
-| Identify AWS services and actual use | `docs/AWS_DEPLOYMENT.md`, architecture | Ready |
-| Architecture diagram | Console and `docs/ARCHITECTURE.md` Mermaid | Ready |
-| Testing access/instructions | `docs/JUDGE_GUIDE.md`; credentials supplied separately from Git | **Verified with operator/reviewer browser flow** |
-| No unauthorized copyrighted assets or secrets | Original HTML/CSS diagram, no music/assets, secret scanning checklist | Ready subject to final video review |
-| Dependency vulnerability audit and SBOM | CI artifact plus zero-finding ECR scan and `docs/CONTAINER_SECURITY.md` | Ready; rescan at submission time |
+| Working live URL accessible in ChatGPT's in-app browser or Chrome with WebMCP | AWS deployment templates and locally container-smoked source `74d7cff…` | **Blocked: deploy frozen ECR digest and test both clients** |
+| Text explaining WebMCP fit, UX, new human-agent collaboration, and implementation | `docs/DEVPOST_FINAL_COPY.md` | Ready for final URL/client facts |
+| Public YouTube demo with audio, under three minutes | `docs/VIDEO_RECORDING_RUNBOOK.md` | **Pending live recording and upload** |
+| Public repository with complete source, assets, instructions, and visible open-source license | `https://github.com/milos-plavsic/recallops`; `LICENSE` | Verify public default branch contains final release |
+| Existing-project disclosure | `docs/WEBMCP_PROVENANCE.md`; baseline `cee362c…` | Ready; update final deployed commit only |
+| Tested agent/client disclosure | Native Chromium proof exists | **Pending direct ChatGPT site-tool acceptance** |
 
-## Final human gates
+## Official form fields
 
-1. Confirm entrant age, geography, conflicts, team representative, and ownership.
-2. Add the MIT license to GitHub’s About panel if GitHub does not display it.
-3. Deploy the committed digest on AWS, configure DNS/TLS/OIDC, create judge accounts,
-   and keep it free and reachable through 2026-09-15 17:00 EDT.
-4. Record the scripted video, remove all secrets/third-party marks/music, caption it,
-   upload publicly to YouTube or Vimeo, and verify duration is below 3:00.
-5. Put the public repository URL, functional demo URL, video URL, English narrative,
-   tools/services explanation, architecture image, and testing credentials into Devpost.
-6. Run `./scripts/submission-audit.ps1 -DemoUrl … -VideoUrl …` from clean `main`.
-7. Submit before the deadline, open the resulting submission in a private browser,
-   and preserve screenshots/confirmation email as proof of receipt.
+| ID | Field | Planned truthful answer |
+| --- | --- | --- |
+| 28249 | Submitter Type | Confirm `Individual` unless genuine team members are listed |
+| 28250 | Country | Entrant must confirm country of residence |
+| 28251 | Organization | Leave blank unless applicable |
+| 28252 | App Status | `Existing` |
+| 28253 | Existing-project update | Use the exact challenge-period delta in `WEBMCP_PROVENANCE.md` |
+| 28254 | Live URL | Replace only after frozen release passes both-client checks |
+| 28255 | Testing instructions | Use the no-signup judge sequence in `JUDGE_GUIDE.md` |
+| 28256 | Public repository | `https://github.com/milos-plavsic/recallops` |
+| 28257 | Tested clients | State native Chrome version/date and direct ChatGPT result; do not infer the latter |
+| 28258 | AI tools | OpenAI Codex for implementation, adversarial review, tests, and evidence; list only other tools actually used |
+| 28259 | Learning | Entrant confirmation required; expected `Significant` |
+| 28260 | Career AI value | Entrant confirmation required; expected `Yes` |
 
-## Optional Bedrock limitation
+## Four 5/5 proof obligations
 
-Amazon Bedrock currently returns `authorizationStatus: NOT_AUTHORIZED` for Amazon-owned models.
-This does not block eligibility: the released judge deployment uses deterministic providers on
-ECS and meaningful S3, Cognito, API Gateway, and CloudWatch integrations. Do not describe Bedrock
-as verified live unless `scripts/bedrock-readiness.ps1` passes and a real invocation succeeds. The
-account evidence remains in `docs/AWS_ACCOUNT_BLOCKER.md` for transparency.
+### WebMCP Leverage
+
+- Show the four registered tools operating on the same state visible in the page.
+- Show `stage_remediation` withdrawn immediately after proposal staging and a stale call rejected.
+- Show `record_verified_postcheck` appearing only after human approval, simulation attestation, and
+  server-created observation.
+- Show zero WebMCP tools on the reviewer page and server denial of guessed protected operations.
+- Point to native registration, `AbortController` lifecycle, accurate annotations, bounded schemas,
+  and exact cancellation tests.
+
+### Execution
+
+- Give judges a no-signup, one-click isolated run with deterministic reset.
+- Complete the operator → agent → operator → system → agent → reviewer → recurrence journey without
+  documentation or manual identifiers.
+- Verify refresh, duplicate click/tab, stale epoch/hash, observation outage, reviewer rejection,
+  narrow layout, keyboard flow, and serious/critical accessibility findings.
+- Display the simulation boundary and degraded states honestly.
+
+### Potential Impact
+
+- Show the identical candidate pool: similarity-only chooses incompatible known failure `mem_47`
+  at `0.94`; governed retrieval chooses reviewed compatible `mem_12` at `0.81`.
+- Publish exact synthetic counts and denominators, including every failure.
+- Show pending leakage is zero and later compatible recurrence changes only after independent review.
+- Do not extrapolate synthetic policy results to production incident rates or universal safety.
+
+### Creativity & Ambition
+
+- Name and visibly demonstrate **Capability Sculpting**, not merely dynamic registration.
+- Show the authority owner changing with the capability set.
+- End with the complete, independently verifiable Authority Receipt and its limitations.
+- Keep the thesis memorable: “Similarity can discover experience. Only reviewed evidence earns
+  authority.”
+
+## Final external gates
+
+- [ ] Renew AWS identity.
+- [ ] Build and push one immutable ECR image; record its registry manifest digest and scan result.
+- [ ] Provision/pin the production KMS Ed25519 public key and versioned private S3 bucket.
+- [ ] Deploy by digest, migrate/verify Cockroach boundaries, and generate the KMS-signed release statement.
+- [ ] Complete the live journey, refresh/reset, public bundle download, failure-state, and concurrent-run checks.
+- [ ] Record dated native Chrome and direct ChatGPT site-tool results against the exact deployed digest.
+- [ ] Complete keyboard and screen-reader manual protocols.
+- [ ] Monitor the same release for six hours without errors or identity drift.
+- [ ] Record/upload the public sub-three-minute video and verify signed-out playback.
+- [ ] Replace every placeholder in the final copy and Devpost form; verify MIT is visible in GitHub About.
+- [ ] Run the final submission audit, then submit and verify the resulting public Devpost page.
+
+Nothing is submitted merely by completing this document.

@@ -1,114 +1,116 @@
-# Judge guide
+# RecallOps judge guide
 
-Live demo: https://ltfrottcxj.execute-api.us-east-1.amazonaws.com
+Live release: `[REPLACE_WITH_FROZEN_RELEASE_URL]`
 
-For a claim-by-claim route through the repository, use the curated
-[`EVIDENCE_INDEX.md`](EVIDENCE_INDEX.md). It separates live proof, reproducible proof, and explicit
-limitations so older artifacts cannot be mistaken for evidence from the submitted release.
+RecallOps is an **Existing** project; the WebMCP-specific delta is disclosed in
+[`WEBMCP_PROVENANCE.md`](WEBMCP_PROVENANCE.md). Do not evaluate an older AWS URL as the challenge
+release. The final URL must report the same source/image/policy/key identity as the downloadable
+release evidence.
 
-Use the separately supplied operator and reviewer credentials. Sign in as the
-operator for analysis and outcome capture, then select **Switch identity** and sign
-in as the reviewer to activate the pending memory. The two accounts deliberately
-cannot substitute for one another.
+## The 20-second thesis
 
-## The 30-second thesis
+RecallOps is an incident co-control room. Its visiting agent may investigate and prepare, but the
+website continuously withdraws capabilities where operator or reviewer authority must begin. We call
+this **Capability Sculpting**: authoritative state changes the actual WebMCP tool surface instead of
+asking the agent to practice self-restraint.
 
-Most agent memory retrieves what sounds similar. RecallOps retrieves what is allowed,
-compatible, independently reviewed, and backed by an observed outcome. CockroachDB keeps the
-incident, vector, outcome, approval, and governance event in one transactional causal
-record. A deterministic, evidence-bounded provider keeps the judge flow reliable; ECS runs the
-agent, S3 archives evidence, and CloudWatch observes it. Bedrock is an optional provider, not a
-demo dependency.
+The signature moment is visible: after the agent stages one exact remediation proposal,
+`stage_remediation` disappears and the authority owner becomes `HUMAN_OPERATOR`.
 
-Open **Replayable agent trace** after analysis to inspect the ordered tools, their actual
-risk classification, retry and timeout bounds, degradation state, and evidence
-references used by the agent. The candidate evidence drawer shows why each returned
-memory was selected or ranked below the winner.
+## Fastest complete judge path
 
-## One-command local proof
+1. Open the live URL. Select **Start judge scenario** if a run is not already open.
+2. Use `checkout-latency-42` and give the agent this prompt:
 
-```powershell
-./scripts/judge-demo.ps1
-```
+   > Find a safe response and stage it. Do not authorize or execute anything. If we later observe an
+   > outcome, do not let the system reuse it until an independent reviewer approves it.
 
-The command builds the production image, starts CockroachDB and RecallOps, applies
-checksum-tracked migrations, seeds deterministic governed memories, runs the safety
-benchmark, waits for health, and opens <http://localhost:8080>. It does not require
-AWS credentials because deterministic providers exercise the identical policy path.
+3. Watch the agent call `inspect_incident` and `compare_memory_candidates`.
+4. Confirm the highest-similarity candidate is not treated as authority:
+   `mem_47 — 0.94 — rejected: SERVICE_VERSION_MISMATCH, KNOWN_FAILED_OUTCOME`.
+5. Watch the agent call `stage_remediation`. Confirm that tool is withdrawn immediately and a stale
+   callback cannot stage another proposal.
+6. Use only the protected operator buttons to approve the exact action hash and attest the clearly
+   labeled simulator action. There is no real-infrastructure execute button.
+7. Confirm the application creates the immutable observation and only then exposes
+   `record_verified_postcheck`. The agent submits an assessment; the backend computes a separate
+   policy verdict. The resulting memory is `PENDING_REVIEW` and absent from governed retrieval.
+8. Open the purpose-bound reviewer handoff. Confirm the reviewer page registers zero WebMCP tools.
+   Activate the memory as the distinct reviewer.
+9. Open `checkout-latency-43`. Confirm the reviewed compatible memory now changes the recommendation.
+10. Open the Authority Receipt. The visual chain and offline bundle bind the exact ledger prefix,
+    while the adjacent limitations prevent a cryptographic-integrity claim from becoming an
+    external-truth claim.
 
-In the console:
+Use **Reset judge scenario** to invalidate old sessions, hashes, handoffs, and tool epochs and obtain a
+fresh isolated run. A reset must never revive prior authority.
 
-1. Inspect the live policy regression suite. It is a small, synthetic, deterministic
-   set of authored cases; it is not an end-to-end Titan/CockroachDB retrieval benchmark.
-   Similarity-only RAG selects known-unsafe candidates while the policy path is expected
-   to pass its safety invariants.
-2. Analyze the prefilled incident. The compatible successful memory outranks a more
-   dangerous historical action, and the proposed mutation requires approval.
-3. Record the outcome. It enters `pending_review` and remains retrieval-ineligible.
-4. Activate it as the independent reviewer, then analyze again. This demonstrates the
-   complete incident → decision → outcome → governed memory → future recall loop.
-5. Open `/docs` to inspect the typed API contract.
+## Exactly four agent tools
 
-## Browser-level judge-flow checks
+| Tool | State-dependent purpose | Authority limit |
+| --- | --- | --- |
+| `inspect_incident` | Bounded incident/workflow inspection | Read-only; external text is untrusted |
+| `compare_memory_candidates` | At most three candidates with similarity, eligibility, and rejection codes | Ineligible memory is never recommended |
+| `stage_remediation` | Exact idempotent proposal bound to evidence and action hash | Cannot approve or execute; withdrawn while unresolved |
+| `record_verified_postcheck` | Assessment of one server-created observation | Cannot invent metrics or activate memory |
 
-The repository also includes a deterministic Chromium smoke suite for the surface a
-judge sees. It intercepts the API at the browser boundary, so it is fast, does not
-need AWS or CockroachDB credentials, and cannot turn a provider outage into a passing
-backend test. The fixtures cover the truthful synthetic-benchmark label, initial API
-readiness, successful analysis with the rendered trace risk, safe abstention with
-candidate rejection reasons, keyboard focus, and serious/critical axe accessibility
-violations. Browser console errors fail the initial-render check.
+Protected operator/reviewer transitions are absent from WebMCP and denied server-side when guessed.
+The separation claim is about authenticated subjects and WebMCP authority; it does not claim to prove
+two physical people or prevent arbitrary browser automation.
+
+## What to notice without DevTools
+
+- **Capability Inspector:** current authoritative state, authority owner, available/withdrawn tools,
+  and never-exposed operations.
+- **Activity Rail:** distinguishes agent calls, system registrations/withdrawals, human actions,
+  denials, and committed authority events.
+- **Three-layer evidence:** immutable measurement, attributable agent assessment, independent policy
+  verdict. Agreement and disagreement are both preserved.
+- **Recurrence proof:** the pending memory has no influence; the same reviewed memory becomes eligible
+  only after certification.
+- **Readiness gates:** Live proof and Assurance are independent and bound to the same release.
+
+## Failure proof
+
+The primary fail-closed case stops observation collection after operator approval and simulation
+attestation. The workflow enters `POSTCHECK_UNAVAILABLE`; the assessment tool never appears and no
+memory is created. A separate validation case supplies a stale or mismatched observation ID after the
+tool exists; the call is rejected and still creates no memory.
+
+## Reproduce local assurance
 
 ```bash
-npm ci
-npx playwright install chromium
-npm run test:browser
+uv sync --frozen --all-extras
+uv run ruff check $(git ls-files '*.py')
+uv run mypy
+docker compose up -d cockroach
+export RECALLOPS_INTEGRATION_DATABASE_URL='postgresql://root@127.0.0.1:26257/recallops?sslmode=disable'
+uv run pytest --cov=recallops --cov-branch --cov-fail-under=100
+CI=1 npm run test:browser
+CI=1 npm run test:judge
+CI=1 npm run test:webmcp:native
+uv run python scripts/verify-authority-vectors.py
+uv run python scripts/generate-requirements-trace.py --check
+uv run recallops-eval
 ```
 
-The suite starts an isolated in-memory API automatically. In CI, the browser job uses
-Python 3.12, installs the project, installs only Chromium, and uploads the Playwright
-HTML report and failure artifacts. The browser fixtures are not product benchmark
-data; the live CockroachDB and end-to-end evaluation gates remain authoritative for
-retrieval behavior.
+CI additionally runs the exact appended Cockroach/CLI coverage sequence, dependency audits, IaC
+lint, the 70% mutation gate, and a production image under the non-root/read-only/cap-drop profile.
 
-## Submission narrative
+## Verified local results
 
-Operational agents fail when semantic resemblance is mistaken for evidence. The same
-symptom can belong to another tenant, another version, or a remediation that previously
-made the outage worse. RecallOps makes retrieval a safety decision before it becomes a
-ranking problem.
+- 415 unit/API tests and 28 real CockroachDB integration tests.
+- 100.00%: 5,288/5,288 statements and 1,172/1,172 branches.
+- 73.95% mutation score: 1,493/2,019 killed; zero untested mutations.
+- 10 browser, 2 first-time-judge, and 4 native WebMCP tests all passing.
+- 15/15 exact valid/tampered independent-verifier outcomes.
+- 149/149 story, 16/16 edge, and 15/15 cross-cutting requirements represented.
 
-Every memory is scoped by tenant and service, tied to observed outcomes, and governed
-through a state machine. New observations are held pending and excluded from retrieval until a
-different operator reviews them. Positive evidence decays; known failure never becomes
-safe merely because it is old. Revocation and supersession are transactional and
-auditable. Mutating actions remain proposals until a human approves them.
+## Honest release boundary
 
-CockroachDB is not an interchangeable storage badge: its relational constraints,
-JSON incident record, vector index, unique idempotency boundary, and governance audit
-form one consistent memory system. The public deployment uses deterministic reasoning and
-embedding so model-account authorization cannot break judging. ECS, API Gateway, Cognito,
-Secrets Manager, S3, and CloudWatch provide meaningful AWS execution, identity, evidence, and
-observability. Bedrock remains an optional provider behind bounded failure controls.
+The local core is complete. Until the final deployment work is recorded, the repository intentionally
+keeps both release gates red and uses placeholder image/key values. Do not treat the local image ID,
+test signer, old public deployment, or automated Chromium tests as substitutes for the final ECR
+digest, live KMS/S3 proof, direct ChatGPT site-tool observation, or dated manual accessibility result.
 
-The result is an agent that can learn without silently teaching itself a mistake.
-
-## Three-minute video plan
-
-The production-ready action-first script, exact clicks, database proof query, and recording
-checklist are in [`VIDEO_RECORDING_RUNBOOK.md`](VIDEO_RECORDING_RUNBOOK.md). The live application
-acts within six seconds, and one short memory ID connects every lifecycle proof.
-
-| Time | Visual | Spoken proof |
-| --- | --- | --- |
-| 0:00–0:24 | Analyze the live incident | Establish the SRE problem, persistent CockroachDB memory, and mandatory approval. |
-| 0:24–0:57 | Candidate and trace proof | Show selection/rejection reasons plus sanitized evidence, risk, retry, and timeout bounds. |
-| 0:57–1:39 | Approve, attest, observe, switch identity, review | Carry the same short ID from `pending_review` to `active`; cut all credentials. |
-| 1:39–1:59 | Analyze again | Show the same memory ID, source incident, reviewed flag, and outcome in the next decision. |
-| 1:59–2:23 | CockroachDB ground truth | Query the live row and show the captured managed plan using `memories_embedding_v2`. |
-| 2:23–2:36 | Agent Skill proof | Connect the pinned official skill to three exact transaction consequences. |
-| 2:36–2:47 | AWS proof with architecture inset | Show ECS, CloudWatch, and S3; name API Gateway and Cognito. |
-| 2:47–2:52 | Closing recalled-memory frame | “RecallOps remembers what worked—and who proved it.” |
-
-Record at 1080p with browser zoom near 110%, a clean demo database, no terminal secrets,
-and captions. Keep the live path rehearsed but do not replace it with mock screenshots.
+**Similarity can discover experience. Only reviewed evidence earns authority.**

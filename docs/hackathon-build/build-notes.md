@@ -633,3 +633,26 @@
   ECR push/scan, KMS signing, versioned S3 publication, ECS deployment, public URL checks,
   six-hour monitoring, and manual ChatGPT site-tool acceptance still require renewed external
   authority and direct observations.
+
+### Item 12 — WebMCP judge packet reconciliation (final URLs/assets pending)
+
+- Re-fetched the authenticated official Devpost submission requirements, four 5-point judging
+  criteria, registration relationship, and key dates on 2026-08-29. The account is registered; the
+  official submission deadline is 2026-09-03T20:00:00Z. The form requires a working WebMCP URL,
+  public repository, sub-three-minute public YouTube video with audio, Existing-project disclosure,
+  exact tested clients, AI-tool disclosure, and the remaining entrant-confirmed fields.
+- Replaced tracked legacy CockroachDB-hackathon copy with a coherent WebMCP packet: README, final
+  Devpost copy, judge guide, evidence index, submission checklist, video runbook/production notes,
+  proof card, and complete challenge provenance. No tracked judge surface advertises the stale AWS
+  URL, old video, obsolete form IDs, or false “not started” milestone status.
+- The packet now leads with Capability Sculpting, exactly four tools, visible authority transfer,
+  identical-input impact evidence, the verified-evidence/reviewer recurrence, independently
+  verifiable receipt, exact local assurance counts, and explicit proof limitations mapped to the
+  official WebMCP Leverage, Execution, Potential Impact, and Creativity & Ambition criteria.
+- Preserved the participant-owned untracked `devpost-submission.md`, thumbnail, subtitles, and video
+  helper files unchanged. That draft still reflects the prior CockroachDB event and must not be
+  pasted into the WebMCP form; `docs/DEVPOST_FINAL_COPY.md` is the corrected tracked source until the
+  participant reconciles or replaces the private draft.
+- Item 12 remains unmarked until the frozen live URL, exact two-client results, manual accessibility
+  record, public video URL, final screenshots, entrant-confirmed form answers, and verified Devpost
+  project page exist. Preparing these files does not submit anything to Devpost.

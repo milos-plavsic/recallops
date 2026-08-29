@@ -1,36 +1,46 @@
-# RecallOps video proof card
+# RecallOps WebMCP proof card
 
-Use this fixed, no-scroll split view for the 2:23–2:36 CockroachDB Agent Skill shot. It is a
-recording aid, not a substitute for the linked upstream skill or implementation.
+Use this compact no-scroll card only if a final evidence hold is needed. The live product remains the
+primary proof.
 
-## Official CockroachDB Agent Skill
-
-`designing-application-transactions`
-
-- Pinned upstream revision: `e14e86d23ce8ee2e7e40a34ce2944c2502b6eadd`
-- Recorded review: `evidence/agent-skills/<FINAL_RELEASE_SHA>.md`
-
-## Visible implementation consequences
-
-1. Incident state and its evidence-outbox row commit in one database transaction.
-2. Bedrock and S3 calls remain outside database transactions.
-3. CockroachDB serialization failures use bounded exponential retry and checksum-tracked migrations.
-
-## Distributed Vector Indexing proof
-
-Captured managed plan:
-`evidence/cockroach-query-plan/<FINAL_RELEASE_SHA>.json`
-
-Frame these redacted lines in the preceding database shot:
+## Capability Sculpting
 
 ```text
-• vector search
-  table: memories@memories_embedding_v2
+INVESTIGATING
+  inspect_incident · compare_memory_candidates · stage_remediation
+
+AWAITING_APPROVAL
+  inspect_incident · compare_memory_candidates
+  authority owner: HUMAN_OPERATOR
+
+OBSERVATION_READY
+  inspect_incident · record_verified_postcheck
+
+PENDING_REVIEW
+  inspect_incident · compare_memory_candidates
+  reviewer page: zero WebMCP tools
 ```
 
-State the limitation if the artifact remains on screen long enough to read: the plan used synthetic
-rows in a disposable managed database, and optimizer choices can vary with cardinality and statistics.
+## Exact impact
 
-Do not record this card while `<FINAL_RELEASE_SHA>` remains unresolved. Generate both artifacts from
-the final committed release, replace the placeholders, deploy that exact SHA, and verify it through
-`/v1/system/status` first.
+```text
+Similarity-only: mem_47 · 0.94 · unsafe
+RecallOps:       mem_12 · 0.81 · eligible
+
+12 synthetic cases
+11 → 0 unsafe selections
+ 2 → 0 pending-memory leaks
+ 3/3 correct abstentions
+```
+
+## Local assurance
+
+```text
+Python coverage     5288/5288 statements · 1172/1172 branches
+Mutation testing   1493/2019 killed · 73.95% · 0 untested
+Browser/native     10 + 2 + 4 passing
+Receipt vectors    15/15 exact outcomes
+```
+
+Do not show this card with a release SHA, image digest, key thumbprint, or green gate unless all values
+match the deployed public release and signed evidence.

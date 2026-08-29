@@ -1,33 +1,53 @@
-# Judge evidence index
+# RecallOps judge evidence index
 
-This page maps each submission claim to the fastest visible proof and to its deeper reproducible
-artifact. The public demo is the product proof; repository artifacts explain how to reproduce and
-audit it. Release-stamped evidence is valid only when its SHA matches `/v1/system/status`.
+This index separates product proof, reproducible local assurance, and external release evidence.
+Evidence is valid for a submitted release only when source SHA, deployed ECR digest, capability and
+receipt policies, evaluation version, and pinned key thumbprint agree.
 
-| Claim | Fast proof | Reproducible proof | Honest boundary |
+| Scored claim | Fast product proof | Reproducible proof | Honest boundary |
 | --- | --- | --- | --- |
-| The agent stores, retrieves, and acts on memory | Perform the full live lifecycle in the [judge guide](JUDGE_GUIDE.md), then show the same short memory ID as pending, active, and recalled | `tests/test_service.py` and `tests/integration/test_database_boundaries.py` | RecallOps mutates an isolated simulator, not production infrastructure |
-| Protected action and evidence are exactly bound | Watch proposal capability withdraw, apply the labeled sandbox action, then compare immutable metrics, policy verdict, and agent assessment | `tests/test_sandbox.py`, migrations `024`–`026`, and direct database privilege probes | This proves the challenge simulator and evidence chain; it does not certify a future production adapter |
-| Missing telemetry fails closed | Run the observation-unavailable case: the assessment tool remains absent and no memory appears; retry does not repeat execution | `test_unavailable_observation_fails_closed_without_memory` and `test_observation_retry_does_not_repeat_the_sandbox_mutation` | Outage blocks learning rather than guessing success |
-| CockroachDB is the persistent memory layer | Query the new memory and governance event live | [schema and migrations](../migrations), [database security](DATABASE_SECURITY.md), `evidence/end-to-end-cockroach/` | Row isolation is enforced by verified application identity plus composite constraints; native RLS is not claimed |
-| Distributed Vector Indexing is used | Show the verified plan lines `vector search` and `memories@memories_embedding_v2` | `evidence/cockroach-query-plan/` and `scripts/cockroach-query-plan.ps1` | Optimizer choice can vary with row count and statistics; the artifact records its dataset and release |
-| An official CockroachDB Agent Skill shaped the build | Show the pinned skill revision beside the three implemented transaction consequences | `evidence/agent-skills/` and [CockroachDB tools](COCKROACH_TOOLS.md) | The separate proposed safety skill is open-source work, not counted as an accepted official tool |
-| AWS hosts and protects the public system | Open the public URL, switch Cognito identities, then show a stable ECS task, current CloudWatch signal, and versioned S3 object | `infra/aws/cloudformation.yaml`, `evidence/deployment/`, and `evidence/aws-security/` | Bedrock is optional and must not be described as active when status reports deterministic providers |
-| Retrieval is governed, not similarity-authorized | Expand selected/rejected candidates; run **Load safe-failure scenario** to show abstention | `evaluation/`, `tests/test_retrieval.py`, and `tests/test_evaluation.py` | Authored deterministic cases prove policy invariants, not general model accuracy |
-| Unsafe knowledge stops influencing decisions | Revoke an active memory and analyze again in a prepared proof environment | `test_revoked_memory_is_immediately_excluded_but_history_remains` | History remains auditable; only active retrieval eligibility is removed |
-| Retries converge safely | Show one incident, execution, memory, and outbox result after the concurrency test | `test_cockroach_concurrency_converges_on_one_incident_execution_and_memory` | This is a bounded contention test, not an internet-scale load claim |
-| Security claims are explicit | Point judges to the [threat model](THREAT_MODEL.md) and least-privilege database roles | CI security jobs, `evidence/container-security/`, and `evidence/supply-chain/` | Scanner findings inherited without a vendor fix are documented, not hidden or called remediated |
-| The visible workflow is tested | Run the Chromium suite | `tests/browser/recallops.spec.ts` and CI Playwright artifacts | Browser fixtures test rendering and accessibility; backend integration gates remain separate |
+| Capability Sculpting is real WebMCP behavior | Watch `stage_remediation` disappear and authority move to operator | `tests/webmcp-native/native.spec.ts`, `tests/browser/recallops.spec.ts`, `src/recallops/static/webmcp.js` | UI labels are explanatory; server epochs and tool registration/withdrawal are authoritative |
+| Exactly four tools, no protected transition | Inspect the Capability Inspector and reviewer page | `src/recallops/webmcp_contracts.py`, API contract tests, native reviewer-zero-tools test | Nondiscovery is paired with server denial; obscurity alone is not claimed |
+| Stale/cancelled tools retain no authority | Run stale callback and cancellation cases | native/browser lifecycle tests and WebMCP idempotency boundary tests | Client cancellation cannot prove non-receipt, so server state reconciles the result |
+| Similarity does not grant authority | Compare rejected `mem_47` at 0.94 with eligible `mem_12` at 0.81 | `evaluation/governed_benchmark.json`, `tests/test_retrieval.py`, `tests/test_memory_lifecycle.py` | Synthetic deterministic policy regression, not a production incident-rate estimate |
+| Missing evidence fails closed | Show `POSTCHECK_UNAVAILABLE`: no assessment tool and no memory | `tests/test_sandbox.py`, `tests/test_resilience.py`, API boundary tests | The demo mutates only an isolated allowlisted simulator |
+| Agent cannot invent measurements | Show the server-created observation and small assessment input | sandbox/service tests and exact observation/action/proposal digest checks | Operator attests the simulation; RecallOps does not claim real infrastructure execution |
+| Review gates future reuse | Show pending memory excluded, reviewer page with zero tools, then compatible recurrence | lifecycle, reviewer, judge-browser, and native WebMCP tests | Distinct authenticated subjects are proven; distinct physical people are not |
+| Authority events are atomic and complete | Refresh the Activity Rail and final visual chain | `tests/test_ledger.py`, real Cockroach fault/concurrency tests, migration 029 | Supporting observations do not establish authority |
+| Receipt verifies supplied authority policy | Download bundle and run network-free Node verifier | `artifacts/authority-vectors/`, `tools/verify-authority-bundle.mjs`, 15 exact vectors | Signature proves integrity/policy of supplied chain, not external truth, trusted time, or signer completeness |
+| Evidence and release readiness cannot be hand-waved green | Inspect separate Live proof and Assurance badges | release-status/evidence tests and generated `artifacts/release/` | Current committed placeholders intentionally keep both gates false |
+| Product experience is coherent and accessible | Complete the no-documentation judge path in wide and 390px layouts | 10 browser tests, 2 judge journeys, axe, keyboard/focus assertions | Direct screen-reader and ChatGPT site-tool observations remain manual release gates |
+| Security/functionality tests are complete locally | Open the assurance summary | exact CI sequence: 100.00% coverage, 73.95% mutation, dependency/IaC/container gates | Structural coverage is not called mutation coverage or formal verification |
+
+## Independent verifier vectors
+
+`uv run python scripts/verify-authority-vectors.py` requires one valid vector to return `VERIFIED`
+and 14 materially tampered vectors to fail with their declared stable code. Covered attacks include
+content replacement, deletion, duplication, reordering, duplicate JSON keys, key substitution,
+signature corruption, actor/capability/disposition/policy changes, causal binding changes, and build
+identity changes.
+
+## Requirement and claim trace
+
+- `evidence/requirements-trace.json`: all 149 story acceptance criteria, 16 edge cases, and 15
+  cross-cutting requirements with owner, boundary, test, live, assurance, claim, and reproduction
+  destinations.
+- `evidence/claims.json`: 12 rubric-facing claims with live route, workflow event, tests, raw data,
+  receipt fields, and deterministic reproduction command.
+- `artifacts/release/gates.jcs.json`: independently derived Live proof and Assurance results.
+- `evaluation/governed_benchmark.json`: identical candidate inputs and complete synthetic outcomes.
 
 ## Release consistency gate
 
-Before recording or submitting, verify all of the following refer to one commit:
+Before recording or submitting, require all of the following for one immutable release:
 
-1. GitHub's public default or submission branch contains the release commit.
-2. `/v1/system/status` reports that exact full SHA.
-3. The CockroachDB plan, deployment, security, evaluation, and visual artifacts are stored under or
-   identify that SHA.
-4. The public demo passes `/health`, `/ready`, the complete lifecycle, and the safe-abstention path.
-5. The video description links the public demo, repository, and this index.
+1. Public default branch contains the source and generated evidence commits.
+2. ECR scan completes for the exact deployed manifest digest.
+3. Runtime status reports the bound source/image/policy/evaluation/key identity.
+4. KMS signs the release statement and receipt with the repository-pinned Ed25519 key.
+5. The public, credential-free bundle download verifies offline at the recorded S3 version.
+6. Native Chrome and direct ChatGPT site-tool journeys both pass against that digest.
+7. Manual accessibility protocol and six-hour smoke identify the same release.
+8. The video, Devpost copy, and provenance comparison contain no stale URL, SHA, digest, or claim.
 
-Older artifacts remain useful history but must not be presented as evidence for a newer deployment.
+Older evidence remains useful history but must not be presented as proof of a newer deployment.

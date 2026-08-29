@@ -1,68 +1,72 @@
-# WebMCP Challenge Provenance
+# WebMCP Challenge provenance
 
 ## Submission classification
 
-RecallOps is an **Existing** project. Its incident-memory, retrieval, approval, execution-attestation,
-outcome, review, AWS, CockroachDB, evaluation, and original judge-console functionality predate The
-WebMCP Challenge submission period.
+RecallOps is an **Existing** project. Its original incident-memory, retrieval, approval,
+execution-attestation, outcome, review, AWS, CockroachDB, evaluation, and judge-console functions
+predate The WebMCP Challenge submission period. Only the challenge-period extension described below
+is presented for WebMCP judging.
 
 ## Disclosed baseline
 
-- Commit: `cee362c5ce3cb3bb44c63a4c1ba80b558881d21c`
-- Commit date: 2026-08-18T18:48:20+02:00
-- Challenge submission period start: 2026-08-25T19:00:00Z
+- Baseline commit: `cee362c5ce3cb3bb44c63a4c1ba80b558881d21c`
+- Baseline commit date: `2026-08-18T18:48:20+02:00`
+- Challenge start: `2026-08-25T19:00:00Z`
+- Tested local release source: `74d7cff203cfc69ecd3e956f792eefaf6e686b19`
+- Generated evidence wrapper: `325e66908dd89ad6fefe7287f106cd83e518a625`
 
-The baseline must remain in repository history. The final submission will link the GitHub comparison
-from this commit to the deployed final commit.
+The baseline remains in public history. The final entry must link the comparison from the baseline to
+the deployed release commit; generated evidence commits are kept separate to avoid a self-referential
+source-SHA digest cycle.
 
-## Challenge-period work
+## Challenge-period extension
 
-Only additions after the challenge start are submitted for WebMCP judging. The planned challenge
-extension comprises:
+- Exactly four native `document.modelContext.registerTool` tools.
+- Server-authoritative Capability Sculpting with lifecycle cancellation and stale-call rejection.
+- A visible Capability Inspector and Activity Rail sharing the same authoritative workflow state.
+- Protected operator and reviewer transitions that are absent from WebMCP and server-denied over the
+  WebMCP channel.
+- An allowlisted simulator, exact action/evidence hashes, immutable observation, attributable agent
+  assessment, and independently computed policy verdict.
+- Review-gated positive and negative memory recurrence, revocation, expiry, and supersession.
+- An append-only authority ledger, pinned-key Ed25519 receipt profile, deterministic proof bundle,
+  and network-free independent verifier.
+- Fair synthetic policy evaluation, generated claim/requirement traceability, 100.00% enforced Python
+  statement and branch coverage, mutation testing, and browser/native WebMCP tests.
 
-- Native `document.modelContext` tools.
-- Capability Sculpting and visible tool lifecycle.
-- Server-authoritative WebMCP workflow policy and stale-call rejection.
-- Safe sandbox mutation and independent postcheck measurement.
-- Separate agent assessment and deterministic policy verdict.
-- Review-gated positive and negative memory recurrence.
-- Complete signed Authority Receipt and offline policy verifier.
-- WebMCP-specific evaluations and intended-browser test evidence.
-- Updated deployment, documentation, video, and submission materials.
+## Verified milestone ledger
 
-## Milestone evidence ledger
-
-| Milestone | Status | Evidence |
+| Milestone | Status | Principal evidence |
 | --- | --- | --- |
-| 1. Native WebMCP vertical slice | Complete 2026-08-28 at `8998b9c` | `src/recallops/static/webmcp.js`; capability inspector; API security headers; 7 browser tests; native Chromium 151 test; 155 Python tests; Ruff and mypy passing |
-| 2. Authoritative workflow policy | Complete 2026-08-28 at `fa0110d` + `adbaa15` | Eight-state model; server epochs and manifests; server-issued judge sessions; CSRF and Origin enforcement; atomic domain/workflow transactions; CockroachDB rollback fault injection; 180 Python tests with integration; 8 browser tests; 2 native Chromium tests. |
-| 3. Sandbox action and evidence | Complete 2026-08-29 at `d804584` | Exact allowlisted simulator; digest-bound approval/execution; immutable observation, policy verdict, and agent assessment; fail-closed retry; 196 Python tests plus 8 real CockroachDB integration tests; 100% branch-aware coverage; 8 Playwright tests; 3 native Chromium WebMCP tests; 32 exact grants, 11 cross-tenant composite-FK rejections, one same-tenant cross-incident rejection, and 17 forbidden runtime operations. See `docs/WEBMCP_MILESTONE_3.md`. |
-| 4. Review-gated recurrence | Not started | Separation-of-duties and retrieval tests |
-| 5. Signed proof | Not started | JWS vectors and offline verifier |
-| 6. Final evaluation/deployment | Not started | Live browser matrix, final image digest, video and submission audit |
+| Native WebMCP vertical slice | Complete | `8998b9c`; native registration, annotations, visible capability surface |
+| Authoritative workflow policy | Complete | `fa0110d`, `adbaa15`; eight states, epochs, manifests, CSRF/origin and atomic transitions |
+| Sandbox action and verified observation | Complete | `d804584`; allowlisted mutation, exact bindings, fail-closed evidence path |
+| Isolated judge runs and review-gated recurrence | Complete | `95bc66b` through `6a7eca3`; distinct sessions, lifecycle governance, compatible recurrence |
+| Atomic authority ledger and visible control room | Complete | `1e700a4`, `2c2e796`; canonical event chain, honest timeline, accessible judge journey |
+| Receipt and independent proof core | Complete locally | `61bdcb9` through `e13fd12`; strict Ed25519 profile, deterministic ZIP, 15 verifier vectors, production finalizer |
+| Evaluation and complete local assurance | Complete locally | `dbebd30` through `3a551ed`; generated dual gates, 5,288/5,288 statements and 1,172/1,172 branches, 73.95% mutation score |
+| Hardened immutable image boundary | Complete locally | `68b2dd2`, `74d7cff`; 2.026 MB context, locked production dependencies, non-root/read-only/cap-drop smoke |
+| AWS release and cross-client proof | External gate open | Requires renewed AWS identity, immutable ECR digest, live KMS/S3/ECS proof, public URL, and direct ChatGPT site-tool observation |
 
-This file records only verified work. Status and evidence links must be updated when their checks pass.
+## Exact local assurance result
 
-Milestone 1 is isolated in challenge-period commit
-[`8998b9c`](https://github.com/milos-plavsic/recallops/commit/8998b9c). Its baseline comparison is
-<https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...8998b9c>.
+- Python: 415 unit/API tests plus 28 real CockroachDB integration tests.
+- Coverage: 5,288 statements and 1,172 branches; zero misses and zero partial branches.
+- Mutation: 1,493/2,019 killed (73.95%); zero untested, skipped, suspicious, timeout, or interrupted mutations.
+- Browser: 10/10 product tests and 2/2 first-time-judge journeys.
+- Native WebMCP: 4/4 lifecycle and protected-boundary tests, including zero tools on reviewer page.
+- Independent proof: 1 valid plus 14 tampered bundles produce all 15 exact expected verifier codes.
+- Trace: 149/149 story, 16/16 edge, and 15/15 cross-cutting requirements represented.
+- Supply chain: production and development lock audits report zero known vulnerabilities; IaC lint and
+  hardened container smoke pass.
 
-Milestone 2's authoritative core is isolated in challenge-period commit
-[`fa0110d`](https://github.com/milos-plavsic/recallops/commit/fa0110d). Its incremental comparison is
-<https://github.com/milos-plavsic/recallops/compare/8998b9c...fa0110d>. The evidence ledger keeps the
-remaining acceptance work explicit rather than presenting the core increment as the final policy.
+## External proof boundary
 
-Milestone 2 authentication and atomicity are isolated in challenge-period commit
-[`adbaa15`](https://github.com/milos-plavsic/recallops/commit/adbaa15). Its incremental comparison is
-<https://github.com/milos-plavsic/recallops/compare/639817a...adbaa15>.
+The committed release identity intentionally contains an all-zero image digest and an unpinned
+placeholder receipt-key thumbprint. Both Live proof and Assurance remain false. Local image IDs,
+test-only signing keys, screenshots, and manual attestations must never be substituted for the
+required ECR manifest digest, AWS KMS key, versioned S3 object, deployed release statement, or direct
+target-client observation.
 
-Milestone 3's verified sandbox evidence loop is isolated in challenge-period commit
-[`d804584`](https://github.com/milos-plavsic/recallops/commit/d804584). Its incremental comparison is
-<https://github.com/milos-plavsic/recallops/compare/1921207...d804584>.
-
-## Guided-build execution baseline
-
-Checklist execution began from verified documentation tip `7f66e15` on 2026-08-29. The generated
-`evidence/requirements-trace.json` inventories all 180 normative requirement identifiers as planned
-work without claiming unexecuted results. Its baseline regression repeated the real CockroachDB,
-100% branch-coverage, Playwright, and native Chromium gates before Milestone 4 implementation.
+Baseline comparison:
+<https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...74d7cff203cfc69ecd3e956f792eefaf6e686b19>
