@@ -1614,7 +1614,10 @@ def create_app(
         require_role(identity, "agent")
         run = current_run(identity)
         client_hash = hashlib.sha256(payload.client_instance_id.encode()).hexdigest()
-        if not judge_repository.consume_attempt(f"activity:{run.run_id}:{client_hash}", 120, 60):
+        rate_limit_hash = hashlib.sha256(
+            f"activity:{run.run_id}:{client_hash}".encode()
+        ).hexdigest()
+        if not judge_repository.consume_attempt(rate_limit_hash, 120, 60):
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "activity rate limit exceeded")
         for item in payload.items:
             ledger_repository.add_activity(

@@ -587,6 +587,9 @@ def test_supporting_activity_failure_does_not_break_inspection_and_rate_limit_cl
         },
     )
     assert response.status_code == 429
+    rate_limit_key = app.state.judge_repository.consume_attempt.call_args.args[0]
+    assert len(rate_limit_key) == 64
+    assert all(character in "0123456789abcdef" for character in rate_limit_key)
 
 
 def test_webmcp_assessment_validates_evidence_and_replays_inside_authority_lock() -> None:

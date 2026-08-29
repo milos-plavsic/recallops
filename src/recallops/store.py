@@ -909,8 +909,7 @@ class PostgresStore:
                  embedding_space, embedding, created_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
                         %s::JSONB,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
-                ON CONFLICT (source_incident_id) DO UPDATE
-                SET source_incident_id=excluded.source_incident_id
+                ON CONFLICT (source_incident_id) DO NOTHING
                 RETURNING id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
                  outcome_score, outcome_semantics, confidence, valid, state,
@@ -961,9 +960,56 @@ class PostgresStore:
                     ),
                 )
                 raw_row = cursor.fetchone()
+                if raw_row is None:
+                    cursor.execute(
+                        """SELECT id, tenant_id, service, service_version,
+                        compatibility_policy, compatibility_policy_version, symptom, action,
+                        outcome, outcome_score, outcome_semantics, confidence, valid, state,
+                        superseded_by, source_incident_id, observed_by, evidence_verification,
+                        evidence_refs, observation_window_seconds, postconditions, reviewed_by,
+                        reviewed_at, observation_digest, assessment_digest, verdict_digest,
+                        memory_digest, governance_policy_version, governance_version, expires_at,
+                        superseded_at, revoked_at, embedding_space,
+                        embedding::STRING AS embedding, created_at
+                        FROM memories WHERE source_incident_id=%s AND tenant_id=%s""",
+                        (memory.source_incident_id, memory.tenant_id),
+                    )
+                    raw_row = cursor.fetchone()
             if raw_row is None:
                 raise RuntimeError("outcome memory upsert returned no row")
-            return self._memory(raw_row)
+            persisted = self._memory(raw_row)
+            immutable_outcome_fields = (
+                "tenant_id",
+                "service",
+                "service_version",
+                "compatibility_policy",
+                "compatibility_policy_version",
+                "symptom",
+                "action",
+                "outcome",
+                "outcome_score",
+                "outcome_semantics",
+                "confidence",
+                "source_incident_id",
+                "observed_by",
+                "evidence_verification",
+                "evidence_refs",
+                "observation_window_seconds",
+                "postconditions",
+                "observation_digest",
+                "assessment_digest",
+                "verdict_digest",
+                "governance_policy_version",
+                "embedding_space",
+            )
+            if any(
+                getattr(persisted, field) != getattr(memory, field)
+                for field in immutable_outcome_fields
+            ):
+                raise MemoryGovernanceError(
+                    "source incident already has a different outcome memory"
+                )
+            return persisted
 
         return self._run_write(save_once)
 

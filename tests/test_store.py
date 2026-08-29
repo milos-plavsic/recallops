@@ -193,7 +193,14 @@ def test_postgres_write_paths_reject_missing_returned_rows() -> None:
         postgres_with_rows([]).save_outcome_memory(active_memory())
     memory = active_memory(source_incident_id=uuid4())
     with pytest.raises(RuntimeError, match="outcome memory upsert"):
-        postgres_with_rows([None]).save_outcome_memory(memory)
+        postgres_with_rows([None, None]).save_outcome_memory(memory)
+    assert postgres_with_rows([None, database_row(memory)]).save_outcome_memory(memory) == memory
+    conflicting = active_memory(
+        source_incident_id=memory.source_incident_id,
+        outcome="different causal outcome",
+    )
+    with pytest.raises(MemoryGovernanceError, match="different outcome memory"):
+        postgres_with_rows([None, database_row(memory)]).save_outcome_memory(conflicting)
 
     request = MemoryGovernanceRequest(
         tenant_id="demo",

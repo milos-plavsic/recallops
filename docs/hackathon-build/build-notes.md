@@ -760,3 +760,14 @@
   has a structural regression test for both attributes. This is the narrow AWS-supported
   compatibility setting; it does not expand network reachability or any RecallOps application,
   identity, tenant, evidence, authority, or receipt boundary.
+- Added a public-only Playwright acceptance suite with no local web server. It drives the deployed
+  operator and independently authenticated reviewer sessions, proves dynamic tool withdrawal,
+  preserves an intentional agent/policy disagreement, waits for the production receipt worker,
+  downloads the credential-free version-bound authority bundle, runs serious/critical Axe checks
+  on both roles, records page errors, captures both views, and checks constrained-width overflow.
+- The first real governed journey exposed two production-only least-privilege defects. Supporting
+  activity namespacing violated the database's 64-hex rate-limit key constraint, and a no-op
+  `ON CONFLICT DO UPDATE` on the memory parent row caused CockroachDB to require reverse-FK read
+  authority on `memory_events`. The fix hashes the complete rate-limit namespace and uses
+  insert-or-read with exact memory-digest equality. The API role remains unable to read governance
+  events; a conflicting outcome memory now fails closed instead of being overwritten or reused.
