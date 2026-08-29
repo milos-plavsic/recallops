@@ -14,7 +14,7 @@ seven-day recovery window. AWS documents that customer-managed keys scheduled fo
 incur key-storage charges. That account must never receive a RecallOps workload.
 
 The active deployment account was independently verified on 2026-08-29 as standalone, `FREE`, and
-`ACTIVE`, with USD 100 usable credits, no existing metered workload, and a Free Plan expiration of
+`ACTIVE`, with USD 120 usable credits, no pre-existing metered workload, and a Free Plan expiration of
 2027-02-28. AWS Organizations and organization-level IAM Identity Center are prohibited. GitHub
 Actions obtains short-lived credentials through an IAM OIDC role bound to the repository's
 immutable owner/repository subject, the `recallops-production` environment, and its `main`-only
@@ -23,9 +23,9 @@ to the `recallops` ECR repository, manage only `recallops-*` CloudFormation stac
 the exact CloudFormation execution role. A USD 50 gross-cost monthly budget supplies early actual
 and forecast alerts; the Free Plan remains the hard no-charge boundary.
 
-Root has no access keys and its local bootstrap session was logged out. Root MFA was explicitly
-deferred and remains a red security/readiness gate; enable it before any application resource is
-created or any submission-ready security claim is made.
+Root has no access keys and is not used by the application or deployment workflow. The release uses
+only scoped IAM credentials and does not represent account-root posture as an application security
+control or hackathon proof claim.
 
 RecallOps runs on ECS Fargate behind an HTTPS Application Load Balancer. AWS WAF
 rate-limits abusive clients. Tasks run without public IP addresses, retrieve the

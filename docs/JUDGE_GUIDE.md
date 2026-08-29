@@ -1,6 +1,6 @@
 # RecallOps judge guide
 
-Live release: `[REPLACE_WITH_FROZEN_RELEASE_URL]`
+Live candidate: <https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com>
 
 RecallOps is an **Existing** project; the WebMCP-specific delta is disclosed in
 [`WEBMCP_PROVENANCE.md`](WEBMCP_PROVENANCE.md). Do not evaluate an older AWS URL as the challenge
@@ -15,7 +15,7 @@ this **Capability Sculpting**: authoritative state changes the actual WebMCP too
 asking the agent to practice self-restraint.
 
 The signature moment is visible: after the agent stages one exact remediation proposal,
-`stage_remediation` disappears and the authority owner becomes `HUMAN_OPERATOR`.
+`propose_mitigation` disappears and the authority owner becomes `HUMAN_OPERATOR`.
 
 ## Fastest complete judge path
 
@@ -25,34 +25,36 @@ The signature moment is visible: after the agent stages one exact remediation pr
    > Find a safe response and stage it. Do not authorize or execute anything. If we later observe an
    > outcome, do not let the system reuse it until an independent reviewer approves it.
 
-3. Watch the agent call `inspect_incident` and `compare_memory_candidates`.
+3. Watch the agent call `inspect_incident`; its bounded result separates candidate similarity from
+   policy eligibility and exposes explicit rejection codes.
 4. Confirm the highest-similarity candidate is not treated as authority:
    `mem_47 — 0.94 — rejected: SERVICE_VERSION_MISMATCH, KNOWN_FAILED_OUTCOME`.
-5. Watch the agent call `stage_remediation`. Confirm that tool is withdrawn immediately and a stale
+5. Watch the agent call `propose_mitigation`. Confirm that tool is withdrawn immediately and a stale
    callback cannot stage another proposal.
 6. Use only the protected operator buttons to approve the exact action hash and attest the clearly
    labeled simulator action. There is no real-infrastructure execute button.
 7. Confirm the application creates the immutable observation and only then exposes
-   `record_verified_postcheck`. The agent submits an assessment; the backend computes a separate
+   `record_postcheck_assessment`. The agent submits an assessment; the backend computes a separate
    policy verdict. The resulting memory is `PENDING_REVIEW` and absent from governed retrieval.
 8. Open the purpose-bound reviewer handoff. Confirm the reviewer page registers zero WebMCP tools.
    Activate the memory as the distinct reviewer.
-9. Open `checkout-latency-43`. Confirm the reviewed compatible memory now changes the recommendation.
+9. Confirm `recall_reviewed_memory` appears only now. Invoke it and verify that reviewed compatible
+   evidence changes the `checkout-latency-43` recurrence.
 10. Open the Authority Receipt. The visual chain and offline bundle bind the exact ledger prefix,
     while the adjacent limitations prevent a cryptographic-integrity claim from becoming an
     external-truth claim.
 
-Use **Reset judge scenario** to invalidate old sessions, hashes, handoffs, and tool epochs and obtain a
+Use **Reset judge workflow** to invalidate old sessions, hashes, handoffs, and tool epochs and obtain a
 fresh isolated run. A reset must never revive prior authority.
 
 ## Exactly four agent tools
 
 | Tool | State-dependent purpose | Authority limit |
 | --- | --- | --- |
-| `inspect_incident` | Bounded incident/workflow inspection | Read-only; external text is untrusted |
-| `compare_memory_candidates` | At most three candidates with similarity, eligibility, and rejection codes | Ineligible memory is never recommended |
-| `stage_remediation` | Exact idempotent proposal bound to evidence and action hash | Cannot approve or execute; withdrawn while unresolved |
-| `record_verified_postcheck` | Assessment of one server-created observation | Cannot invent metrics or activate memory |
+| `inspect_incident` | Bounded incident/workflow and candidate-decision inspection | Read-only; similarity is separate from eligibility and external text is untrusted |
+| `propose_mitigation` | Exact idempotent proposal bound to evidence and action hash | Cannot approve or execute; withdrawn while unresolved |
+| `record_postcheck_assessment` | Assessment of one server-created observation | Cannot invent metrics, compute policy verdicts, or activate memory |
+| `recall_reviewed_memory` | Compatible recurrence after certification | Read-only; absent before reviewed evidence is admissible |
 
 Protected operator/reviewer transitions are absent from WebMCP and denied server-side when guessed.
 The separation claim is about authenticated subjects and WebMCP authority; it does not claim to prove
@@ -99,18 +101,20 @@ lint, the 70% mutation gate, and a production image under the non-root/read-only
 
 ## Verified local results
 
-- 415 unit/API tests and 28 real CockroachDB integration tests.
-- 100.00%: 5,288/5,288 statements and 1,172/1,172 branches.
-- 73.95% mutation score: 1,493/2,019 killed; zero untested mutations.
+- 480 Python tests, including real CockroachDB integration and direct managed-database probes.
+- 100.00%: 5,392/5,392 statements and 1,206/1,206 branches.
+- 74.06% mutation score: 1,519/2,051 killed; zero untested mutations or timeouts.
 - 10 browser, 2 first-time-judge, and 4 native WebMCP tests all passing.
+- 2 public browser tests and a distinct native Chromium 151 live lifecycle proof passing.
 - 15/15 exact valid/tampered independent-verifier outcomes.
 - 149/149 story, 16/16 edge, and 15/15 cross-cutting requirements represented.
 
 ## Honest release boundary
 
-The local core is complete. Until the final deployment work is recorded, the repository intentionally
-keeps both release gates red and uses placeholder image/key values. Do not treat the local image ID,
-test signer, old public deployment, or automated Chromium tests as substitutes for the final ECR
-digest, live KMS/S3 proof, direct ChatGPT site-tool observation, or dated manual accessibility result.
+The public candidate is deployed by immutable ECR digest and has live KMS/S3, credential-free bundle,
+managed CockroachDB, native Chromium, and automated accessibility proof. Assurance is complete.
+Release readiness remains false until direct ChatGPT desktop Site Tools acceptance exists for the
+same frozen source/image. The receipt proves supplied-chain integrity and declared policy; it does
+not prove external truth, physical-person separation, trusted time, or signer completeness.
 
 **Similarity can discover experience. Only reviewed evidence earns authority.**

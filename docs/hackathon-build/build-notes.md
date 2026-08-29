@@ -814,3 +814,22 @@
   UI to restore `SIGNED`; the exact public rerun passed both the full journey (24.1 seconds) and
   narrow viewport. `webmcp-rc2` remains immutable, while `webmcp-rc3` names the final candidate
   containing this stronger proof harness.
+- The clean mutation campaign discarded the prior incremental cache and evaluated all 2,051
+  generated mutants: 1,519 killed, 532 survived, and zero untested, skipped, suspicious, timed out,
+  interrupted, or crashed. The genuine score is 74.06%, independently distinct from the exact
+  5,392/5,392 statement and 1,206/1,206 branch coverage result.
+- The deployed `webmcp-rc3` journey passed both public Playwright cases, produced a credential-free
+  signed receipt bundle, and verified offline with seven authority events under the release-pinned
+  KMS Ed25519 public key. Native Chromium 151 separately proved real `document.modelContext`
+  discovery, annotations, closed proposal schema, state-driven withdrawal, stale-handle rejection,
+  reload convergence, zero reviewer tools, and deterministic reset with no page errors.
+- Thirteen independently hashed release artifacts now pass: all eight Assurance requirements and
+  five of six Live Proof requirements. The generated gate is deliberately
+  `ASSURANCE_COMPLETE=true`, `LIVE_PROOF_COMPLETE=false`, with exactly
+  `chatgpt_site_tools` missing. Native Chromium is not accepted as a substitute for the required
+  direct ChatGPT desktop Site Tools observation.
+- Reconciled every public-facing tool name and capability table with the implemented four-tool
+  contract: `inspect_incident`, `propose_mitigation`, `record_postcheck_assessment`, and
+  `recall_reviewed_memory`. The submission copy now describes the deployed AWS candidate and exact
+  assurance counts without converting missing ChatGPT, monitoring, or video proof into a green
+  claim.

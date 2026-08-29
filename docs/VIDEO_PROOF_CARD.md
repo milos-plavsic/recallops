@@ -7,18 +7,21 @@ primary proof.
 
 ```text
 INVESTIGATING
-  inspect_incident · compare_memory_candidates · stage_remediation
+  inspect_incident · propose_mitigation
 
-AWAITING_APPROVAL
-  inspect_incident · compare_memory_candidates
+AWAITING_OPERATOR_APPROVAL
+  inspect_incident
   authority owner: HUMAN_OPERATOR
 
-OBSERVATION_READY
-  inspect_incident · record_verified_postcheck
+POSTCHECK_READY
+  inspect_incident · record_postcheck_assessment
 
 PENDING_REVIEW
-  inspect_incident · compare_memory_candidates
+  inspect_incident
   reviewer page: zero WebMCP tools
+
+REVIEWED
+  inspect_incident · recall_reviewed_memory
 ```
 
 ## Exact impact
@@ -36,9 +39,10 @@ RecallOps:       mem_12 · 0.81 · eligible
 ## Local assurance
 
 ```text
-Python coverage     5288/5288 statements · 1172/1172 branches
-Mutation testing   1493/2019 killed · 73.95% · 0 untested
+Python coverage     5392/5392 statements · 1206/1206 branches
+Mutation testing   1519/2051 killed · 74.06% · 0 untested/timeouts
 Browser/native     10 + 2 + 4 passing
+Public live         2 browser + Chromium 151 native proof
 Receipt vectors    15/15 exact outcomes
 ```
 

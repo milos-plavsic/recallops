@@ -9,12 +9,12 @@ on `2026-08-29T07:20:09Z`. The account is registered for **The WebMCP Challenge*
 
 | Requirement | Current evidence | Status |
 | --- | --- | --- |
-| Working live URL accessible in ChatGPT's in-app browser or Chrome with WebMCP | AWS deployment templates and locally container-smoked source `74d7cff…` | **Blocked: deploy frozen ECR digest and test both clients** |
+| Working live URL accessible in ChatGPT's in-app browser or Chrome with WebMCP | Public AWS candidate and native Chromium 151 live proof | Native passed; direct ChatGPT desktop Site Tools gate remains |
 | Text explaining WebMCP fit, UX, new human-agent collaboration, and implementation | `docs/DEVPOST_FINAL_COPY.md` | Ready for final URL/client facts |
 | Public YouTube demo with audio, under three minutes | `docs/VIDEO_RECORDING_RUNBOOK.md` | **Pending live recording and upload** |
 | Public repository with complete source, assets, instructions, and visible open-source license | `https://github.com/milos-plavsic/recallops`; `LICENSE` | Verify public default branch contains final release |
 | Existing-project disclosure | `docs/WEBMCP_PROVENANCE.md`; baseline `cee362c…` | Ready; update final deployed commit only |
-| Tested agent/client disclosure | Native Chromium proof exists | **Pending direct ChatGPT site-tool acceptance** |
+| Tested agent/client disclosure | Native Chromium 151 proof exists with exact source/image binding | **Pending direct ChatGPT Site Tools acceptance** |
 
 ## Official form fields
 
@@ -38,8 +38,8 @@ on `2026-08-29T07:20:09Z`. The account is registered for **The WebMCP Challenge*
 ### WebMCP Leverage
 
 - Show the four registered tools operating on the same state visible in the page.
-- Show `stage_remediation` withdrawn immediately after proposal staging and a stale call rejected.
-- Show `record_verified_postcheck` appearing only after human approval, simulation attestation, and
+- Show `propose_mitigation` withdrawn immediately after proposal staging and a stale call rejected.
+- Show `record_postcheck_assessment` appearing only after human approval, simulation execution, and
   server-created observation.
 - Show zero WebMCP tools on the reviewer page and server denial of guessed protected operations.
 - Point to native registration, `AbortController` lifecycle, accurate annotations, bounded schemas,
@@ -72,12 +72,12 @@ on `2026-08-29T07:20:09Z`. The account is registered for **The WebMCP Challenge*
 
 ## Final external gates
 
-- [ ] Renew AWS identity.
-- [ ] Build and push one immutable ECR image; record its registry manifest digest and scan result.
-- [ ] Provision/pin the production KMS Ed25519 public key and versioned private S3 bucket.
-- [ ] Deploy by digest, migrate/verify Cockroach boundaries, and generate the KMS-signed release statement.
-- [ ] Complete the live journey, refresh/reset, public bundle download, failure-state, and concurrent-run checks.
-- [ ] Record dated native Chrome and direct ChatGPT site-tool results against the exact deployed digest.
+- [x] Verify the standalone AWS Free Plan account and retain zero-card-spend preflight evidence.
+- [x] Build and push an immutable ECR image; record its registry manifest digest and zero-finding scan.
+- [x] Provision/pin the production KMS Ed25519 public key and versioned private S3 bucket.
+- [x] Deploy by digest, migrate/verify Cockroach boundaries, and generate live KMS-signed receipts.
+- [x] Complete the live journey, refresh/reset, public bundle download, and native stale-tool checks.
+- [ ] Record direct ChatGPT Site Tools results against the final deployed digest; native Chromium 151 is complete.
 - [ ] Complete keyboard and screen-reader manual protocols.
 - [ ] Monitor the same release for six hours without errors or identity drift.
 - [ ] Record/upload the public sub-three-minute video and verify signed-out playback.

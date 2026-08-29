@@ -53,10 +53,11 @@ The final command requires Chrome or Chromium 149+ with WebMCP available; set
 
 ## Scope boundary
 
-The current extension proves native discovery and invocation, state-specific withdrawal, current
+The extension proves native discovery and invocation, state-specific withdrawal, current
 `options.signal` cancellation, rapid-manifest race convergence, post-receipt reconciliation,
 server-authoritative epochs, channel enforcement, idempotent proposal/assessment transactions,
-independent review, disagreement preservation, revocation withdrawal, and reviewed recurrence. It
-does not claim that browser registration is an authorization boundary or that WebMCP prevents general
-browser automation. Signed receipts, release deployment, and final cross-client evaluation remain
-later milestones.
+independent review, disagreement preservation, revocation withdrawal, reviewed recurrence, live KMS
+receipts, credential-free S3-backed bundle download, and offline pinned-key verification. It does not
+claim that browser registration is an authorization boundary, that WebMCP prevents general browser
+automation, or that receipt integrity proves external truth. Native Chromium acceptance is complete;
+direct ChatGPT desktop Site Tools acceptance remains a separate release gate and is never inferred.

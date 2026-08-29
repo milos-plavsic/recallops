@@ -6,10 +6,11 @@
 [![CI](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml/badge.svg)](https://github.com/milos-plavsic/recallops/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-c8ff4d.svg)](LICENSE)
 
-**Challenge release status:** the complete local product and assurance core is implemented. The
-committed release gates intentionally remain red until one immutable image is deployed and verified
-in both native Chrome and ChatGPT's in-app browser. An older public deployment is not advertised as
-the WebMCP release.
+**Challenge release status:** the public AWS candidate is live at
+<https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com>. Its independently derived Assurance gate
+passes. Final release readiness remains deliberately false until the same frozen image receives a
+direct ChatGPT desktop Site Tools observation; native Chromium proof is not substituted for that
+separate client gate.
 
 ## Why this exists
 
@@ -27,10 +28,10 @@ protected transitions remain server-enforced human actions.
 
 | Tool | Purpose | Boundary |
 | --- | --- | --- |
-| `inspect_incident` | Return bounded incident and workflow state | Read-only; external content is untrusted |
-| `compare_memory_candidates` | Return at most three candidates with similarity, eligibility, and rejection codes | Ineligible memory is never recommended |
-| `stage_remediation` | Create one idempotent, digest-bound proposal | Cannot approve or execute; withdrawn while unresolved |
-| `record_verified_postcheck` | Record the agent's assessment of a server-created observation | Cannot invent metrics or activate memory |
+| `inspect_incident` | Return bounded incident, workflow state, and at most three candidate decisions | Read-only; similarity is separate from eligibility and external content is untrusted |
+| `propose_mitigation` | Create one idempotent, digest-bound proposal | Cannot approve or execute; withdrawn while unresolved |
+| `record_postcheck_assessment` | Record the agent's assessment of a server-created observation | Cannot invent metrics, compute the policy verdict, or activate memory |
+| `recall_reviewed_memory` | Read one compatible recurrence after certification | Read-only; absent until reviewed evidence is admissible |
 
 The registry is derived from server-authoritative workflow state. Separate lifecycle-bound
 `AbortController`s withdraw registrations on state changes, while server epochs, hashes, roles, and
@@ -43,17 +44,18 @@ idempotency protect against stale callbacks, cancellation ambiguity, and replay.
 3. `mem_47` has similarity `0.94` but is rejected before ranking for
    `SERVICE_VERSION_MISMATCH` and `KNOWN_FAILED_OUTCOME`; reviewed compatible `mem_12` at `0.81`
    remains eligible.
-4. The agent stages an exact proposal. `stage_remediation` disappears and authority moves to the
+4. The agent stages an exact proposal. `propose_mitigation` disappears and authority moves to the
    operator.
 5. The operator approves the exact hash and attests one allowlisted simulator action. RecallOps does
    not execute production infrastructure.
-6. The application creates immutable measurements. Only then does `record_verified_postcheck`
+6. The application creates immutable measurements. Only then does `record_postcheck_assessment`
    appear; the agent submits an attributable assessment and backend policy computes an independent
    verdict.
 7. The new memory remains `PENDING_REVIEW` and retrieval-ineligible.
 8. A distinct reviewer opens a purpose-bound page that exposes zero WebMCP tools and decides the
    memory's disposition.
-9. Only after certification does the compatible `checkout-latency-43` recurrence reuse the memory.
+9. Only after certification does `recall_reviewed_memory` appear and prove the compatible
+   `checkout-latency-43` recurrence can reuse the memory.
 10. A pinned-key Authority Receipt binds the supplied ledger prefix and can be verified offline.
 
 The Capability Inspector and Activity Rail show available, withdrawn, and never-exposed capabilities,
@@ -100,11 +102,12 @@ uv run pytest
 
 The exact CI sequence currently proves:
 
-- 415 unit/API tests and 28 real CockroachDB integration tests;
-- 100.00% Python statement and branch coverage: 5,288/5,288 statements and 1,172/1,172
+- 480 Python tests, including real CockroachDB integration and direct managed-database probes;
+- 100.00% Python statement and branch coverage: 5,392/5,392 statements and 1,206/1,206
   branches, with zero partial branches;
-- 73.95% safety-critical mutation score: 1,493/2,019 killed and zero untested mutations;
+- 74.06% safety-critical mutation score: 1,519/2,051 killed and zero untested mutations or timeouts;
 - 10/10 product browser tests, 2/2 first-time-judge journeys, and 4/4 native WebMCP tests;
+- 2/2 public browser journeys and a separate native Chromium 151 live lifecycle proof;
 - one valid and 14 materially tampered authority bundles producing all 15 exact expected codes;
 - all 149 story, 16 edge, and 15 cross-cutting requirements represented;
 - zero known vulnerabilities in current production and development lock audits;
@@ -122,7 +125,7 @@ uv run python scripts/generate-requirements-trace.py --check
 uv run recallops-eval
 ```
 
-Coverage and mutation resistance are separate claims. The project does not call 73.95% mutation
+Coverage and mutation resistance are separate claims. The project does not call 74.06% mutation
 coverage “100% testing,” nor does it claim formal verification.
 
 ## Impact benchmark
@@ -147,10 +150,10 @@ dated milestone ledger are in [WEBMCP_PROVENANCE.md](docs/WEBMCP_PROVENANCE.md).
 
 ## Release checklist
 
-Before submission, the exact deployed release still requires a real ECR manifest digest and scan,
-AWS KMS/S3 receipt proof, public download verification, direct ChatGPT site-tool acceptance, dated
-manual accessibility evidence, six-hour smoke, and the public sub-three-minute video. Missing proof
-keeps the independently derived Live proof and Assurance gates false.
+The current candidate has an exact ECR digest and zero-finding registry scan, live KMS/S3 receipt,
+credential-free bundle download, managed-database boundary proof, native Chromium lifecycle proof,
+and automated accessibility smoke. Direct ChatGPT desktop Site Tools acceptance, the scheduled
+availability observation, and the public sub-three-minute video remain explicit external gates.
 
 See [SUBMISSION_CHECKLIST.md](docs/SUBMISSION_CHECKLIST.md),
 [JUDGE_GUIDE.md](docs/JUDGE_GUIDE.md), and

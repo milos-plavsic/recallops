@@ -28,15 +28,15 @@ into future operational authority.
 
 ## Solution
 
-RecallOps is one surgical human-agent workflow. The agent can inspect an incident, compare at most
-three policy-evaluated memories, stage an exact remediation proposal, and interpret a server-created
-postcheck. It cannot approve the proposal, attest execution, activate memory, switch role, or override
-policy. Those protected transitions remain server-enforced UI actions for distinct operator and
-reviewer identities.
+RecallOps is one surgical human-agent workflow. The agent can inspect an incident and at most three
+policy-evaluated candidate decisions, stage an exact mitigation proposal, assess a server-created
+postcheck, and recall compatible evidence only after certification. It cannot approve the proposal,
+apply the simulator action, activate memory, switch role, or override policy. Those protected
+transitions remain server-enforced UI actions for distinct operator and reviewer identities.
 
 The application derives its WebMCP registry from authoritative workflow state. When the agent stages
-a proposal, `stage_remediation` is withdrawn. Only after exact human approval, an allowlisted
-simulation, and an immutable observation does `record_verified_postcheck` appear. The agent submits
+a proposal, `propose_mitigation` is withdrawn. Only after exact human approval, an allowlisted
+simulation, and an immutable observation does `record_postcheck_assessment` appear. The agent submits
 an attributable assessment, while the backend independently computes the policy verdict. The new
 memory remains `PENDING_REVIEW` and retrieval-ineligible until an independent reviewer decides its
 disposition.
@@ -63,13 +63,14 @@ review in one independently verifiable chain.
 
 ## Four WebMCP tools
 
-1. `inspect_incident` — bounded, read-only incident and workflow state.
-2. `compare_memory_candidates` — at most three candidates; similarity is separate from eligibility,
-   with machine-readable rejection codes.
-3. `stage_remediation` — proposal-only mutation bound to incident, evidence, idempotency key, and
+1. `inspect_incident` — bounded, read-only incident, workflow, and at most three candidate decisions;
+   similarity is separate from eligibility and rejection codes are machine-readable.
+2. `propose_mitigation` — proposal-only mutation bound to incident, evidence, idempotency key, and
    action hash; it cannot approve or execute.
-4. `record_verified_postcheck` — appears only after verified prerequisites; accepts an observation ID
-   plus assessment and can create only a pending-review memory.
+3. `record_postcheck_assessment` — appears only after server-created evidence; accepts an observation
+   ID plus attributable opinion and can create only a pending-review memory.
+4. `recall_reviewed_memory` — read-only compatible recurrence; absent until certified evidence is
+   admissible and immediately withdrawn when governance no longer permits reuse.
 
 ## Human-only operations
 
@@ -94,12 +95,13 @@ results—not production incident-rate or universal-safety claims.
 
 The no-signup judge flow is isolated per run and deterministic. It covers successful recurrence,
 observation unavailability, stale tools, replay/idempotency, separate reviewer authority, refresh,
-reset, and constrained layout. Local assurance currently reports:
+reset, and constrained layout. Candidate-bound assurance currently reports:
 
-- 415 unit/API tests and 28 real CockroachDB integration tests;
-- 100.00% Python statement and branch coverage: 5,288/5,288 statements and 1,172/1,172 branches;
-- 73.95% mutation score: 1,493/2,019 killed, with zero untested mutations;
+- 480 Python tests, including real CockroachDB integration and direct managed-database probes;
+- 100.00% Python statement and branch coverage: 5,392/5,392 statements and 1,206/1,206 branches;
+- 74.06% mutation score: 1,519/2,051 killed, with zero untested mutations or timeouts;
 - 10/10 browser, 2/2 judge-journey, and 4/4 native Chromium WebMCP tests;
+- 2/2 public browser tests and a distinct native Chromium 151 live lifecycle proof;
 - 15/15 exact independent-verifier outcomes across one valid and 14 materially tampered bundles;
 - zero known vulnerabilities in the production and development lock audits.
 
@@ -113,16 +115,16 @@ OpenAI Codex helped convert the frozen product requirements into transactional a
 boundaries, implement the WebMCP lifecycle, red-team authority paths, expand tests, identify real
 TOCTOU and production-lock defects, verify coverage and mutations, and generate deterministic
 evidence. Claims were accepted only when backed by executable checks or explicit external proof;
-missing AWS or client observations remain red rather than being inferred.
+the remaining ChatGPT Site Tools observation stays red rather than being inferred from Chromium.
 
 ## Links
 
-- Live URL: `[REPLACE_WITH_FROZEN_RELEASE_URL]`
+- Live URL: `https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com`
 - Public repository: `https://github.com/milos-plavsic/recallops`
 - Demo video: `[REPLACE_WITH_PUBLIC_YOUTUBE_URL_UNDER_3_MINUTES]`
 - Judge guide: `https://github.com/milos-plavsic/recallops/blob/main/docs/JUDGE_GUIDE.md`
 - Evidence index: `https://github.com/milos-plavsic/recallops/blob/main/docs/EVIDENCE_INDEX.md`
-- Existing-project comparison: `https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...74d7cff203cfc69ecd3e956f792eefaf6e686b19`
+- Existing-project comparison: `https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...main`
 
 ## Exact testing instructions for judges
 
@@ -132,13 +134,14 @@ missing AWS or client observations remain red rather than being inferred.
    stage it without authorizing or executing anything.
 4. Confirm `mem_47` is visible but rejected for `SERVICE_VERSION_MISMATCH` and
    `KNOWN_FAILED_OUTCOME`, while `mem_12` remains eligible.
-5. After staging, confirm `stage_remediation` disappears and authority changes to operator.
+5. After staging, confirm `propose_mitigation` disappears and authority changes to operator.
 6. Use the operator controls to approve the exact proposal and attest the labeled simulation.
-7. Confirm `record_verified_postcheck` appears only after the server-created observation; let the
+7. Confirm `record_postcheck_assessment` appears only after the server-created observation; let the
    agent record its assessment and confirm the memory is `PENDING_REVIEW`.
 8. Open the purpose-bound reviewer handoff. Confirm the reviewer page exposes zero WebMCP tools and
    activate the memory as the distinct reviewer.
-9. Open `checkout-latency-43`; confirm the reviewed memory now changes the recommendation.
+9. Confirm `recall_reviewed_memory` appears only after review; invoke it and verify the compatible
+   `checkout-latency-43` recommendation changes.
 10. Download the Authority Receipt and run the documented network-free verifier if desired.
 
 ## Official form answers requiring entrant confirmation
@@ -148,10 +151,11 @@ missing AWS or client observations remain red rather than being inferred.
 - Organization (28251): `[BLANK UNLESS APPLICABLE]`
 - App Status (28252): `Existing`
 - Existing update (28253): use the challenge-period extension and provenance comparison above.
-- Live URL (28254): `[FROZEN_RELEASE_URL]`
+- Live URL (28254): `https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com`
 - Testing instructions (28255): use the exact sequence above.
 - Public repository (28256): `https://github.com/milos-plavsic/recallops`
-- Tested clients (28257): `[ADD EXACT CHROME VERSION/DATE AND DIRECT CHATGPT RESULT]`
+- Tested clients (28257): `Chromium 151.0.7922.108 with WebMCP enabled on 2026-08-30; add the direct
+  ChatGPT desktop Site Tools result only after the separate manual protocol passes.`
 - AI tools (28258): `OpenAI Codex` plus only tools actually used.
 - Learning (28259): `[CONFIRM NONE/MODERATE/SIGNIFICANT]`
 - Career AI value (28260): `[CONFIRM YES/NO]`

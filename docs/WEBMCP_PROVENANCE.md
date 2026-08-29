@@ -12,7 +12,8 @@ is presented for WebMCP judging.
 - Baseline commit: `cee362c5ce3cb3bb44c63a4c1ba80b558881d21c`
 - Baseline commit date: `2026-08-18T18:48:20+02:00`
 - Challenge start: `2026-08-25T19:00:00Z`
-- Tested local release source: `74d7cff203cfc69ecd3e956f792eefaf6e686b19`
+- Tested deployed source: recorded by the candidate's `/v1/system/status`, generated release
+  identity, and immutable ECR-digest evidence rather than hand-written into this source commit.
 - Generated evidence wrappers: later commits contain only derived evidence or judge documentation and
   intentionally do not self-identify by Git SHA; use the public default-branch tip for those files.
 
@@ -45,15 +46,16 @@ source-SHA digest cycle.
 | Isolated judge runs and review-gated recurrence | Complete | `95bc66b` through `6a7eca3`; distinct sessions, lifecycle governance, compatible recurrence |
 | Atomic authority ledger and visible control room | Complete | `1e700a4`, `2c2e796`; canonical event chain, honest timeline, accessible judge journey |
 | Receipt and independent proof core | Complete locally | `61bdcb9` through `e13fd12`; strict Ed25519 profile, deterministic ZIP, 15 verifier vectors, production finalizer |
-| Evaluation and complete local assurance | Complete locally | `dbebd30` through `3a551ed`; generated dual gates, 5,288/5,288 statements and 1,172/1,172 branches, 73.95% mutation score |
+| Evaluation and complete assurance | Complete | generated dual gates, 5,392/5,392 statements and 1,206/1,206 branches, 74.06% clean mutation score |
 | Hardened immutable image boundary | Complete locally | `68b2dd2`, `74d7cff`; 2.026 MB context, locked production dependencies, non-root/read-only/cap-drop smoke |
-| AWS release and cross-client proof | External gate open | Requires renewed AWS identity, immutable ECR digest, live KMS/S3/ECS proof, public URL, and direct ChatGPT site-tool observation |
+| AWS candidate and native-client proof | Complete | digest-pinned ECR/ECS, live KMS/S3 receipt, credential-free download, managed Cockroach boundaries, public browser and native Chromium 151 proof |
+| Direct ChatGPT Site Tools proof | External gate open | Requires a dated invocation in the ChatGPT desktop app's built-in browser against the final frozen image |
 
 ## Exact local assurance result
 
-- Python: 415 unit/API tests plus 28 real CockroachDB integration tests.
-- Coverage: 5,288 statements and 1,172 branches; zero misses and zero partial branches.
-- Mutation: 1,493/2,019 killed (73.95%); zero untested, skipped, suspicious, timeout, or interrupted mutations.
+- Python: 480 tests, including real CockroachDB integration and managed-database direct probes.
+- Coverage: 5,392 statements and 1,206 branches; zero misses and zero partial branches.
+- Mutation: 1,519/2,051 killed (74.06%); zero untested, skipped, suspicious, timeout, or interrupted mutations.
 - Browser: 10/10 product tests and 2/2 first-time-judge journeys.
 - Native WebMCP: 4/4 lifecycle and protected-boundary tests, including zero tools on reviewer page.
 - Independent proof: 1 valid plus 14 tampered bundles produce all 15 exact expected verifier codes.
@@ -63,11 +65,11 @@ source-SHA digest cycle.
 
 ## External proof boundary
 
-The committed release identity intentionally contains an all-zero image digest and an unpinned
-placeholder receipt-key thumbprint. Both Live proof and Assurance remain false. Local image IDs,
-test-only signing keys, screenshots, and manual attestations must never be substituted for the
-required ECR manifest digest, AWS KMS key, versioned S3 object, deployed release statement, or direct
+The candidate evidence binds a real ECR manifest digest, KMS Ed25519 key, versioned S3 bundle,
+managed database, and public/browser clients. Assurance is complete. Live Proof remains false until
+the separate direct ChatGPT Site Tools observation is captured for the same frozen release. Native
+Chromium, test-only signers, screenshots, and inferred compatibility must never substitute for that
 target-client observation.
 
 Baseline comparison:
-<https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...74d7cff203cfc69ecd3e956f792eefaf6e686b19>
+<https://github.com/milos-plavsic/recallops/compare/cee362c5ce3cb3bb44c63a4c1ba80b558881d21c...main>
