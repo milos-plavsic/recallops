@@ -11,11 +11,17 @@
 __pycache__
 *.pyc
 .coverage
+coverage*.json
+coverage*.xml
 htmlcov
 dist
+mutants
 node_modules
 playwright-report
 test-results
+artifacts
+evidence
+devpost-submission.md
 docs
 infra/*
 !infra/certs/
