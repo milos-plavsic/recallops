@@ -612,3 +612,24 @@
   from this local workspace. Items 7–9 likewise remain open only at their declared external
   KMS/S3/frozen-release boundaries; their local cryptographic and deterministic cores are covered
   by the results above.
+
+### Item 11 — hardened local image checkpoint (AWS deployment gate open)
+
+- Reduced the Docker build context from 619 MB to 2.026 MB by excluding local mutation, coverage,
+  evidence, and media-production workspaces. None of those paths is part of the runtime image, and
+  no participant-owned media file was changed or deleted.
+- The first read-only-container smoke test correctly failed before release because `rfc8785` was
+  present in `uv.lock` and the development environment but absent from both exported pip lock
+  files. Regenerated `requirements.lock` and `requirements-dev.lock` from the frozen uv lock and
+  added a dedicated CI production-image job so dependency-boundary drift must now fail before
+  release.
+- The corrected image builds from both digest-pinned base images and starts under the intended ECS
+  security profile: numeric user `65532:65532`, read-only root filesystem, all Linux capabilities
+  dropped, `no-new-privileges`, and a bounded no-exec temporary filesystem. The real `/health`
+  endpoint returns `{"status":"ok"}` from that container, and the OCI revision label exactly
+  matches the supplied full Git source revision.
+- This remains local image evidence only. The local image ID is not represented as an ECR manifest
+  digest, and item 11 remains unmarked. The AWS session in this workspace is expired, so immutable
+  ECR push/scan, KMS signing, versioned S3 publication, ECS deployment, public URL checks,
+  six-hour monitoring, and manual ChatGPT site-tool acceptance still require renewed external
+  authority and direct observations.

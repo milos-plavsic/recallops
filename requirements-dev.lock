@@ -135,6 +135,8 @@ pyyaml==6.0.3
     #   uvicorn
 pyyaml-ft==8.0.0 ; python_full_version == '3.13.*'
     # via libcst
+rfc8785==0.1.4
+    # via recallops
 rich==15.0.0
     # via textual
 ruff==0.16.2

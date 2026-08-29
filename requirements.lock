@@ -60,6 +60,8 @@ python-dotenv==1.2.2
     #   uvicorn
 pyyaml==6.0.3
     # via uvicorn
+rfc8785==0.1.4
+    # via recallops
 s3transfer==0.19.2
     # via boto3
 six==1.17.0

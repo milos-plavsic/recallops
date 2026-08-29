@@ -133,3 +133,35 @@ jobs:
           name: recallops-mutation-report
           path: mutants/mutmut-cicd-stats.json
           if-no-files-found: error
+
+  container:
+    name: Hardened production image smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Build the production dependency boundary
+        run: docker build --pull --build-arg "BUILD_SHA=$GITHUB_SHA" --tag recallops:ci .
+      - name: Start with the production security profile
+        shell: bash
+        run: |
+          set -euo pipefail
+          container_id="$(docker run --detach --read-only --cap-drop ALL \
+            --security-opt no-new-privileges:true \
+            --tmpfs /tmp:rw,noexec,nosuid,size=16m \
+            --publish 127.0.0.1::8080 recallops:ci)"
+          trap 'docker rm --force "$container_id" >/dev/null 2>&1 || true' EXIT
+          test "$(docker inspect "$container_id" --format '{{.Config.User}}')" = "65532:65532"
+          test "$(docker inspect "$container_id" --format '{{.HostConfig.ReadonlyRootfs}}')" = "true"
+          test "$(docker image inspect recallops:ci \
+            --format '{{index .Config.Labels "org.opencontainers.image.revision"}}')" = "$GITHUB_SHA"
+          host_port="$(docker port "$container_id" 8080/tcp | sed 's/.*://')"
+          for attempt in {1..30}; do
+            if curl --fail --silent --show-error "http://127.0.0.1:$host_port/health"; then
+              exit 0
+            fi
+            if [[ "$attempt" == 30 ]]; then
+              docker logs "$container_id"
+              exit 1
+            fi
+            sleep 1
+          done
