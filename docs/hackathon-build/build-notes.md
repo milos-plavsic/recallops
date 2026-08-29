@@ -400,3 +400,31 @@
   for the full adversarial matrix in item 10. No 100% coverage claim is made at this checkpoint;
   the Authority gate is based on the explicit atomicity, ordering, role/channel, isolation, and
   independent-recomputation assertions above.
+
+### Item 6 — judge-visible control room and accessible causal proof
+
+- Reframed the first viewport around the product thesis, exact agent prompt, deterministic
+  `checkout-latency-42` incident, and a real cosine-similarity contrast: the 0.94 known-failed,
+  incompatible memory remains visible but ineligible while the compatible reviewed 0.81 memory is
+  admissible. The values are derived from fixture embeddings rather than presentation-only labels.
+- Added server-derived Capability Inspector, Protected Action panel, chronological authority
+  timeline, three-layer evidence view, explicit authority handoff chain, reviewer evidence cards,
+  and the later compatible recurrence proof. Operator evidence is role-protected and bounded; it
+  exposes digests and lifecycle state but no embeddings or credentials.
+- Made browser startup deny-all. No WebMCP tool is registered until configuration, identity, run,
+  and the authoritative capability manifest establish the current state. Any synchronization error
+  withdraws every tool and disables protected controls until reconciliation succeeds.
+- Preserved protected transitions as server-enforced UI routes. The operator approves one exact
+  proposal digest and issues a single-use reviewer handoff; the distinct reviewer page loads zero
+  WebMCP tools and renders immutable measurement, attributable agent opinion, policy verdict, and
+  bound pending memory as separate records.
+- Added a real one-click judge-mode Playwright journey covering startup denial, proposal staging,
+  immediate capability withdrawal, exact-action approval, allowlisted sandbox execution,
+  independently generated evidence, pending-review quarantine, separate reviewer certification,
+  reviewed recurrence, and persisted authority commits. The suite also checks desktop/reviewer
+  accessibility and 390px layout containment.
+- Verification passed: Ruff, strict mypy, all 251 Python tests, 10 browser tests, 4 native Chromium
+  WebMCP tests, and 2 full judge-mode tests. Axe reported zero serious or critical findings on the
+  completed operator and reviewer pages; security-header assertions cover CSP, frame denial,
+  nosniff, Origin-Agent-Cluster, and WebMCP Permissions-Policy. Desktop and constrained screenshots
+  were visually inspected, and the participant approved the Live-story checkpoint.

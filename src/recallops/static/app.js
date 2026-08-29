@@ -3,16 +3,18 @@ const state = {
   incidentId: sessionStorage.getItem("incident_id"),
   memoryId: sessionStorage.getItem("memory_id"),
   observationId: sessionStorage.getItem("observation_id"),
+  memoryDigest: sessionStorage.getItem("memory_digest"),
   action: null,
   key: null,
   config: null,
   identity: null,
-  webmcpPhase: sessionStorage.getItem("webmcp_phase") || "INVESTIGATING",
+  webmcpPhase: "SYNC_UNAVAILABLE",
   workflowEpoch: Number(sessionStorage.getItem("workflow_epoch") || "0"),
   runGeneration: Number(sessionStorage.getItem("run_generation") || "0"),
   manifestEtag: null,
-  webmcpTools: ["inspect_incident", "propose_mitigation"],
-  authorityOwner: "AGENT"
+  lastTimelineEpoch: 0,
+  webmcpTools: [],
+  authorityOwner: "UNKNOWN"
 };
 
 function setWebMcpPhase(phase, detail = {}) {
@@ -73,12 +75,127 @@ async function request(path, options = {}) {
   return response.json();
 }
 function showError(error) {
-  $("#result").innerHTML = `<p class="risk"><b>Request stopped safely.</b><br>${escapeHtml(error.message)}<br><small>No action was executed. Check the provider/API status above and retry when ready.</small></p>`;
+  $("#result").innerHTML = `<p class="risk"><b>Request stopped.</b><br>${escapeHtml(error.message)}<br><small>No further action is authorized. Reconcile authoritative state before retrying.</small></p>`;
 }
 function escapeHtml(value) {
   const node = document.createElement("span"); node.textContent = value; return node.innerHTML;
 }
 function shortId(value) { return String(value || "unknown").slice(0, 8); }
+const exactAgentPrompt = "Find a safe response and stage it. Do not authorize or execute anything. Do not reuse any observed outcome until an independent reviewer approves it.";
+
+function setText(selector, value) {
+  const node = $(selector);
+  if (node) node.textContent = String(value);
+}
+
+function renderInspection(inspection) {
+  const incident = inspection.incident || {};
+  setText("#judge-brief-title", String(incident.symptom || "checkout-latency-42").split(":", 1)[0]);
+  setText("#judge-incident-summary", incident.symptom || "Bounded incident evidence unavailable.");
+  const rejected = (inspection.candidates || []).find((candidate) => !candidate.eligible);
+  if (rejected) {
+    setText("#hero-rejected-score", `${Number(rejected.similarity).toFixed(2)} similarity`);
+    setText("#hero-rejected-memory", `${shortId(rejected.memory_id)} · ${rejected.rejection_codes.join(" · ")}`);
+  }
+}
+
+function authorityExplanation(phase) {
+  const explanations = {
+    INVESTIGATING: "The agent may inspect evidence and stage one bounded proposal. Approval and execution remain unavailable to it.",
+    AWAITING_OPERATOR_APPROVAL: "Proposal authority has been withdrawn. Only the authenticated operator may approve or reject the exact digest.",
+    APPROVED_AWAITING_EXECUTION: "Approval is bound to one proposal digest. Only the operator may apply the allowlisted sandbox action.",
+    OBSERVING_POSTCHECK: "The system observer owns this transition. Neither agent nor operator may supply measurements.",
+    POSTCHECK_READY: "The agent may assess the immutable observation. It cannot alter measurements or the policy verdict.",
+    POSTCHECK_UNAVAILABLE: "Observation failed closed. No assessment tool or memory exists; only operator retry is permitted.",
+    PENDING_REVIEW: "The memory is quarantined from retrieval. Only the independently authenticated reviewer may govern reuse.",
+    REVIEWED: "Reviewed evidence is admissible for the compatible recurrence; reviewer authority remains unavailable to the agent.",
+    SYNC_UNAVAILABLE: "Authoritative synchronization is unavailable. Agent and protected controls are withdrawn until reconciliation succeeds."
+  };
+  return explanations[phase] || "Protected transitions remain unavailable through WebMCP.";
+}
+
+function renderAuthorityChain(phase) {
+  const order = ["INVESTIGATING", "AWAITING_OPERATOR_APPROVAL", "APPROVED_AWAITING_EXECUTION",
+    "POSTCHECK_READY", "PENDING_REVIEW", "REVIEWED"];
+  const current = Math.max(0, order.indexOf(phase));
+  for (const [index, item] of Array.from(document.querySelectorAll("#authority-chain > li")).entries()) {
+    item.classList.toggle("complete", index < current);
+    item.classList.toggle("current", index === current);
+  }
+  setText("#authority-explanation", authorityExplanation(phase));
+}
+
+function syncProtectedControls(phase) {
+  if (state.config?.auth_mode !== "judge") return;
+  $("#loop-actions").hidden = false;
+  $("#approve").disabled = phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
+  $("#reject-proposal").disabled = phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
+  $("#execute").disabled = phase !== "APPROVED_AWAITING_EXECUTION" || !state.action;
+  $("#retry-observation").disabled = phase !== "POSTCHECK_UNAVAILABLE";
+  $("#review").disabled = phase !== "PENDING_REVIEW" || !state.memoryDigest;
+  $("#review").hidden = phase === "REVIEWED";
+  $("#observe").hidden = true;
+  $("#recall").hidden = true;
+  $("#reset-workflow").disabled = phase === "SYNC_UNAVAILABLE";
+}
+
+function renderEvidence(observation, assessment = null, verdict = null) {
+  if (!observation) return;
+  $("#evidence-layers").hidden = false;
+  setText("#evidence-observation", `${observation.before.latency_p95_ms} ms → ${observation.after.latency_p95_ms} ms · ${shortId(observation.id)}`);
+  setText("#evidence-assessment", assessment ? assessment.classification : "Awaiting agent assessment");
+  setText("#evidence-verdict", verdict ? `${verdict.classification} · ${verdict.policy_version}` : "Awaiting policy verdict");
+  setText("#evidence-bindings", JSON.stringify({
+    observation_id: observation.id,
+    observation_digest: observation.observation_digest,
+    execution_digest: observation.execution_digest,
+    proposal_hash: observation.proposal_hash,
+    agent_assessment: assessment ? {
+      classification: assessment.classification,
+      agent_subject: assessment.agent_subject,
+      observation_digest: assessment.observation_digest
+    } : null,
+    policy_verdict: verdict ? {
+      classification: verdict.classification,
+      policy_version: verdict.policy_version,
+      observation_digest: verdict.observation_digest,
+      checks_passed: verdict.checks_passed,
+      checks_failed: verdict.checks_failed
+    } : null
+  }, null, 2));
+}
+
+function renderRecurrence(result) {
+  $("#recurrence-proof").hidden = false;
+  setText("#recurrence-recommendation", result.governed_recommendation || "Abstained");
+  $("#stage-recall").classList.add("active");
+  $("#live-proof-badge").className = "readiness-badge complete";
+  setText("#live-proof-badge", "LIVE PROOF · COMPLETE");
+}
+
+async function refreshTimeline() {
+  if (state.config?.auth_mode !== "judge") return;
+  const result = await request("/v1/evidence/timeline");
+  const entries = result.entries || [];
+  const fragment = document.createDocumentFragment();
+  for (const entry of entries) {
+    const item = document.createElement("li");
+    const timestamp = new Date(entry.recorded_at).toISOString();
+    item.textContent = `${timestamp} · ${entry.evidence_class} · ${entry.display_summary}`;
+    fragment.append(item);
+  }
+  $("#authority-events").replaceChildren(
+    entries.length ? fragment : document.createTextNode("No persisted authority events yet.")
+  );
+}
+
+function enterReadOnlyDegraded() {
+  setWebMcpPhase("SYNC_UNAVAILABLE", {
+    availableTools: [], authorityOwner: "UNKNOWN"
+  });
+  for (const button of document.querySelectorAll("#loop-actions button")) button.disabled = true;
+  $("#webmcp-status").textContent = "Authoritative sync unavailable · all tools withdrawn";
+}
 function traceEvidence(refs = []) {
   if (!refs.length) return "evidence: none recorded";
   return `evidence: ${refs.slice(0, 2).map((ref) => escapeHtml(String(ref).slice(0, 96))).join(" · ")}`;
@@ -139,33 +256,49 @@ function applyWorkflowManifest(manifest) {
     availableTools: manifest.available_tools,
     authorityOwner: manifest.authority_owner
   });
+  renderAuthorityChain(manifest.state);
+  syncProtectedControls(manifest.state);
+  if (manifest.epoch && Number(manifest.epoch) !== state.lastTimelineEpoch) {
+    state.lastTimelineEpoch = Number(manifest.epoch);
+    refreshTimeline().catch(() => {});
+  }
+  if (state.config?.auth_mode === "judge" && manifest.state === "REVIEWED") {
+    $("#recall").hidden = true;
+    $("#reviewer-link").hidden = true;
+    $("#review").disabled = true;
+  }
 }
 async function refreshWorkflow({ signal } = {}) {
   if (!state.incidentId) return null;
-  if (state.config?.auth_mode === "judge") {
-    const response = await fetch("/v1/webmcp/capabilities", {
-      headers: {
-        "Accept": "application/json",
-        ...(state.manifestEtag ? { "If-None-Match": state.manifestEtag } : {})
-      },
-      signal
-    });
-    if (response.status === 304) return null;
-    if (!response.ok) {
-      const body = await response.json().catch(() => ({}));
-      throw new Error(body.detail || `Request failed (${response.status})`);
+  try {
+    if (state.config?.auth_mode === "judge") {
+      const response = await fetch("/v1/webmcp/capabilities", {
+        headers: {
+          "Accept": "application/json",
+          ...(state.manifestEtag ? { "If-None-Match": state.manifestEtag } : {})
+        },
+        signal
+      });
+      if (response.status === 304) return null;
+      if (!response.ok) {
+        const body = await response.json().catch(() => ({}));
+        throw new Error(body.detail || `Request failed (${response.status})`);
+      }
+      const manifest = await response.json();
+      state.manifestEtag = response.headers.get("ETag") || manifest.etag || state.manifestEtag;
+      applyWorkflowManifest(manifest);
+      return manifest;
     }
-    const manifest = await response.json();
-    state.manifestEtag = response.headers.get("ETag") || manifest.etag || state.manifestEtag;
+    const path = `/v1/incidents/${state.incidentId}/capabilities`;
+    const manifest = await request(path, {
+      headers: headers("demo-agent", "agent", "webmcp"), signal
+    });
     applyWorkflowManifest(manifest);
     return manifest;
+  } catch (error) {
+    if (error.name !== "AbortError") enterReadOnlyDegraded();
+    throw error;
   }
-  const path = `/v1/incidents/${state.incidentId}/capabilities`;
-  const manifest = await request(path, {
-    headers: headers("demo-agent", "agent", "webmcp"), signal
-  });
-  applyWorkflowManifest(manifest);
-  return manifest;
 }
 async function runAnalysis(payload, { signal, channel = "ui", refresh = true } = {}) {
   $("#analyze").disabled = true; $("#analyze").setAttribute("aria-busy", "true"); $("#result").innerHTML = `<p class="muted loading">Embedding incident and applying governance gates…</p>`;
@@ -193,6 +326,23 @@ async function approve() {
     if (result.workflow) applyWorkflowManifest(result.workflow); else await refreshWorkflow();
   } catch (error) { showError(error); }
 }
+async function rejectProposal() {
+  try {
+    const result = await request(`/v1/incidents/${state.incidentId}/approval`, {
+      method: "POST",
+      headers: headers("demo-operator", "operator", "ui", state.workflowEpoch),
+      body: JSON.stringify({
+        tenant_id: tenant(), approved: false, actor_id: actor(),
+        proposal_hash: state.action.action_hash,
+        reason: "operator rejected the exact proposal digest"
+      })
+    });
+    emitActivity("HUMAN", `rejected exact proposal ${shortId(state.action.action_hash)}`);
+    state.action = null;
+    if (result.workflow) applyWorkflowManifest(result.workflow); else await refreshWorkflow();
+    $("#result").innerHTML = "<p>Proposal rejected. Investigation authority returned to the agent; no sandbox action occurred.</p>";
+  } catch (error) { showError(error); }
+}
 async function execute() {
   try {
     const result = await request(`/v1/incidents/${state.incidentId}/sandbox-execution`, { method: "POST", headers: headers("demo-operator", "operator", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor(), proposal_hash: state.action.action_hash, idempotency_key: `sandbox-${state.incidentId}` }) });
@@ -203,6 +353,7 @@ async function execute() {
     emitActivity("HUMAN", `applied allowlisted sandbox action ${result.execution.action_id || "checkout action"}`);
     emitActivity("SYSTEM", `verified observation ${shortId(state.observationId)} · policy ${result.policy_verdict.classification}`);
     applyWorkflowManifest(result.workflow);
+    renderEvidence(result.observation, null, result.policy_verdict);
     const before = result.observation.before; const after = result.observation.after;
     $("#result").innerHTML = `<span class="confidence">VERIFIED OBSERVATION · ${escapeHtml(shortId(state.observationId))}</span><h3>Sandbox mutation measured independently.</h3><dl><dt>Latency p95</dt><dd>${before.latency_p95_ms} ms → ${after.latency_p95_ms} ms</dd><dt>Error rate</dt><dd>${(before.error_rate * 100).toFixed(1)}% → ${(after.error_rate * 100).toFixed(1)}%</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)} · ${escapeHtml(result.policy_verdict.policy_version)}</dd></dl><p>The agent can now assess this immutable observation. Its opinion cannot change the policy verdict.</p>`;
   } catch (error) {
@@ -225,6 +376,7 @@ async function retryObservation() {
     $("#retry-observation").disabled = true;
     emitActivity("SYSTEM", `verified observation retry ${shortId(state.observationId)} · policy ${result.policy_verdict.classification}`);
     applyWorkflowManifest(result.workflow);
+    renderEvidence(result.observation, null, result.policy_verdict);
     const before = result.observation.before; const after = result.observation.after;
     $("#result").innerHTML = `<span class="confidence">VERIFIED OBSERVATION · ${escapeHtml(shortId(state.observationId))}</span><h3>Observation retry succeeded without repeating the mutation.</h3><dl><dt>Latency p95</dt><dd>${before.latency_p95_ms} ms → ${after.latency_p95_ms} ms</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)}</dd></dl><p>The agent assessment capability is now available.</p>`;
   } catch (error) { showError(error); }
@@ -234,6 +386,20 @@ async function observe() {
 }
 async function review() {
   try {
+    if (state.config?.auth_mode === "judge") {
+      if (!state.memoryDigest) throw new Error("review target digest is unavailable");
+      const result = await request("/v1/operator/reviewer-handoff", {
+        method: "POST",
+        headers: headers(),
+        body: JSON.stringify({ purpose: "initial_review", memory_digest: state.memoryDigest })
+      });
+      $("#reviewer-link").href = result.reviewer_url;
+      $("#reviewer-link").hidden = false;
+      $("#review").disabled = true;
+      $("#review").textContent = "Reviewer handoff created";
+      emitActivity("HUMAN", "operator issued a single-use independent reviewer handoff");
+      return;
+    }
     await request(`/v1/memories/${state.memoryId}/governance`, { method: "POST", headers: headers("demo-reviewer", "reviewer", "ui", state.workflowEpoch), body: JSON.stringify({ tenant_id: tenant(), actor_id: actor("demo-reviewer"), action: "activate", reason: "independent review confirmed the observed recovery window" }) });
     $("#stage-review").classList.add("active"); $("#recall").disabled = false; $("#review").disabled = true;
     await refreshWorkflow();
@@ -247,13 +413,18 @@ async function recall() {
 }
 async function resetWorkflow() {
   try {
-    if (state.incidentId && state.workflowEpoch) {
+    if (state.config?.auth_mode === "judge") {
+      const reset = await request("/v1/operator/run/reset", {
+        method: "POST", headers: headers()
+      });
+      sessionStorage.setItem("judge_csrf", reset.csrf_token);
+    } else if (state.incidentId && state.workflowEpoch) {
       await request(`/v1/incidents/${state.incidentId}/reset`, {
         method: "POST",
         headers: headers("demo-operator", "operator", "ui", state.workflowEpoch)
       });
     }
-    for (const key of ["incident_id", "memory_id", "observation_id", "webmcp_phase", "workflow_epoch"]) {
+    for (const key of ["incident_id", "memory_id", "memory_digest", "observation_id", "webmcp_phase", "workflow_epoch"]) {
       sessionStorage.removeItem(key);
     }
     location.assign("/");
@@ -302,7 +473,7 @@ async function proposeForWebMcp(input, { signal } = {}) {
   $("#service").value = service; $("#version").value = serviceVersion; $("#symptom").value = symptom;
   if (state.config?.auth_mode === "judge") {
     const idempotencyKey = `proposal-${randomBase64Url(24)}`;
-    return request("/v1/webmcp/proposal", {
+    const result = await request("/v1/webmcp/proposal", {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -313,6 +484,14 @@ async function proposeForWebMcp(input, { signal } = {}) {
         ...(input?.rationale ? { rationale: String(input.rationale).slice(0, 500) } : {}) }),
       signal
     });
+    state.action = {
+      action_hash: result.proposal_digest,
+      requires_approval: true,
+      name: result.action?.display_name,
+      risk: result.action?.risk_class
+    };
+    $("#loop-actions").hidden = false;
+    return result;
   }
   state.key = `webmcp-${Date.now()}-${randomBase64Url(12)}`;
   return runAnalysis(incidentPayload(), { signal, channel: "webmcp", refresh: false });
@@ -338,19 +517,34 @@ async function recordPostcheckForWebMcp(input, { signal } = {}) {
     signal
   });
   state.memoryId = result.memory.id;
+  state.memoryDigest = result.memory.digest || result.memory.memory_digest || null;
   sessionStorage.setItem("memory_id", state.memoryId);
+  if (state.memoryDigest) sessionStorage.setItem("memory_digest", state.memoryDigest);
   $("#review").disabled = false;
+  if (judgeMode) $("#review").textContent = "Create independent reviewer handoff";
+  const evidence = judgeMode
+    ? await request("/v1/operator/evidence").catch(() => null)
+    : null;
+  if (evidence?.immutable_observation) {
+    renderEvidence(evidence.immutable_observation, result.assessment, result.policy_verdict);
+  }
+  setText("#evidence-assessment", result.assessment.classification);
+  setText("#evidence-verdict", `${result.policy_verdict.classification} · ${result.policy_verdict.policy_version || "policy"}`);
   $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Agent assessment recorded separately from policy.</h3><dl><dt>Agent assessment</dt><dd>${escapeHtml(result.assessment.classification)}</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)}</dd></dl><p>The memory remains excluded from retrieval until an independent reviewer acts.</p>`;
   if (result.workflow) setTimeout(() => applyWorkflowManifest(result.workflow), 0);
   return result;
 }
 
 async function recallForWebMcp({ signal } = {}) {
-  if (state.config?.auth_mode === "judge") return request("/v1/webmcp/recurrence", { signal });
+  if (state.config?.auth_mode === "judge") {
+    const result = await request("/v1/webmcp/recurrence", { signal });
+    renderRecurrence(result);
+    return result;
+  }
   state.key = `webmcp-recurrence-${Date.now()}-${randomBase64Url(12)}`;
   const result = await runAnalysis(incidentPayload(), { signal, channel: "webmcp" });
   const selected = result.memories?.[0]?.memory;
-  return {
+  const recurrence = {
     scenario_id: "checkout-latency-43",
     service: $("#service").value,
     service_version: $("#version").value,
@@ -359,6 +553,8 @@ async function recallForWebMcp({ signal } = {}) {
     eligible_memory_ids: (result.memories || []).map((item) => item.memory.id).slice(0, 3),
     compatibility_policy_version: result.retrieval_policy_version
   };
+  renderRecurrence(recurrence);
+  return recurrence;
 }
 
 async function recordWebMcpActivity(items) {
@@ -415,9 +611,34 @@ async function signOut() {
   const query = new URLSearchParams({ client_id: state.config.client_id, logout_uri: state.config.redirect_url });
   location.assign(`${state.config.logout_url}?${query}`);
 }
+async function startJudgeScenario() {
+  if (state.config?.auth_mode !== "judge") {
+    location.hash = "#demo";
+    return;
+  }
+  $("#start-judge").disabled = true;
+  try {
+    const started = await request("/v1/judge/runs", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: "{}"
+    });
+    sessionStorage.setItem("judge_csrf", started.csrf_token);
+    location.reload();
+  } catch (error) {
+    $("#start-judge").disabled = false;
+    showError(error);
+  }
+}
 async function initialize() {
   try {
     state.config = await request("/v1/config");
+    if (state.config.auth_mode !== "judge") {
+      setWebMcpPhase("INVESTIGATING", {
+        availableTools: ["inspect_incident", "propose_mitigation"],
+        authorityOwner: "AGENT"
+      });
+    }
     const fragment = new URLSearchParams(location.hash.slice(1));
     if (state.config.auth_mode === "judge" && fragment.has("access")) {
       const bootstrapCode = fragment.get("access");
@@ -433,11 +654,29 @@ async function initialize() {
     if (query.has("code")) await exchangeCode(query.get("code"), query.get("state"));
     if (state.config.auth_required || state.config.auth_mode === "judge") {
       $("#auth-controls").hidden = false; $("#token-details").hidden = true;
-      if (accessToken() || state.config.auth_mode === "judge") {
+      if (state.config.auth_mode === "judge") {
+        const identityResponse = await fetch("/v1/me", { headers: { Accept: "application/json" } });
+        if (identityResponse.status === 401) {
+          state.incidentId = null;
+          for (const key of ["incident_id", "memory_id", "memory_digest", "observation_id", "run_generation"]) {
+            sessionStorage.removeItem(key);
+          }
+          $("#auth-status").textContent = "No active judge run · start one isolated scenario";
+          $("#signin").hidden = true; $("#signout").hidden = true;
+          enterReadOnlyDegraded();
+        } else if (!identityResponse.ok) {
+          throw new Error(`Identity request failed (${identityResponse.status})`);
+        } else {
+          state.identity = await identityResponse.json();
+        }
+      } else if (accessToken()) {
         state.identity = await request("/v1/me", { headers: headers() });
+      }
+      if (state.identity) {
         $("#tenant").value = state.identity.tenant_id; $("#tenant").disabled = true;
         $("#auth-status").textContent = `${state.identity.roles.join(" + ")} · ${state.identity.subject.slice(0, 8)}`;
         $("#signin").hidden = true; $("#signout").hidden = false;
+        $("#start-judge").hidden = state.config.auth_mode === "judge";
         if (state.config.auth_mode === "judge") {
           const run = await request("/v1/operator/run");
           state.incidentId = run.incident_id;
@@ -448,6 +687,26 @@ async function initialize() {
           $("#service").value = inspected.incident.service;
           $("#version").value = inspected.incident.service_version;
           $("#symptom").value = inspected.incident.symptom;
+          renderInspection(inspected);
+          const evidence = await request("/v1/operator/evidence");
+          if (evidence.proposal_digest) {
+            state.action = { action_hash: evidence.proposal_digest, requires_approval: true };
+          }
+          if (evidence.memory) {
+            state.memoryId = evidence.memory.id;
+            state.memoryDigest = evidence.memory.digest;
+            sessionStorage.setItem("memory_id", state.memoryId);
+            sessionStorage.setItem("memory_digest", state.memoryDigest);
+          }
+          if (evidence.immutable_observation) {
+            state.observationId = evidence.immutable_observation.id;
+            sessionStorage.setItem("observation_id", state.observationId);
+            renderEvidence(
+              evidence.immutable_observation,
+              evidence.agent_assessment,
+              evidence.policy_verdict
+            );
+          }
         }
       }
     }
@@ -471,8 +730,23 @@ async function initialize() {
 }
 $("#incident-form").addEventListener("submit", analyze);
 $("#safe-failure").addEventListener("click", loadSafeFailure);
-$("#approve").addEventListener("click", approve); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
+$("#approve").addEventListener("click", approve); $("#reject-proposal").addEventListener("click", rejectProposal); $("#execute").addEventListener("click", execute); $("#observe").addEventListener("click", observe); $("#review").addEventListener("click", review); $("#recall").addEventListener("click", recall);
 $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("click", signOut);
 $("#reset-workflow").addEventListener("click", resetWorkflow);
 $("#retry-observation").addEventListener("click", retryObservation);
+$("#start-judge").addEventListener("click", startJudgeScenario);
+$("#copy-prompt").addEventListener("click", async () => {
+  try {
+    await navigator.clipboard.writeText(exactAgentPrompt);
+    setText("#copy-status", "Exact agent prompt copied.");
+  } catch (_error) {
+    setText("#copy-status", exactAgentPrompt);
+  }
+});
+setText("#agent-prompt", exactAgentPrompt);
+setText("#hero-agent-prompt", exactAgentPrompt);
+try {
+  const reviewChannel = new BroadcastChannel("recallops-review");
+  reviewChannel.addEventListener("message", () => refreshWorkflow().catch(() => {}));
+} catch (_error) { /* conditional polling remains authoritative */ }
 initialize();

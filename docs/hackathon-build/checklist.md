@@ -127,7 +127,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   invocation cancellation after possible server receipt, unsupported-client behavior, and reviewer
   page discovery showing zero tools.
 
-- [ ] **6. Finish the judge-visible control room and accessible causal proof**
+- [x] **6. Finish the judge-visible control room and accessible causal proof**
   Spec ref: `spec.md > Browser Application Architecture`; `spec.md > Demo And Submission Flow > Frozen demo sequence`
   What to build: Complete the first-viewport incident proof, rejected 0.94 candidate, exact prompt,
   Capability Inspector, role-exclusive Protected Action panel, persisted Activity Rail, three-layer

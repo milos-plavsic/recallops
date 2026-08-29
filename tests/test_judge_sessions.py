@@ -623,6 +623,10 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
         "status": "open",
     }
     assert len(evidence["candidates"]) <= 3
+    assert [(item["similarity"], item["eligible"]) for item in evidence["candidates"]] == [
+        (0.94, False),
+        (0.81, True),
+    ]
     assert "incident.symptom" in evidence["untrusted_fields"]
 
     proposal_payload = {
@@ -810,6 +814,13 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     assert assessment["policy_verdict"]["classification"] == "recovered"
     assert assessment["memory"]["state"] == "pending_review"
     assert assessment["memory"]["retrievable"] is False
+    operator_evidence = operator.get("/v1/operator/evidence")
+    assert operator_evidence.status_code == 200
+    assert operator_evidence.json()["proposal_digest"] == proposal_digest
+    assert operator_evidence.json()["immutable_observation"]["observation_digest"] == observation[
+        "observation_digest"
+    ]
+    assert "embedding" not in operator_evidence.text
     assert operator.get("/v1/webmcp/recurrence").status_code == 409
 
     handoff = operator.post(

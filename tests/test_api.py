@@ -57,7 +57,7 @@ def test_judge_console_and_live_evaluation_are_served() -> None:
     report = client.get("/v1/evaluation")
 
     assert console.status_code == 200
-    assert "RecallOps remembers consequences" in console.text
+    assert "Investigate with agents" in console.text
     assert "Replayable agent trace" in client.get("/assets/app.js").text
     assert report.status_code == 200
     assert report.json()["passed"] is True

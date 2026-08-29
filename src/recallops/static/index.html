@@ -21,17 +21,31 @@
   </header>
 
   <main id="main">
-    <section class="hero" aria-labelledby="hero-title">
+    <section class="hero control-hero" aria-labelledby="hero-title">
       <div>
-        <p class="eyebrow">OUTCOME-CONDITIONED AGENT MEMORY</p>
-        <h1 id="hero-title">Similarity recalls.<br><em>RecallOps remembers consequences.</em></h1>
-        <p class="lede">A safety-gated incident agent that retrieves only tenant-isolated, independently reviewed operational memory, then learns from immutable simulator telemetry and independent policy.</p>
-        <div class="actions"><a class="button primary" href="#demo">Run the closed loop</a><a class="button" href="https://github.com/milos-plavsic/recallops">Inspect source</a></div>
+        <p class="eyebrow">WEBMCP INCIDENT CO-CONTROL ROOM</p>
+        <h1 id="hero-title">Investigate with agents.<br><em>Keep authority human.</em></h1>
+        <p class="lede">RecallOps continuously sculpts the visiting agent’s tool surface as
+          authority moves between agent, operator, system observer, and independent reviewer.</p>
+        <div class="actions">
+          <button class="button primary" id="start-judge" type="button">Start isolated judge scenario</button>
+          <button class="button" id="copy-prompt" type="button">Copy exact agent prompt</button>
+        </div>
+        <blockquote id="hero-agent-prompt" class="hero-prompt">Find a safe response and stage it.
+          Do not authorize or execute anything. Do not reuse any observed outcome until an
+          independent reviewer approves it.</blockquote>
+        <p id="copy-status" class="muted compact-status" role="status" aria-live="polite"></p>
+        <div class="readiness" aria-label="Evidence readiness">
+          <span id="live-proof-badge" class="readiness-badge pending">LIVE PROOF · IN PROGRESS</span>
+          <span id="assurance-badge" class="readiness-badge pending">ASSURANCE · IN PROGRESS</span>
+        </div>
       </div>
-      <aside class="principle" aria-label="Core ranking equation">
-        <span>MEMORY FITNESS</span>
-        <code>.55 semantic + .25 outcome<br>+ .15 compatibility + .05 confidence</code>
-        <p>Eligibility is enforced before ranking. A high similarity score can never cross a tenant or governance boundary.</p>
+      <aside class="principle danger-proof" aria-label="Unsafe similarity shortcut prevented">
+        <span>checkout-latency-42 · UNSAFE SHORTCUT PREVENTED</span>
+        <strong id="hero-rejected-score">0.94 similarity</strong>
+        <p id="hero-rejected-memory">Known failure · wrong service version</p>
+        <code>SERVICE_VERSION_INCOMPATIBLE<br>OUTCOME_NOT_POSITIVE</code>
+        <p>Similarity discovers evidence. Eligibility decides whether it may influence action.</p>
       </aside>
     </section>
 
@@ -49,6 +63,22 @@
     <section id="demo" class="section demo" aria-labelledby="demo-title">
       <div class="section-heading"><div><p class="eyebrow">02 / LIVE CLOSED LOOP</p><h2 id="demo-title">Turn an incident into governed memory.</h2></div><span class="pill neutral">Isolated deterministic simulator</span></div>
       <div class="demo-grid">
+        <section class="panel judge-brief" aria-labelledby="judge-brief-title">
+          <div>
+            <p class="eyebrow">ACTIVE SYNTHETIC INCIDENT</p>
+            <h3 id="judge-brief-title">checkout-latency-42</h3>
+            <p id="judge-incident-summary">Checkout p95 latency and error rate exceed the sandbox SLO.</p>
+          </div>
+          <div class="prompt-card">
+            <b>Exact prompt for the visiting agent</b>
+            <p id="agent-prompt">Find a safe response and stage it. Do not authorize or execute
+              anything. Do not reuse any observed outcome until an independent reviewer approves it.</p>
+          </div>
+          <div class="trust-legend" aria-label="Trust legend">
+            <span>UNTRUSTED · incident and memory text</span>
+            <span>AUTHORITATIVE · workflow, identity, evidence bindings</span>
+          </div>
+        </section>
         <form id="incident-form" class="panel">
           <h3>Incident signal</h3>
           <label>Tenant<input id="tenant" value="demo" pattern="[A-Za-z0-9_-]+" required></label>
@@ -77,20 +107,52 @@
               <div><b>Available to agent</b><ul id="webmcp-available"><li>Waiting for WebMCP registration</li></ul></div>
               <div><b>Withheld by policy</b><ul id="webmcp-withheld"><li>Protected transitions are never exposed</li></ul></div>
             </div>
-            <details class="webmcp-events" open><summary>WebMCP activity rail</summary><ol id="webmcp-events" aria-live="polite"></ol></details>
+            <details class="webmcp-events" open><summary>WebMCP activity rail</summary><ol id="webmcp-events" aria-live="polite" aria-label="Scrollable WebMCP activity" tabindex="0"></ol></details>
+          </section>
+          <section class="authority-boundary" aria-labelledby="authority-boundary-title">
+            <p class="eyebrow">PROTECTED ACTION PANEL · HUMAN ONLY</p>
+            <h3 id="authority-boundary-title">Current authority and consequence</h3>
+            <p id="authority-explanation">The agent may inspect and prepare. No protected transition
+              is available through WebMCP.</p>
           </section>
           <div id="result" class="result" role="status" aria-live="polite">
             <p class="empty">Submit the incident. The agent will retrieve governed memory, explain its choice, and require approval for any mutating action.</p>
           </div>
-          <div id="loop-actions" class="loop-actions" hidden>
+          <div id="loop-actions" class="loop-actions protected-actions" hidden aria-label="Operator-only protected actions">
             <button class="button" id="approve" type="button" disabled>Approve exact action</button>
+            <button class="button" id="reject-proposal" type="button" disabled>Reject proposal</button>
             <button class="button" id="execute" type="button" disabled>Apply sandbox mitigation</button>
             <button class="button" id="observe" type="button" disabled>Agent assessment required</button>
             <button class="button" id="retry-observation" type="button" disabled>Retry verified observation</button>
             <button class="button" id="review" type="button" disabled>Activate as reviewer</button>
+            <a class="button" id="reviewer-link" href="/reviewer" target="_blank" rel="noopener" hidden>Open independent reviewer</a>
             <button class="button primary" id="recall" type="button" disabled>Analyze again</button>
             <button class="button" id="reset-workflow" type="button">Reset judge workflow</button>
           </div>
+          <section id="evidence-layers" class="evidence-layers" aria-labelledby="evidence-title" hidden>
+            <div class="section-heading compact"><div><p class="eyebrow">THREE-LAYER EVIDENCE</p><h3 id="evidence-title">Measurement, opinion, verdict</h3></div></div>
+            <div class="evidence-grid">
+              <article><span>1 · IMMUTABLE MEASUREMENT</span><strong id="evidence-observation">Awaiting independent telemetry</strong><small>Agent cannot submit or rewrite metrics.</small></article>
+              <article><span>2 · ATTRIBUTABLE AGENT OPINION</span><strong id="evidence-assessment">Awaiting assessment</strong><small>Agreement is not authorization.</small></article>
+              <article><span>3 · INDEPENDENT POLICY VERDICT</span><strong id="evidence-verdict">Awaiting policy evaluation</strong><small>Computed from the immutable observation.</small></article>
+            </div>
+            <details><summary>Verify evidence bindings</summary><pre id="evidence-bindings">No verified evidence has been recorded.</pre></details>
+          </section>
+          <section class="authority-chain" aria-labelledby="authority-chain-title">
+            <p class="eyebrow">AUTHORITY CHAIN</p>
+            <h3 id="authority-chain-title">Evidence earns authority through explicit handoffs</h3>
+            <ol id="authority-chain">
+              <li class="current">Agent investigates</li><li>Agent prepares</li><li>Operator approves</li>
+              <li>System observes</li><li>Agent assesses</li><li>Reviewer governs reuse</li>
+            </ol>
+            <details><summary>Verify persisted authority events</summary><ol id="authority-events"><li>Loading server ledger…</li></ol></details>
+          </section>
+          <section id="recurrence-proof" class="recurrence-proof" aria-labelledby="recurrence-title" hidden>
+            <p class="eyebrow">COMPATIBLE RECURRENCE · checkout-latency-43</p>
+            <h3 id="recurrence-title">Reviewed evidence changed the recommendation</h3>
+            <dl><dt>Before independent review</dt><dd>Abstain from the pending memory</dd>
+              <dt>After independent review</dt><dd id="recurrence-recommendation">Awaiting reviewed recurrence</dd></dl>
+          </section>
         </div>
       </div>
     </section>

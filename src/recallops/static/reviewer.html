@@ -17,12 +17,13 @@
   <main id="review-main" class="section" tabindex="-1">
     <p class="eyebrow">HUMAN-ONLY AUTHORITY</p>
     <h1>Review immutable evidence</h1>
+    <p id="reviewer-identity" class="provider-status">Reviewer identity pending…</p>
     <p>This page does not load the WebMCP registry. Its controls use a single-use, evidence-bound
       reviewer session and cannot change measurements or policy verdicts.</p>
     <section class="panel" aria-labelledby="packet-title">
       <h2 id="packet-title">Evidence packet</h2>
       <div id="review-status" role="status" aria-live="polite">Exchanging the bounded handoff…</div>
-      <div id="review-packet"></div>
+      <div id="review-packet" class="evidence-grid"></div>
       <div id="review-actions" class="loop-actions" hidden>
         <button class="button primary" data-decision="certify" type="button">Certify evidence</button>
         <button class="button" data-decision="quarantine" type="button">Quarantine</button>

@@ -242,9 +242,18 @@ test.describe("judge console", () => {
     await installWebMcpHarness(page);
     await mockApi(page);
     const identities: Array<{ path: string; header: string | null; actor: string }> = [];
-    await page.route("**/v1/incidents/*/approval", (route) =>
-      route.fulfill({ json: { recorded: true } }),
-    );
+    let workflow = {
+      workflow_id: successfulAnalysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
+      active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"], protected_tools: [],
+    };
+    await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: workflow }));
+    await page.route("**/v1/incidents/*/approval", (route) => {
+      workflow = {
+        ...workflow, state: "APPROVED_AWAITING_EXECUTION", epoch: 2,
+        authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"],
+      };
+      return route.fulfill({ json: { recorded: true, workflow } });
+    });
     await page.route("**/v1/incidents/*/sandbox-execution", async (route) => {
       const body = route.request().postDataJSON();
       identities.push({
@@ -252,6 +261,10 @@ test.describe("judge console", () => {
         header: route.request().headers()["x-actor-id"] ?? null,
         actor: body.actor_id,
       });
+      workflow = {
+        ...workflow, state: "POSTCHECK_READY", epoch: 4, authority_owner: "AGENT",
+        available_tools: ["inspect_incident", "record_postcheck_assessment"],
+      };
       await route.fulfill({ status: 201, json: {
         execution: { id: "00000000-0000-0000-0000-000000000030" },
         observation: {
@@ -260,11 +273,7 @@ test.describe("judge console", () => {
           after: { latency_p95_ms: 210, error_rate: 0.004 },
         },
         policy_verdict: { classification: "recovered", policy_version: "checkout-recovery-policy-v1" },
-        workflow: {
-          workflow_id: successfulAnalysis.incident_id, state: "POSTCHECK_READY", epoch: 4,
-          active: true, authority_owner: "AGENT",
-          available_tools: ["inspect_incident", "record_postcheck_assessment"], protected_tools: [],
-        },
+        workflow,
       } });
     });
     await page.route("**/v1/incidents/*/postcheck-assessment", async (route) => {
@@ -273,15 +282,15 @@ test.describe("judge console", () => {
         header: route.request().headers()["x-actor-id"] ?? null,
         actor: "demo-agent",
       });
+      workflow = {
+        ...workflow, state: "PENDING_REVIEW", epoch: 5, authority_owner: "HUMAN_REVIEWER",
+        available_tools: ["inspect_incident"],
+      };
       await route.fulfill({ status: 201, json: {
         assessment: { classification: "recovered" },
         policy_verdict: { classification: "recovered" },
         memory: { id: "00000000-0000-0000-0000-000000000020", state: "pending_review", valid: false },
-        workflow: {
-          workflow_id: successfulAnalysis.incident_id, state: "PENDING_REVIEW", epoch: 5,
-          active: true, authority_owner: "HUMAN_REVIEWER",
-          available_tools: ["inspect_incident"], protected_tools: [],
-        },
+        workflow,
       } });
     });
     await page.route("**/v1/memories/*/governance", async (route) => {
@@ -291,6 +300,10 @@ test.describe("judge console", () => {
         header: route.request().headers()["x-actor-id"] ?? null,
         actor: body.actor_id,
       });
+      workflow = {
+        ...workflow, state: "REVIEWED", epoch: 6, authority_owner: "AGENT",
+        available_tools: ["inspect_incident", "recall_reviewed_memory"],
+      };
       await route.fulfill({ json: { id: "00000000-0000-0000-0000-000000000020", state: "active" } });
     });
     await page.goto("/");
@@ -534,6 +547,10 @@ test("judge bootstrap is removed from the URL and WebMCP receives no CSRF author
   await page.route("**/v1/operator/run", (route) => route.fulfill({ json: {
     run_id: "00000000-0000-0000-0000-000000000099", generation: 1,
     incident_id: successfulAnalysis.incident_id, status: "active", simulation: true,
+  } }));
+  await page.route("**/v1/operator/evidence", (route) => route.fulfill({ json: {
+    immutable_observation: null, agent_assessment: null, policy_verdict: null,
+    assessment_policy_agree: false, proposal_digest: null, memory: null,
   } }));
   await page.route("**/v1/webmcp/incident", (route) => route.fulfill({ json: {
     incident: { service: "checkout", service_version: "v1", symptom: "latency spike" },

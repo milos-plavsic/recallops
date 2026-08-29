@@ -1,6 +1,7 @@
 import hashlib
 import hmac
 import json
+import math
 import os
 import secrets
 import threading
@@ -414,6 +415,30 @@ def create_app(
             symptom="checkout-latency-42: p95 latency and error rate exceed the sandbox SLO",
             idempotency_key=f"scenario-{run_id.hex}",
         )
+        incident_embedding = embedder.embed(f"checkout {incident.symptom}")
+        incident_norm = math.sqrt(sum(value * value for value in incident_embedding))
+        if incident_norm == 0:
+            raise RuntimeError("judge incident embedding has zero magnitude")
+        incident_unit = [value / incident_norm for value in incident_embedding]
+
+        def fixture_embedding(similarity: float, label: str) -> list[float]:
+            seed = embedder.embed(f"{label}:{run_id}")
+            projection = sum(
+                left * right for left, right in zip(incident_unit, seed, strict=True)
+            )
+            orthogonal = [
+                value - projection * base
+                for value, base in zip(seed, incident_unit, strict=True)
+            ]
+            norm = math.sqrt(sum(value * value for value in orthogonal))
+            if norm == 0:  # pragma: no cover - independent deterministic labels are non-collinear
+                raise RuntimeError("judge similarity fixture is degenerate")
+            residual = math.sqrt(1 - similarity * similarity)
+            return [
+                similarity * base + residual * value / norm
+                for base, value in zip(incident_unit, orthogonal, strict=True)
+            ]
+
         fixture_memories = (
             Memory(
                 id=uuid5(NAMESPACE_URL, f"recallops:{run_id}:known-failure"),
@@ -431,7 +456,7 @@ def create_app(
                 reviewed_at=now - timedelta(days=14),
                 expires_at=now + timedelta(days=settings.memory_ttl_days),
                 embedding_space=embedder.space_id,
-                embedding=embedder.embed(f"checkout {incident.symptom}"),
+                embedding=fixture_embedding(0.94, "known-failure"),
                 created_at=now - timedelta(days=14),
             ),
             Memory(
@@ -450,7 +475,7 @@ def create_app(
                 reviewed_at=now - timedelta(days=21),
                 expires_at=now + timedelta(days=settings.memory_ttl_days),
                 embedding_space=embedder.space_id,
-                embedding=embedder.embed(f"checkout {incident.symptom}"),
+                embedding=fixture_embedding(0.81, "compatible-success"),
                 created_at=now - timedelta(days=21),
             ),
         )
@@ -760,6 +785,37 @@ def create_app(
     def get_operator_run(identity: AuthenticatedPrincipal) -> dict[str, object]:
         require_role(identity, "operator")
         return run_payload(current_run(identity))
+
+    @app.get("/v1/operator/evidence")
+    def get_operator_evidence(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        require_role(identity, "operator")
+        run = current_run(identity)
+        postcheck = service.get_postcheck(run.source_incident_id, run.tenant_id)
+        assessment = service.get_postcheck_assessment(run.source_incident_id, run.tenant_id)
+        workflow = workflows.get(run.source_incident_id, run.tenant_id)
+        observation, verdict = postcheck if postcheck is not None else (None, None)
+        memory = run_memory(run)
+        return {
+            "immutable_observation": observation,
+            "agent_assessment": assessment,
+            "policy_verdict": verdict,
+            "assessment_policy_agree": (
+                assessment is not None
+                and verdict is not None
+                and assessment.classification == verdict.classification
+            ),
+            "proposal_digest": workflow.proposal_hash if workflow is not None else None,
+            "memory": (
+                {
+                    "id": str(memory.id),
+                    "digest": memory.memory_digest,
+                    "state": memory.state,
+                    "retrievable": memory.state is MemoryState.ACTIVE and memory.valid,
+                }
+                if memory is not None
+                else None
+            ),
+        }
 
     @app.get("/v1/evidence/timeline")
     def evidence_timeline(identity: AuthenticatedPrincipal) -> dict[str, object]:
@@ -1236,6 +1292,7 @@ def create_app(
                     "state": retrieved.memory.state,
                 }
             )
+        candidates.sort(key=lambda item: cast(float, item["similarity"]), reverse=True)
         record_server_activity(
             run,
             activity_type="tool_invoked",
