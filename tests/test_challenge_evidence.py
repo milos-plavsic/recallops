@@ -84,9 +84,13 @@ def test_generator_is_byte_identical_and_publishes_fair_bounded_evidence(
     assert results["passed"] is True
 
     webmcp = json.loads((first / "evaluation" / "webmcp_cases.json").read_text())
+    release_case = json.loads(
+        (first / "artifacts" / "release" / "evaluation-case.jcs.json").read_text()
+    )
     claims = json.loads((first / "evidence" / "claims.json").read_text())
     trace = json.loads((first / "evidence" / "requirements-trace.json").read_text())
     assert len(webmcp["cases"]) == 9
+    assert release_case["evaluation_version"] == "governed-benchmark-v1"
     assert len(claims["claims"]) == 12
     assert len(trace["requirements"]) == 180
     assert all(item["claim_ids"] for item in trace["requirements"])

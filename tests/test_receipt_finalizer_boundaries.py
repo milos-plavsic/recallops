@@ -461,6 +461,9 @@ def test_production_worker_composes_only_external_adapters(
         def preflight(self) -> str:
             return "K" * 43
 
+        def signing_preflight(self) -> str:
+            return "protected.payload.signature"
+
     monkeypatch.setattr(finalizer, "KmsReceiptSigner", KmsSigner)
     monkeypatch.setattr("recallops.authority_archive.S3AuthorityBundleArchive", Archive)
     produced = finalizer.production_worker("worker")

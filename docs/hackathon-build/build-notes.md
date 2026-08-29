@@ -545,6 +545,34 @@
   release-pinned AWS KMS key and versioned private S3 bucket, then download and independently verify
   that exact live object version. Local emulation is not represented as live AWS proof.
 
+### Item 8 — live independent-proof gate (complete)
+
+- Fixed a release-path defect discovered by the live gate: generated `evaluation-case.jcs.json`
+  did not carry its evaluation version, so the strict production document loader would reject it.
+  The generator now binds that version explicitly and a regression assertion prevents recurrence.
+- Added a reproducible live-proof runner that performs the complete operator/agent/reviewer journey
+  against a fresh Cockroach database, starts the no-fallback production receipt worker, requires an
+  actual startup signing probe, downloads through an unauthenticated route, extracts with the strict
+  ZIP reader, and invokes the network-free Node verifier. It emits no database URL, secret value,
+  raw subject, or tenant identifier.
+- Built committed source `0ce35d4bbf7fe6519037c981bea6442010125fb2` and pushed it to the
+  immutable ECR repository as digest
+  `sha256:02842785eb4d0339a3f6e81c656c6802c394f32203d4cc85e37fe00bcd353cb6`.
+  This is an intermediate external-boundary proof image, not the final frozen submission release.
+- Live receipt `65df9b6d-390f-548e-ac0a-5a37fb130c99` binds seven accepted authority events and bundle
+  digest `76314ee2d1cdad8cf7aaaad99db1d5254b92478744b7dff3383ef6270d0c762d`.
+  S3 version `OTVF8uUF_8RjdEoFzHDkv7K7.OJltR66` is customer-KMS encrypted, bucket-key enabled,
+  and compliance-locked until 2026-09-12. The credential-free application route returned the same
+  recorded digest, and the independent verifier returned `VERIFIED` with event count seven.
+- `artifacts/aws/live-item8/` preserves the downloaded ZIP, strict extracted file set, canonical
+  bounded proof record, and reproduction notes. This proves the external KMS/S3 boundary; it does
+  not turn either final release gate green or claim external truth, physical-person presence,
+  trusted time, or signer completeness.
+- The final independent-proof gate passed 475/475 combined tests against fresh CockroachDB with
+  5,360/5,360 statements and 1,192/1,192 branches (100.00%), 15/15 exact verifier vectors, the
+  downloaded live bundle verification, 10/10 browser tests, 4/4 native Chromium tests, tracked and
+  item-owned Ruff, strict mypy, all CloudFormation lint, and a clean diff check.
+
 ### Item 9 — generated evidence and dual-gate core (external statement gate open)
 
 - Added a deterministic 12-case governed-retrieval benchmark and nine bounded WebMCP agent cases.

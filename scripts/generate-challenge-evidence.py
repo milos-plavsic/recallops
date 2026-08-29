@@ -557,7 +557,11 @@ def generate(arguments: argparse.Namespace) -> dict[str, object]:
         enrich_trace(arguments.source_sha, registry),
     )
     release_root = output_root / "artifacts" / "release"
-    write_json(release_root / "evaluation-case.jcs.json", cases[0], canonical=True)
+    write_json(
+        release_root / "evaluation-case.jcs.json",
+        {**cases[0], "evaluation_version": arguments.evaluation_version},
+        canonical=True,
+    )
     write_json(
         release_root / "evaluation-result.jcs.json",
         {

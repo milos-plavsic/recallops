@@ -688,6 +688,7 @@ def production_worker(worker_id: str) -> ReceiptFinalizationWorker:
         registry,
     )
     signer.preflight()
+    signer.signing_preflight()
     s3 = boto3.client("s3", region_name=settings.aws_region)
     archive = S3AuthorityBundleArchive(
         cast(S3BundleClient, s3),

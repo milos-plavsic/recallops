@@ -159,7 +159,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   KMS contract and live preflight tests, wrong-algorithm/key/build vectors, returned-signature
   verification, transaction/outbox fault tests, and exact manifest-size assertions.
 
-- [ ] **8. Export and independently verify the complete authority bundle**
+- [x] **8. Export and independently verify the complete authority bundle**
   Spec ref: `spec.md > Authority Receipt And Proof Bundle > Bundle layout`; `spec.md > Authority Receipt And Proof Bundle > Offline verifier`
   What to build: Implement idempotent outbox finalization, acyclic evidence-index/checksum/bundle
   digests, private versioned S3 persistence, credential-free finalized synthetic download, human-
