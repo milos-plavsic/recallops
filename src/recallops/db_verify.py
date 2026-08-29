@@ -19,8 +19,15 @@ import psycopg
 from psycopg import sql
 
 EXPECTED_GRANTS = {
+    ("recallops_api", "activity_observations", "INSERT"),
+    ("recallops_api", "activity_observations", "SELECT"),
     ("recallops_api", "approvals", "INSERT"),
     ("recallops_api", "approvals", "SELECT"),
+    ("recallops_api", "authority_events", "INSERT"),
+    ("recallops_api", "authority_events", "SELECT"),
+    ("recallops_api", "authority_ledger_heads", "INSERT"),
+    ("recallops_api", "authority_ledger_heads", "SELECT"),
+    ("recallops_api", "authority_ledger_heads", "UPDATE"),
     ("recallops_api", "evidence_outbox", "INSERT"),
     ("recallops_api", "execution_attestations", "INSERT"),
     ("recallops_api", "execution_attestations", "SELECT"),
@@ -66,7 +73,7 @@ def _vector() -> str:
 
 def _seed_boundary_rows(
     cursor: psycopg.Cursor[Any],
-) -> tuple[UUID, UUID, UUID, UUID, UUID, UUID]:
+) -> tuple[UUID, UUID, UUID, UUID, UUID, UUID, UUID, UUID, UUID]:
     incident_a, incident_b = uuid4(), uuid4()
     memory_a, memory_b = uuid4(), uuid4()
     for incident_id, tenant in ((incident_a, "boundary_a"), (incident_b, "boundary_b")):
@@ -106,7 +113,47 @@ def _seed_boundary_rows(
                    '{}'::JSONB,'{}'::JSONB,%s)""",
         (observation_id, execution_id, incident_a, "0" * 64, "1" * 64, "2" * 64),
     )
-    return incident_a, incident_b, memory_a, memory_b, execution_id, observation_id
+    run_a, run_b = uuid4(), uuid4()
+    for incident_id, run_id, tenant in (
+        (incident_a, run_a, "boundary_a"),
+        (incident_b, run_b, "boundary_b"),
+    ):
+        cursor.execute(
+            """INSERT INTO webmcp_workflows (workflow_id,tenant_id,state,epoch)
+            VALUES (%s,%s,'INVESTIGATING',1)""",
+            (incident_id, tenant),
+        )
+        cursor.execute(
+            """INSERT INTO judge_runs
+            (run_id,tenant_id,generation,scenario_version,source_incident_id,status,
+             operator_subject,build_sha,capability_policy_version,expires_at)
+            VALUES (%s,%s,1,'boundary-v1',%s,'active','operator','build','policy',
+                    now() + interval '5 minutes')""",
+            (run_id, tenant, incident_id),
+        )
+    authority_event_a = uuid4()
+    cursor.execute(
+        """INSERT INTO authority_events
+        (event_id,run_id,tenant_id,sequence,recorded_at,event_type,outcome,actor_subject,
+         actor_role,channel,workflow_id,epoch_before,epoch_after,state_before,state_after,
+         capabilities_before,capabilities_after,reason_code,display_summary,policy_version,
+         build_sha,previous_event_hash,event_hash)
+        VALUES (%s,%s,'boundary_a',1,now(),'probe','accepted','probe','system','system',
+        %s,1,2,'INVESTIGATING','INVESTIGATING','[]','[]','PROBE','boundary probe',
+        'probe','probe',%s,%s)""",
+        (authority_event_a, run_a, incident_a, "0" * 64, "9" * 64),
+    )
+    return (
+        incident_a,
+        incident_b,
+        memory_a,
+        memory_b,
+        execution_id,
+        observation_id,
+        run_a,
+        run_b,
+        authority_event_a,
+    )
 
 
 def _expect_fk_rejection(
@@ -141,6 +188,9 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     memory_b,
                     execution_a,
                     observation_a,
+                    run_a,
+                    run_b,
+                    authority_event_a,
                 ) = _seed_boundary_rows(cursor)
             checks = [
                 _expect_fk_rejection(
@@ -244,6 +294,46 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     (uuid4(), observation_a, incident_b, "2" * 64),
                     "assessment_observation_tenant_fk",
                 ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO authority_ledger_heads
+                    (run_id,tenant_id,ledger_version) VALUES (%s,'boundary_b','probe')""",
+                    (run_a,),
+                    "authority_ledger_head_run_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO authority_events
+                    (event_id,run_id,tenant_id,sequence,recorded_at,event_type,outcome,
+                     actor_subject,actor_role,channel,workflow_id,epoch_before,epoch_after,
+                     state_before,state_after,capabilities_before,capabilities_after,reason_code,
+                     display_summary,policy_version,build_sha,previous_event_hash,event_hash)
+                    VALUES (%s,%s,'boundary_b',1,now(),'probe','accepted','probe','system',
+                    'system',%s,1,2,'INVESTIGATING','INVESTIGATING','[]','[]','PROBE',
+                    'boundary probe','probe','probe',%s,%s)""",
+                    (uuid4(), run_a, incident_b, "0" * 64, "a" * 64),
+                    "authority_events_run_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO activity_observations
+                    (activity_id,run_id,tenant_id,workflow_id,source,actor_subject,
+                     activity_type,outcome,display_summary,build_sha)
+                    VALUES (%s,%s,'boundary_b',%s,'server','probe','probe','observed',
+                    'boundary probe','probe')""",
+                    (uuid4(), run_a, incident_b),
+                    "activity_observations_run_tenant_fk",
+                ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO activity_observations
+                    (activity_id,run_id,tenant_id,workflow_id,source,actor_subject,
+                     activity_type,outcome,display_summary,authority_event_id,build_sha)
+                    VALUES (%s,%s,'boundary_b',%s,'server','probe','probe','observed',
+                    'boundary probe',%s,'probe')""",
+                    (uuid4(), run_b, incident_b, authority_event_a),
+                    "activity_observations_authority_event_fk",
+                ),
             ]
         finally:
             # Verification is non-destructive even when pointed at a persistent
@@ -316,6 +406,11 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "DELETE FROM judge_sessions WHERE false"),
         ("recallops_api", "DELETE FROM judge_runs WHERE false"),
         ("recallops_api", "DELETE FROM review_handoffs WHERE false"),
+        ("recallops_api", "UPDATE authority_events SET reason_code=reason_code WHERE false"),
+        ("recallops_api", "DELETE FROM authority_events WHERE false"),
+        ("recallops_api", "DELETE FROM authority_ledger_heads WHERE false"),
+        ("recallops_api", "UPDATE activity_observations SET outcome=outcome WHERE false"),
+        ("recallops_api", "DELETE FROM activity_observations WHERE false"),
         ("recallops_api", "UPDATE sandbox_executions SET actor_id=actor_id WHERE false"),
         ("recallops_api", "DELETE FROM sandbox_executions WHERE false"),
         ("recallops_api", "UPDATE postcheck_observations SET source=source WHERE false"),

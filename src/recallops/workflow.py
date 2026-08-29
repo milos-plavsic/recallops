@@ -5,7 +5,7 @@ from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from enum import StrEnum
-from typing import Any, Protocol, cast
+from typing import TYPE_CHECKING, Any, Protocol, cast
 from uuid import UUID
 
 from psycopg.rows import dict_row
@@ -13,6 +13,9 @@ from psycopg_pool import ConnectionPool
 from pydantic import BaseModel, Field
 
 from recallops.db_retry import run_serializable
+
+if TYPE_CHECKING:
+    from recallops.ledger import AuthorityLedgerRepository
 
 
 class WorkflowState(StrEnum):
@@ -344,8 +347,19 @@ class PostgresWorkflowRepository:
 
 
 class WorkflowCoordinator:
-    def __init__(self, repository: WorkflowRepository) -> None:
+    def __init__(
+        self,
+        repository: WorkflowRepository,
+        ledger: AuthorityLedgerRepository | None = None,
+        fault_hook: Callable[[str], None] | None = None,
+    ) -> None:
         self._repository = repository
+        self._ledger = ledger
+        self._fault_hook = fault_hook
+
+    def _fault(self, stage: str) -> None:
+        if self._fault_hook is not None:
+            self._fault_hook(stage)
 
     def ensure_for_analysis(
         self,
@@ -395,7 +409,11 @@ class WorkflowCoordinator:
             actor_subject=actor_subject,
             role=role,
         )
-        return self._repository.transition(
+        before = self.get(workflow_id, tenant_id)
+        if before is None:  # pragma: no cover - validate_transition already enforces this
+            raise WorkflowConflict("workflow not found")
+        self._fault("before_workflow")
+        after = self._repository.transition(
             workflow_id,
             tenant_id,
             expected_epoch,
@@ -404,6 +422,16 @@ class WorkflowCoordinator:
             operator_subject=actor_subject if role == "operator" else None,
             reviewer_subject=actor_subject if role == "reviewer" else None,
         )
+        self._fault("after_workflow")
+        if self._ledger is not None:
+            self._ledger.append_transition(
+                before,
+                after,
+                actor_subject=actor_subject,
+                actor_role=role,
+                channel=channel,
+            )
+        return after
 
     def validate_transition(
         self,
@@ -453,7 +481,23 @@ class WorkflowCoordinator:
         *,
         channel: RequestChannel,
         role: str,
+        actor_subject: str = "operator",
     ) -> WorkflowSnapshot:
         if channel is not RequestChannel.UI or role != "operator":
             raise WorkflowConflict("reset requires the operator UI channel")
-        return self._repository.invalidate(workflow_id, tenant_id, expected_epoch)
+        before = self.get(workflow_id, tenant_id)
+        if before is None:
+            raise WorkflowConflict("workflow not found")
+        self._fault("before_workflow")
+        after = self._repository.invalidate(workflow_id, tenant_id, expected_epoch)
+        self._fault("after_workflow")
+        if self._ledger is not None:
+            self._ledger.append_transition(
+                before,
+                after,
+                actor_subject=actor_subject,
+                actor_role=role,
+                channel=channel,
+                reason_code="WORKFLOW_RESET_ACCEPTED",
+            )
+        return after

@@ -2,6 +2,7 @@ import hashlib
 import os
 from concurrent.futures import ThreadPoolExecutor
 from datetime import UTC, datetime, timedelta
+from typing import Any
 from urllib.parse import urlsplit
 from uuid import UUID, uuid4
 
@@ -25,6 +26,12 @@ from recallops.domain import (
     ReviewReasonCode,
 )
 from recallops.embedding import DeterministicEmbedder
+from recallops.ledger import (
+    ZERO_EVENT_HASH,
+    ActivityObservation,
+    PostgresAuthorityLedgerRepository,
+    verify_event,
+)
 from recallops.sandbox import SANDBOX_ACTION_COMMAND
 from recallops.service import DeterministicReasoner, IncidentService
 from recallops.sessions import PostgresJudgeSessionRepository
@@ -34,8 +41,207 @@ from recallops.workflow import (
     RequestChannel,
     WorkflowConflict,
     WorkflowCoordinator,
+    WorkflowSnapshot,
     WorkflowState,
 )
+
+
+def _seed_authority_fixture(database_url: str, suffix: str) -> tuple[str, UUID, UUID]:
+    tenant_id = f"ledger_{suffix}_{uuid4().hex[:12]}"
+    incident_id, run_id = uuid4(), uuid4()
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            """INSERT INTO incidents
+            (id,tenant_id,service,service_version,symptom,idempotency_key,status,analysis)
+            VALUES (%s,%s,'checkout','v2.4.1','latency',%s,'open','{}')""",
+            (incident_id, tenant_id, f"ledger-{incident_id}"),
+        )
+        connection.execute(
+            """INSERT INTO webmcp_workflows (workflow_id,tenant_id,state,epoch)
+            VALUES (%s,%s,'INVESTIGATING',1)""",
+            (incident_id, tenant_id),
+        )
+        connection.execute(
+            """INSERT INTO judge_runs
+            (run_id,tenant_id,generation,scenario_version,source_incident_id,status,
+             operator_subject,build_sha,capability_policy_version,expires_at)
+            VALUES (%s,%s,1,'ledger-v1',%s,'active','operator-ledger','build-ledger',
+                    'policy-ledger',now() + interval '10 minutes')""",
+            (run_id, tenant_id, incident_id),
+        )
+    return tenant_id, incident_id, run_id
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+@pytest.mark.parametrize(
+    "fault_stage",
+    [
+        "before_domain",
+        "after_domain",
+        "before_workflow",
+        "after_workflow",
+        "before_event",
+        "after_event",
+        "before_head",
+        "after_head",
+    ],
+)
+def test_authority_transaction_faults_roll_back_every_boundary(fault_stage: str) -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    tenant_id, incident_id, run_id = _seed_authority_fixture(database_url, fault_stage)
+    store = PostgresStore(database_url)
+
+    def fault(stage: str) -> None:
+        if stage == fault_stage:
+            raise RuntimeError(f"injected at {stage}")
+
+    def mutate(bound_store: PostgresStore, connection: Any) -> None:
+        del bound_store
+        fault("before_domain")
+        with connection.cursor() as cursor:
+            cursor.execute(
+                "UPDATE incidents SET status='mitigated' WHERE id=%s AND tenant_id=%s",
+                (incident_id, tenant_id),
+            )
+        fault("after_domain")
+        ledger = PostgresAuthorityLedgerRepository.from_connection(connection, fault)
+        WorkflowCoordinator(
+            PostgresWorkflowRepository.from_connection(connection), ledger, fault
+        ).transition(
+            incident_id,
+            tenant_id,
+            1,
+            WorkflowState.INVESTIGATING,
+            WorkflowState.AWAITING_OPERATOR_APPROVAL,
+            channel=RequestChannel.UI,
+            actor_subject="operator-ledger",
+            role="operator",
+        )
+
+    try:
+        with pytest.raises(RuntimeError, match=fault_stage):
+            store.atomic(mutate)
+        with psycopg.connect(database_url) as connection:
+            incident = connection.execute(
+                "SELECT status FROM incidents WHERE id=%s AND tenant_id=%s",
+                (incident_id, tenant_id),
+            ).fetchone()
+            workflow = connection.execute(
+                "SELECT state,epoch FROM webmcp_workflows WHERE workflow_id=%s AND tenant_id=%s",
+                (incident_id, tenant_id),
+            ).fetchone()
+            event_count = connection.execute(
+                "SELECT count(*) FROM authority_events WHERE run_id=%s", (run_id,)
+            ).fetchone()
+            head_count = connection.execute(
+                "SELECT count(*) FROM authority_ledger_heads WHERE run_id=%s", (run_id,)
+            ).fetchone()
+        assert incident == ("open",)
+        assert workflow == ("INVESTIGATING", 1)
+        assert event_count == (0,) and head_count == (0,)
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_concurrent_ledger_appends_retry_and_form_one_verifiable_chain() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    tenant_id, incident_id, run_id = _seed_authority_fixture(database_url, "concurrent")
+    before = WorkflowSnapshot(
+        workflow_id=incident_id,
+        tenant_id=tenant_id,
+        state=WorkflowState.INVESTIGATING,
+        epoch=1,
+    )
+    after = before.model_copy(
+        update={"state": WorkflowState.AWAITING_OPERATOR_APPROVAL, "epoch": 2}
+    )
+    store = PostgresStore(database_url)
+
+    def append(index: int) -> str:
+        def operation(bound_store: PostgresStore, connection: object) -> str:
+            del bound_store
+            event = PostgresAuthorityLedgerRepository.from_connection(
+                connection
+            ).append_transition(
+                before,
+                after,
+                actor_subject=f"operator-{index}",
+                actor_role="operator",
+                channel=RequestChannel.UI,
+            )
+            assert event is not None
+            return event.event_hash
+
+        return store.atomic(operation)
+
+    try:
+        with ThreadPoolExecutor(max_workers=4) as executor:
+            hashes = list(executor.map(append, range(4)))
+        events = PostgresAuthorityLedgerRepository(store.pool).list_events(run_id, tenant_id)
+        assert len(set(hashes)) == 4
+        assert [event.sequence for event in events] == [1, 2, 3, 4]
+        previous = ZERO_EVENT_HASH
+        for event in events:
+            assert verify_event(event, previous)
+            previous = event.event_hash
+        with psycopg.connect(database_url) as connection:
+            head = connection.execute(
+                """SELECT last_sequence,last_event_hash FROM authority_ledger_heads
+                WHERE run_id=%s AND tenant_id=%s""",
+                (run_id, tenant_id),
+            ).fetchone()
+        assert head == (4, events[-1].event_hash)
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_activity_observation_cannot_mutate_or_extend_authority() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    tenant_id, incident_id, run_id = _seed_authority_fixture(database_url, "activity")
+    store = PostgresStore(database_url)
+    repository = PostgresAuthorityLedgerRepository(store.pool)
+    try:
+        repository.add_activity(
+            ActivityObservation(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                workflow_id=incident_id,
+                source="browser",
+                actor_subject="browser-pseudonym",
+                activity_type="tool_withdrawn",
+                tool_name="stage_remediation",
+                outcome="observed",
+                display_summary="Browser reports tool withdrawal",
+                build_sha="build-ledger",
+            )
+        )
+        assert repository.list_events(run_id, tenant_id) == []
+        timeline = repository.timeline(run_id, tenant_id)
+        assert len(timeline) == 1
+        assert timeline[0].evidence_class == "supporting_observation"
+        with psycopg.connect(database_url) as connection:
+            workflow = connection.execute(
+                "SELECT state,epoch FROM webmcp_workflows WHERE workflow_id=%s AND tenant_id=%s",
+                (incident_id, tenant_id),
+            ).fetchone()
+            heads = connection.execute(
+                "SELECT count(*) FROM authority_ledger_heads WHERE run_id=%s", (run_id,)
+            ).fetchone()
+        assert workflow == ("INVESTIGATING", 1)
+        assert heads == (0,)
+    finally:
+        store.close()
 
 
 @pytest.mark.skipif(
@@ -163,9 +369,9 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 38
-    assert len(report["cross_tenant_constraints"]) == 11
-    assert len(report["runtime_denials"]) == 19
+    assert report["exact_runtime_grants"] == 45
+    assert len(report["cross_tenant_constraints"]) == 15
+    assert len(report["runtime_denials"]) == 24
 
 
 @pytest.mark.skipif(
@@ -179,7 +385,8 @@ def test_judge_run_session_and_handoff_composite_relationships_fail_closed() -> 
     vector = "[" + ",".join(["0"] * 1024) + "]"
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
             "approvals, evidence_outbox, memories, incidents"
@@ -257,7 +464,8 @@ def test_postgres_store_complete_governed_memory_lifecycle() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
             "memory_events, execution_attestations, "
@@ -446,7 +654,8 @@ def test_postgres_sandbox_evidence_and_assessment_are_distinct_and_bound() -> No
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "
             "execution_attestations, approvals, evidence_outbox, memories, incidents"
@@ -590,7 +799,8 @@ def test_cockroach_concurrency_converges_on_one_incident_execution_and_memory() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
             "memory_events, execution_attestations, "
@@ -675,7 +885,8 @@ def test_cockroach_workflow_epoch_has_one_authoritative_winner() -> None:
     workflow_id = uuid4()
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
             "memory_events, execution_attestations, "
@@ -734,7 +945,8 @@ def test_protected_domain_write_rolls_back_when_epoch_transition_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, "
             "postcheck_policy_verdicts, postcheck_observations, sandbox_executions, "
             "webmcp_workflows, memory_events, execution_attestations, approvals, "
@@ -816,7 +1028,8 @@ def test_judge_run_persists_only_hashed_credentials_and_bound_authority() -> Non
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
             "approvals, evidence_outbox, memories, incidents"
@@ -884,11 +1097,74 @@ def test_judge_run_persists_only_hashed_credentials_and_bound_authority() -> Non
     not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
     reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
 )
+def test_postgres_reset_route_commits_domain_workflow_event_and_head_together() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
+            "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
+            "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
+            "approvals, evidence_outbox, memories, incidents"
+        )
+    store = PostgresStore(database_url)
+    app = create_app(
+        Settings(
+            store="postgres",
+            database_url=database_url,
+            auth_mode="judge",
+            public_origin="http://testserver",
+            judge_rate_limit_key=SecretStr("integration-rate-limit-key"),
+            judge_cookie_secure=False,
+        ),
+        store,
+    )
+    client = TestClient(app)
+    launch = client.post(
+        "/v1/judge/runs",
+        headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+        json={},
+    )
+    assert launch.status_code == 201
+    old = launch.json()["run"]
+    reset = client.post(
+        "/v1/operator/run/reset",
+        headers={
+            "Origin": "http://testserver",
+            "X-CSRF-Token": launch.json()["csrf_token"],
+        },
+    )
+    assert reset.status_code == 201
+    with psycopg.connect(database_url) as connection:
+        committed = connection.execute(
+            """SELECT r.status,w.active,w.epoch,h.last_sequence,h.last_event_hash,
+            e.sequence,e.event_hash,e.reason_code
+            FROM judge_runs r
+            JOIN webmcp_workflows w ON w.workflow_id=r.source_incident_id
+                                    AND w.tenant_id=r.tenant_id
+            JOIN authority_ledger_heads h ON h.run_id=r.run_id AND h.tenant_id=r.tenant_id
+            JOIN authority_events e ON e.run_id=r.run_id AND e.sequence=h.last_sequence
+            WHERE r.run_id=%s""",
+            (old["run_id"],),
+        ).fetchone()
+    assert committed is not None
+    assert committed[:4] == ("reset", False, 2, 2)
+    assert committed[4] == committed[6]
+    assert committed[5] == 2 and committed[7] == "WORKFLOW_RESET_ACCEPTED"
+    app.state.workflows._repository.close()
+    store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
 def test_postgres_judge_run_handoff_expiry_and_reset_are_atomic() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
             "approvals, evidence_outbox, memories, incidents"
@@ -998,7 +1274,8 @@ def test_review_activation_rolls_back_when_workflow_commit_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE review_handoffs, judge_sessions, judge_runs, "
+            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "
             "execution_attestations, approvals, evidence_outbox, memories, incidents"

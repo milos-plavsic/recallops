@@ -338,3 +338,34 @@
 - Used a fresh local `recallops_ci` database and the repository's CI-equivalent appended coverage
   sequence. The initial unit-only 196-test run correctly failed the 100% gate at 94.87% because its
   8 integration tests were skipped; it was not recorded as acceptance evidence.
+
+### Item 4 — atomic authority ledger and honest activity timeline
+
+- Added migration 029 with per-run ledger heads, append-only accepted authority events, and a
+  structurally separate activity-observation table. Composite run/tenant/workflow/event foreign
+  keys prevent cross-boundary attribution, exact runtime grants deny event mutation/deletion, and
+  browser observations have no database path that can advance workflow or ledger authority.
+- Implemented RFC 8785 canonical authority payloads and the frozen domain-separated predecessor
+  hash construction. Sequence and epoch values are canonical decimal strings; timestamps, UUIDs,
+  digests, build identity, capability policy, before/after state, before/after tool sets, actor,
+  role, and channel are bound into every event. A system-authored genesis event now binds the
+  initial isolated run and capability surface inside run allocation.
+- Coupled workflow CAS/epoch mutation, authority-event append, and conditional ledger-head update
+  to the same serializable transaction used by each protected domain write. A PostgreSQL ledger
+  refuses receipt-capable appends without an enclosing transaction. Reset likewise commits run
+  invalidation, session/handoff revocation, workflow invalidation, reset event, and head advance as
+  one unit.
+- Added an honest deterministic timeline projection ordered by database `recorded_at` then UUID.
+  Entries expose `authority_commit` versus `supporting_observation` explicitly; only the former
+  carries a sequence and event hash, and the API states that observations confer no authority.
+- Verification passed on a fresh CockroachDB database through migrations 001–029: 224 unit/API/
+  property tests and 22 real integration tests. The integration suite injects faults before and
+  after domain, workflow, event, and head writes; every case leaves the domain, epoch, event table,
+  and head unchanged. Four concurrent appends serialize into one independently recomputable chain.
+  Exact-grant verification reports 45 grants, 15 cross-boundary constraint rejections, and 24
+  prohibited runtime operations. Ruff and strict mypy pass; all 8 browser tests and all 3 native
+  Chromium WebMCP regressions pass.
+- The combined branch-aware repository report is currently 99%, with remaining branches tracked
+  for the full adversarial matrix in item 10. No 100% coverage claim is made at this checkpoint;
+  the Authority gate is based on the explicit atomicity, ordering, role/channel, isolation, and
+  independent-recomputation assertions above.

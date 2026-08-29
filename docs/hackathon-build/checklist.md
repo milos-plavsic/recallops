@@ -93,7 +93,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   historical inspectability, exact abstention, and identical candidate inputs for baseline and
   governed ranking.
 
-- [ ] **4. Make the authority ledger atomic and the activity timeline honest**
+- [x] **4. Make the authority ledger atomic and the activity timeline honest**
   Spec ref: `spec.md > Data Model And Database Boundaries > Migration 029 — authority event ledger`; `spec.md > Authority Receipt And Proof Bundle > Finalization boundary`
   What to build: Add ledger heads, canonical authority events, supporting activity observations,
   domain-separated RFC 8785 event hashes, deterministic timeline projection, and transaction

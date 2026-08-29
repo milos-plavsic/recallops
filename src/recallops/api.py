@@ -54,6 +54,10 @@ from recallops.domain import (
 from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
 from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
+from recallops.ledger import (
+    InMemoryAuthorityLedgerRepository,
+    PostgresAuthorityLedgerRepository,
+)
 from recallops.resilience import DependencyUnavailable
 from recallops.sandbox import (
     SANDBOX_ACTION_COMMAND,
@@ -209,7 +213,12 @@ def create_app(
         if isinstance(store, PostgresStore)
         else InMemoryWorkflowRepository()
     )
-    workflows = WorkflowCoordinator(workflow_repository)
+    ledger_repository = (
+        PostgresAuthorityLedgerRepository(store.pool)
+        if isinstance(store, PostgresStore)
+        else InMemoryAuthorityLedgerRepository()
+    )
+    workflows = WorkflowCoordinator(workflow_repository, ledger_repository)
     checkout_sandbox = checkout_sandbox or CheckoutSandbox()
     observation_provider = observation_provider or DeterministicObservationProvider()
     authority_lock = threading.RLock()
@@ -221,6 +230,7 @@ def create_app(
     app.state.checkout_sandbox = checkout_sandbox
     app.state.observation_provider = observation_provider
     app.state.judge_repository = judge_repository
+    app.state.ledger_repository = ledger_repository
 
     def authority_transaction(
         operation: Callable[[IncidentService, WorkflowCoordinator], object],
@@ -229,7 +239,13 @@ def create_app(
             return store.atomic(
                 lambda bound_store, connection: operation(
                     service.using_store(bound_store),
-                    WorkflowCoordinator(PostgresWorkflowRepository.from_connection(connection)),
+                    WorkflowCoordinator(
+                        PostgresWorkflowRepository.from_connection(connection),
+                        PostgresAuthorityLedgerRepository.from_connection(
+                            connection, getattr(app.state, "ledger_fault_hook", None)
+                        ),
+                        getattr(app.state, "ledger_fault_hook", None),
+                    ),
                 )
             )
         with authority_lock:
@@ -441,14 +457,18 @@ def create_app(
                 prepared = bound_service.prepare_analysis(incident)
                 run = build_run(prepared)
                 saved = bound_service.persist_analysis(incident, prepared)
-                WorkflowCoordinator(
-                    PostgresWorkflowRepository.from_connection(connection)
+                bound_judges = PostgresJudgeSessionRepository.from_connection(connection)
+                bound_judges.save_run(
+                    run, settings.judge_active_run_limit
+                )
+                bound_ledger = PostgresAuthorityLedgerRepository.from_connection(connection)
+                initial_workflow = WorkflowCoordinator(
+                    PostgresWorkflowRepository.from_connection(connection),
+                    bound_ledger,
                 ).ensure_for_analysis(
                     tenant_id, saved.incident_id, saved.proposed_action.action_hash, False
                 )
-                PostgresJudgeSessionRepository.from_connection(connection).save_run(
-                    run, settings.judge_active_run_limit
-                )
+                bound_ledger.append_genesis(initial_workflow)
                 return run
 
             run = store.atomic(persist)
@@ -461,10 +481,18 @@ def create_app(
                 prepared = service.prepare_analysis(incident)
                 run = build_run(prepared)
                 saved = service.persist_analysis(incident, prepared)
-                workflows.ensure_for_analysis(
+                judge_repository.save_run(run, settings.judge_active_run_limit)
+                cast(InMemoryAuthorityLedgerRepository, ledger_repository).bind_run(
+                    tenant_id,
+                    saved.incident_id,
+                    run.run_id,
+                    run.build_sha,
+                    run.capability_policy_version,
+                )
+                initial_workflow = workflows.ensure_for_analysis(
                     tenant_id, saved.incident_id, saved.proposed_action.action_hash, False
                 )
-                judge_repository.save_run(run, settings.judge_active_run_limit)
+                ledger_repository.append_genesis(initial_workflow)
 
         if not isinstance(authenticator, JudgeSessionAuthenticator):  # pragma: no cover
             raise RuntimeError("judge authenticator unavailable")
@@ -534,6 +562,20 @@ def create_app(
         require_role(identity, "operator")
         return run_payload(current_run(identity))
 
+    @app.get("/v1/evidence/timeline")
+    def evidence_timeline(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        run = current_run(identity)
+        entries = ledger_repository.timeline(run.run_id, run.tenant_id)
+        return {
+            "run_id": str(run.run_id),
+            "ordering": "database recorded_at, then UUID",
+            "authority_claim": (
+                "Only authority_commit entries are receipt-capable; "
+                "supporting_observation entries do not confer authority."
+            ),
+            "entries": entries,
+        }
+
     @app.post("/v1/operator/run/reset", status_code=status.HTTP_201_CREATED)
     def reset_operator_run(
         request: Request,
@@ -544,7 +586,49 @@ def create_app(
         require_protected_request(request, identity, x_csrf_token)
         require_role(identity, "operator")
         old_run = current_run(identity)
-        if not judge_repository.reset_run(old_run.run_id):
+        old_workflow = workflows.get(old_run.source_incident_id, old_run.tenant_id)
+        if old_workflow is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "judge workflow unavailable")
+
+        if isinstance(store, PostgresStore):
+            def reset_atomically(bound_store: PostgresStore, connection: object) -> bool:
+                del bound_store
+                bound_workflows = WorkflowCoordinator(
+                    PostgresWorkflowRepository.from_connection(connection),
+                    PostgresAuthorityLedgerRepository.from_connection(
+                        connection, getattr(app.state, "ledger_fault_hook", None)
+                    ),
+                    getattr(app.state, "ledger_fault_hook", None),
+                )
+                changed = PostgresJudgeSessionRepository.from_connection(connection).reset_run(
+                    old_run.run_id
+                )
+                if not changed:
+                    return False
+                bound_workflows.invalidate(
+                    old_run.source_incident_id,
+                    old_run.tenant_id,
+                    old_workflow.epoch,
+                    channel=RequestChannel.UI,
+                    actor_subject=identity.subject,
+                    role="operator",
+                )
+                return True
+
+            reset_changed = store.atomic(reset_atomically)
+        else:
+            with authority_lock:
+                reset_changed = judge_repository.reset_run(old_run.run_id)
+                if reset_changed:
+                    workflows.invalidate(
+                        old_run.source_incident_id,
+                        old_run.tenant_id,
+                        old_workflow.epoch,
+                        channel=RequestChannel.UI,
+                        actor_subject=identity.subject,
+                        role="operator",
+                    )
+        if not reset_changed:
             raise HTTPException(status.HTTP_409_CONFLICT, "judge run reset already resolved")
         run, token, csrf, _ = allocate_run(old_run.generation + 1)
         set_role_cookie(response, "operator", token)
@@ -1676,13 +1760,20 @@ def create_app(
                 "reset is not authorized through WebMCP",
             )
         try:
-            return workflows.invalidate(
-                incident_id,
-                identity.tenant_id,
-                x_workflow_epoch,
-                channel=request_channel,
-                role="operator",
-            )
+            def invalidate_atomically(
+                tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+            ) -> object:
+                del tx_service
+                return tx_workflows.invalidate(
+                    incident_id,
+                    identity.tenant_id,
+                    x_workflow_epoch,
+                    channel=request_channel,
+                    actor_subject=identity.subject,
+                    role="operator",
+                )
+
+            return authority_transaction(invalidate_atomically)
         except WorkflowConflict as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 

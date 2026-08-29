@@ -153,6 +153,18 @@ def test_reset_rotates_every_authority_binding_and_old_cookie_stays_dead() -> No
     assert new_run["incident_id"] != old_run["incident_id"]
     assert new_run["generation"] == 2
     assert client.cookies.get("recallops_operator") != old_cookie
+    persisted_old_run = app.state.judge_repository.get_run(UUID(str(old_run["run_id"])))
+    assert persisted_old_run is not None
+    reset_events = app.state.ledger_repository.list_events(
+        persisted_old_run.run_id, persisted_old_run.tenant_id
+    )
+    assert [event.sequence for event in reset_events] == [1, 2]
+    assert reset_events[0].reason_code == "RUN_GENESIS_ACCEPTED"
+    assert reset_events[1].reason_code == "WORKFLOW_RESET_ACCEPTED"
+    assert reset_events[1].capabilities_after == ()
+    timeline = client.get("/v1/evidence/timeline")
+    assert timeline.status_code == 200
+    assert timeline.json()["authority_claim"].startswith("Only authority_commit")
     client.cookies.set("recallops_operator", str(old_cookie))
     assert client.get("/v1/operator/run").status_code == 401
 
