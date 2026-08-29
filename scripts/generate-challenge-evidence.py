@@ -393,6 +393,33 @@ def claims(identity: ReleaseIdentity) -> dict[str, object]:
             ["success"],
         ),
     ]
+    test_evidence = {
+        "WebMCP Leverage": [
+            "tests/webmcp-native/native.spec.ts",
+            "tests/browser/recallops.spec.ts",
+        ],
+        "Execution": [
+            "tests/judge-browser/judge.spec.ts",
+            "tests/test_api.py",
+            "tests/test_release_status.py",
+        ],
+        "Potential Impact": [
+            "tests/test_challenge_evidence.py",
+            "tests/test_memory_lifecycle.py",
+        ],
+        "Creativity & Ambition": [
+            "tests/test_release_evidence.py",
+            "tests/test_receipts.py",
+            "tests/browser/recallops.spec.ts",
+        ],
+    }
+    reproduce = (
+        "uv run python scripts/generate-challenge-evidence.py "
+        f"--release-id {identity.release_id} --source-sha {identity.source_sha} "
+        f"--image-digest {identity.image_digest} "
+        f"--key-thumbprint {identity.receipt_key_thumbprint} "
+        "--output-root <empty-output-directory>"
+    )
     return {
         "schema_version": "claim-registry-v1",
         "release_identity": identity.model_dump(mode="json"),
@@ -403,10 +430,7 @@ def claims(identity: ReleaseIdentity) -> dict[str, object]:
                 "claim": text,
                 "live_route": route,
                 "workflow_event_type": event,
-                "test_ids": [
-                    "tests/judge-browser/judge.spec.ts",
-                    "tests/webmcp-native/native.spec.ts",
-                ],
+                "test_ids": test_evidence[rubric],
                 "evaluation_case_ids": case_ids,
                 "receipt_fields": [
                     "ledger_head_hash",
@@ -419,7 +443,7 @@ def claims(identity: ReleaseIdentity) -> dict[str, object]:
                     "evaluation/webmcp_cases.json",
                     "artifacts/authority-vectors/expected-results.jcs.json",
                 ],
-                "reproduce": "uv run python scripts/generate-challenge-evidence.py --help",
+                "reproduce": reproduce,
             }
             for claim_id, rubric, text, route, event, case_ids in definitions
         ],
