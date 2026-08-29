@@ -212,6 +212,17 @@ def test_production_composition_loads_repository_pinned_keys(
     assert isinstance(produced._repository, PostgresReleaseEvidenceRepository)
     assert produced._trusted_keys is sentinel
 
+    registry_json = (
+        '{"keys":[],"registry_version":"trusted-receipt-keys-v1","transitions":[]}'
+    )
+    monkeypatch.setattr(
+        "recallops.release_status.TrustedKeyRegistry.from_bytes", lambda raw: sentinel
+    )
+    injected = ReleaseStatusService.production(
+        settings(receipt_trusted_keys_json=registry_json)
+    )
+    assert injected._trusted_keys is sentinel
+
 
 @pytest.mark.parametrize(
     ("field", "value"),

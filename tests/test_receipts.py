@@ -444,6 +444,8 @@ def test_kms_signing_uses_exact_profile_and_verifies_returned_signature_locally(
     registry = root_registry(key)
     kms = FakeKms(key)
     signer = KmsReceiptSigner(kms, "alias/recallops-receipt", RELEASE_ID, registry)
+    with pytest.raises(ReceiptPreflightError, match="has not passed"):
+        signer.signing_preflight()
     kid = signer.preflight()
     assert signer.public_jwk == public_jwk_from_der(public_der(key))
     assert signer.trusted_keys is registry
@@ -456,6 +458,14 @@ def test_kms_signing_uses_exact_profile_and_verifies_returned_signature_locally(
         "MessageType": AWS_MESSAGE_TYPE,
         "SigningAlgorithm": AWS_SIGNING_ALGORITHM,
     }
+
+    probe = signer.signing_preflight()
+    protected, payload, signature = probe.split(".")
+    assert protected and payload and signature
+    assert kms.sign_request["MessageType"] == AWS_MESSAGE_TYPE
+    assert kms.sign_request["SigningAlgorithm"] == AWS_SIGNING_ALGORITHM
+    probe_payload = base64.urlsafe_b64decode(payload + "=" * (-len(payload) % 4))
+    assert json.loads(probe_payload)["type"] == "recallops-kms-signing-preflight-v1"
 
 
 def test_kms_signs_and_verifies_acyclic_dual_gate_release_statement() -> None:
@@ -633,6 +643,8 @@ def test_registry_file_must_itself_be_canonical_and_pinned(tmp_path: Path) -> No
     )
     with pytest.raises(ReceiptVerificationError, match="not RFC 8785 canonical"):
         TrustedKeyRegistry.load(path)
+    canonical = b'{"keys":[],"registry_version":"trusted-receipt-keys-v1","transitions":[]}'
+    assert TrustedKeyRegistry.from_bytes(canonical).document.keys == ()
 
 
 def test_unpinned_kms_key_fails_preflight() -> None:
@@ -1116,7 +1128,11 @@ def test_production_preflight_and_cli_are_fail_closed_and_report_success(
     monkeypatch.setattr(
         config,
         "Settings",
-        lambda: SimpleNamespace(receipt_kms_key_id=None, receipt_release_id=None),
+        lambda: SimpleNamespace(
+            receipt_kms_key_id=None,
+            receipt_release_id=None,
+            receipt_trusted_keys_json=None,
+        ),
     )
     with pytest.raises(ReceiptPreflightError, match="required"):
         receipts.production_preflight()
@@ -1125,6 +1141,7 @@ def test_production_preflight_and_cli_are_fail_closed_and_report_success(
         receipt_kms_key_id="alias/key",
         receipt_release_id=RELEASE_ID,
         receipt_trusted_keys_path=Path("keys.json"),
+        receipt_trusted_keys_json=None,
         aws_region="eu-west-1",
     )
     monkeypatch.setattr(config, "Settings", lambda: settings)
@@ -1139,7 +1156,20 @@ def test_production_preflight_and_cli_are_fail_closed_and_report_success(
         def preflight(self) -> str:
             return "K" * 43
 
+        def signing_preflight(self) -> str:
+            return "protected.payload.signature"
+
     monkeypatch.setattr(receipts, "KmsReceiptSigner", Signer)
+    assert receipts.production_preflight() == "K" * 43
+    registry_json = (
+        '{"keys":[],"registry_version":"trusted-receipt-keys-v1","transitions":[]}'
+    )
+    settings.receipt_trusted_keys_json = SimpleNamespace(
+        get_secret_value=lambda: registry_json
+    )
+    monkeypatch.setattr(
+        receipts.TrustedKeyRegistry, "from_bytes", lambda value: sentinel_registry
+    )
     assert receipts.production_preflight() == "K" * 43
     monkeypatch.setattr(receipts, "production_preflight", lambda: "K" * 43)
     receipts.main()

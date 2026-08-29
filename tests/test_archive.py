@@ -63,6 +63,21 @@ def test_s3_archive_uses_deterministic_encrypted_object(monkeypatch: pytest.Monk
     assert b'"embedding"' not in request["Body"]
 
 
+def test_s3_archive_uses_exact_customer_managed_key(monkeypatch: pytest.MonkeyPatch) -> None:
+    client = FakeS3Client()
+    monkeypatch.setattr(archive_module.boto3, "client", lambda *args, **kwargs: client)
+    archive = S3EvidenceArchive(
+        "us-east-1", "evidence-bucket", kms_key_id="arn:aws:kms:us-east-1:123:key/key-id"
+    )
+
+    archive.archive_payload("tenant-a", uuid4(), {}, "checkout", "v1")
+
+    request = client.requests[0]
+    assert request["ServerSideEncryption"] == "aws:kms"
+    assert request["SSEKMSKeyId"] == "arn:aws:kms:us-east-1:123:key/key-id"
+    assert request["BucketKeyEnabled"] is True
+
+
 def test_s3_archive_translates_provider_failure(monkeypatch: pytest.MonkeyPatch) -> None:
     class FailingS3:
         def put_object(self, **request: Any) -> None:

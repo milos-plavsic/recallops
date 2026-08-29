@@ -36,6 +36,7 @@ class S3EvidenceArchive:
         connect_timeout: float = 2.0,
         read_timeout: float = 15.0,
         max_attempts: int = 3,
+        kms_key_id: str | None = None,
     ) -> None:
         self._client = boto3.client(
             "s3",
@@ -43,6 +44,7 @@ class S3EvidenceArchive:
             config=aws_client_config(connect_timeout, read_timeout, max_attempts),
         )
         self._bucket = bucket
+        self._kms_key_id = kms_key_id
 
     def archive(self, incident: IncidentCreate, analysis: IncidentAnalysis) -> None:
         self.archive_payload(
@@ -63,16 +65,25 @@ class S3EvidenceArchive:
     ) -> None:
         key = f"tenants/{tenant_id}/incidents/{incident_id}/analysis.json"
         try:
+            encryption = (
+                {
+                    "ServerSideEncryption": "aws:kms",
+                    "SSEKMSKeyId": self._kms_key_id,
+                    "BucketKeyEnabled": True,
+                }
+                if self._kms_key_id is not None
+                else {"ServerSideEncryption": "AES256"}
+            )
             self._client.put_object(
                 Bucket=self._bucket,
                 Key=key,
                 Body=json.dumps(payload, separators=(",", ":")).encode(),
                 ContentType="application/json",
-                ServerSideEncryption="AES256",
                 Metadata={
                     "service": service,
                     "service-version": service_version,
                 },
+                **encryption,
             )
         except (BotoCoreError, ClientError) as error:
             raise DependencyUnavailable("s3_evidence") from error

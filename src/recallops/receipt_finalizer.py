@@ -10,6 +10,8 @@ from __future__ import annotations
 import argparse
 import base64
 import hashlib
+import hmac
+import json
 import os
 import re
 import socket
@@ -22,6 +24,7 @@ from typing import Any, Literal, Protocol, cast
 from uuid import UUID
 
 import psycopg
+from botocore.exceptions import BotoCoreError, ClientError
 from psycopg.rows import dict_row
 
 from recallops.authority_archive import ArchivedBundle
@@ -111,12 +114,99 @@ class FilesystemReceiptDocumentSource:
         case = self._document(self._root / "evaluation-case.jcs.json")
         result = self._document(self._root / "evaluation-result.jcs.json")
         claims = self._document(self._root / "claims.jcs.json")
-        if (
-            case.get("evaluation_version") != evaluation_version
-            or result.get("evaluation_version") != evaluation_version
-        ):
-            raise ReceiptMaterialError("release evaluation version does not match receipt request")
-        return ReceiptDocuments(evaluation_case=case, evaluation_result=result, claims=claims)
+        return _validated_documents(case, result, claims, evaluation_version)
+
+
+def _validated_documents(
+    case: Mapping[str, object],
+    result: Mapping[str, object],
+    claims: Mapping[str, object],
+    evaluation_version: str,
+) -> ReceiptDocuments:
+    if (
+        case.get("evaluation_version") != evaluation_version
+        or result.get("evaluation_version") != evaluation_version
+    ):
+        raise ReceiptMaterialError("release evaluation version does not match receipt request")
+    return ReceiptDocuments(evaluation_case=case, evaluation_result=result, claims=claims)
+
+
+class VersionedDocumentClient(Protocol):
+    def get_object(self, **kwargs: object) -> Mapping[str, object]: ...
+
+
+class S3ReceiptDocumentSource:
+    """Load digest-pinned release documents from exact immutable S3 versions."""
+
+    _names = (
+        "evaluation-case.jcs.json",
+        "evaluation-result.jcs.json",
+        "claims.jcs.json",
+    )
+
+    def __init__(
+        self,
+        client: VersionedDocumentClient,
+        bucket: str,
+        prefix: str,
+        manifest_json: str,
+    ) -> None:
+        if not bucket or not prefix or prefix.startswith("/") or ".." in prefix.split("/"):
+            raise ReceiptMaterialError("release evidence S3 location is invalid")
+        try:
+            manifest = json.loads(manifest_json)
+        except (TypeError, ValueError) as error:
+            raise ReceiptMaterialError("release evidence manifest is invalid JSON") from error
+        if not isinstance(manifest, dict) or set(manifest) != set(self._names):
+            raise ReceiptMaterialError("release evidence manifest has unexpected documents")
+        pins: dict[str, tuple[str, str]] = {}
+        for name in self._names:
+            pin = manifest[name]
+            if not isinstance(pin, dict) or set(pin) != {"sha256", "version_id"}:
+                raise ReceiptMaterialError("release evidence manifest pin is invalid")
+            digest, version = pin.get("sha256"), pin.get("version_id")
+            if (
+                not isinstance(digest, str)
+                or HEX_DIGEST.fullmatch(digest) is None
+                or not isinstance(version, str)
+                or not version
+                or len(version) > 1024
+            ):
+                raise ReceiptMaterialError("release evidence manifest pin is invalid")
+            pins[name] = (digest, version)
+        self._client = client
+        self._bucket = bucket
+        self._prefix = prefix.rstrip("/")
+        self._pins = pins
+
+    def _document(self, name: str) -> Mapping[str, object]:
+        digest, version = self._pins[name]
+        try:
+            response = self._client.get_object(
+                Bucket=self._bucket,
+                Key=f"{self._prefix}/{name}",
+                VersionId=version,
+            )
+            body = response.get("Body")
+            value = body.read(MAX_DOCUMENT_BYTES + 1) if hasattr(body, "read") else body
+        except (BotoCoreError, ClientError, OSError) as error:
+            raise ReceiptMaterialError("required release evidence is unavailable") from error
+        if not isinstance(value, bytes) or not value or len(value) > MAX_DOCUMENT_BYTES:
+            raise ReceiptMaterialError("release evidence has an invalid size")
+        if not hmac.compare_digest(hashlib.sha256(value).hexdigest(), digest):
+            raise ReceiptMaterialError("release evidence digest does not match frozen manifest")
+        parsed = parse_canonical_json(value)
+        if not isinstance(parsed, dict):
+            raise ReceiptMaterialError("release evidence must be a canonical JSON object")
+        return cast(Mapping[str, object], parsed)
+
+    def load(self, evaluation_version: str) -> ReceiptDocuments:
+        return _validated_documents(
+            self._document("evaluation-case.jcs.json"),
+            self._document("evaluation-result.jcs.json"),
+            self._document("claims.jcs.json"),
+            evaluation_version,
+        )
 
 
 @dataclass(frozen=True)
@@ -576,12 +666,20 @@ def production_worker(worker_id: str) -> ReceiptFinalizationWorker:
         settings.authority_bundle_bucket,
         settings.authority_bundle_kms_key_id,
         settings.receipt_subject_pseudonym_key_b64,
+        settings.receipt_trusted_keys_json,
+        settings.receipt_release_artifacts_bucket,
+        settings.receipt_release_artifacts_prefix,
+        settings.receipt_release_artifacts_manifest_json,
     )
     if any(value is None for value in required):
         raise ReceiptMaterialError("receipt worker production configuration is incomplete")
     secret = cast(Any, settings.receipt_subject_pseudonym_key_b64).get_secret_value()
+    release_manifest = cast(
+        Any, settings.receipt_release_artifacts_manifest_json
+    ).get_secret_value()
     subject_key = _subject_pseudonym_key(secret)
-    registry = TrustedKeyRegistry.load(settings.receipt_trusted_keys_path)
+    registry_json = cast(Any, settings.receipt_trusted_keys_json).get_secret_value()
+    registry = TrustedKeyRegistry.from_bytes(registry_json.encode("utf-8"))
     kms = boto3.client("kms", region_name=settings.aws_region)
     signer = KmsReceiptSigner(
         cast(KmsClient, kms),
@@ -601,7 +699,12 @@ def production_worker(worker_id: str) -> ReceiptFinalizationWorker:
         worker_id=worker_id,
         release_id=cast(str, settings.receipt_release_id),
         subject_pseudonym_key=subject_key,
-        documents=FilesystemReceiptDocumentSource(settings.receipt_release_artifacts_path),
+        documents=S3ReceiptDocumentSource(
+            cast(VersionedDocumentClient, s3),
+            cast(str, settings.receipt_release_artifacts_bucket),
+            cast(str, settings.receipt_release_artifacts_prefix),
+            release_manifest,
+        ),
         loader=PostgresReceiptMaterialLoader(settings.database_url),
         signer=signer,
         archive=archive,

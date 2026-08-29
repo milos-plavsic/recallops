@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 import base64
+import hashlib
+import io
+import json
 import runpy
 import sys
 from dataclasses import replace
@@ -24,6 +27,7 @@ from recallops.receipt_finalizer import (
     ReceiptMaterial,
     ReceiptMaterialError,
     ReceiptWorkerResult,
+    S3ReceiptDocumentSource,
 )
 from recallops.receipt_outbox import ReceiptRequest
 from recallops.receipts import ReceiptDigestBindings, ReceiptError, TrustedKeyRegistry
@@ -127,6 +131,117 @@ def test_document_source_requires_strict_bounded_matching_objects(tmp_path: Path
     )
     with pytest.raises(ReceiptMaterialError, match="version"):
         source.load("evaluation-v1")
+
+
+def _release_documents() -> dict[str, bytes]:
+    return {
+        "evaluation-case.jcs.json": canonical_bytes(
+            {"evaluation_version": "evaluation-v1", "kind": "case"}
+        ),
+        "evaluation-result.jcs.json": canonical_bytes(
+            {"evaluation_version": "evaluation-v1", "kind": "result"}
+        ),
+        "claims.jcs.json": canonical_bytes({"claims": []}),
+    }
+
+
+def _release_manifest(values: dict[str, bytes]) -> str:
+    return json.dumps(
+        {
+            name: {"sha256": hashlib.sha256(value).hexdigest(), "version_id": f"v-{name}"}
+            for name, value in values.items()
+        }
+    )
+
+
+def test_s3_document_source_requires_exact_versions_and_digests() -> None:
+    values = _release_documents()
+
+    class Client:
+        def get_object(self, **kwargs: object) -> dict[str, object]:
+            name = str(kwargs["Key"]).rsplit("/", 1)[-1]
+            assert kwargs == {
+                "Bucket": "private-bucket",
+                "Key": f"releases/release-v1/{name}",
+                "VersionId": f"v-{name}",
+            }
+            body: object = io.BytesIO(values[name]) if name != "claims.jcs.json" else values[name]
+            return {"Body": body}
+
+    source = S3ReceiptDocumentSource(
+        Client(), "private-bucket", "releases/release-v1/", _release_manifest(values)
+    )
+    loaded = source.load("evaluation-v1")
+    assert loaded.evaluation_case["kind"] == "case"
+    assert loaded.claims == {"claims": []}
+
+
+@pytest.mark.parametrize(
+    "bucket,prefix", [("", "release"), ("bucket", "/release"), ("bucket", "a/../b")]
+)
+def test_s3_document_source_rejects_unsafe_locations(bucket: str, prefix: str) -> None:
+    with pytest.raises(ReceiptMaterialError, match="location"):
+        S3ReceiptDocumentSource(object(), bucket, prefix, "{}")  # type: ignore[arg-type]
+
+
+def test_s3_document_source_rejects_invalid_manifests() -> None:
+    values = _release_documents()
+    valid = json.loads(_release_manifest(values))
+    invalid = [
+        "not-json",
+        "[]",
+        json.dumps({"claims.jcs.json": valid["claims.jcs.json"]}),
+        json.dumps({**valid, "claims.jcs.json": "bad"}),
+        json.dumps({**valid, "claims.jcs.json": {"sha256": "a" * 64}}),
+        json.dumps({**valid, "claims.jcs.json": {"sha256": "A" * 64, "version_id": "v"}}),
+        json.dumps({**valid, "claims.jcs.json": {"sha256": "a" * 64, "version_id": ""}}),
+        json.dumps(
+            {**valid, "claims.jcs.json": {"sha256": "a" * 64, "version_id": "v" * 1025}}
+        ),
+    ]
+    for manifest in invalid:
+        with pytest.raises(ReceiptMaterialError, match="manifest"):
+            S3ReceiptDocumentSource(object(), "bucket", "release", manifest)  # type: ignore[arg-type]
+
+
+def test_s3_document_source_fails_closed_for_unavailable_or_changed_objects() -> None:
+    values = _release_documents()
+    manifest = _release_manifest(values)
+
+    class Client:
+        body: object = values["evaluation-case.jcs.json"]
+        error = False
+
+        def get_object(self, **kwargs: object) -> dict[str, object]:
+            if self.error:
+                raise OSError("unavailable")
+            name = str(kwargs["Key"]).rsplit("/", 1)[-1]
+            return {"Body": self.body if name == "evaluation-case.jcs.json" else values[name]}
+
+    client = Client()
+    source = S3ReceiptDocumentSource(client, "bucket", "release", manifest)
+    client.error = True
+    with pytest.raises(ReceiptMaterialError, match="unavailable"):
+        source.load("evaluation-v1")
+    client.error = False
+    for body, match in (
+        (None, "invalid size"),
+        (b"", "invalid size"),
+        (b"x" * (2 * 1024 * 1024 + 1), "invalid size"),
+        (b"{}", "digest"),
+    ):
+        client.body = body
+        with pytest.raises(ReceiptMaterialError, match=match):
+            source.load("evaluation-v1")
+
+    changed = dict(values)
+    changed["evaluation-case.jcs.json"] = canonical_bytes([])
+    changed_source = S3ReceiptDocumentSource(
+        Client(), "bucket", "release", _release_manifest(changed)
+    )
+    changed_source._client.body = changed["evaluation-case.jcs.json"]  # type: ignore[attr-defined]
+    with pytest.raises(ReceiptMaterialError, match="JSON object"):
+        changed_source.load("evaluation-v1")
 
 
 def test_material_helpers_reject_ambiguous_cardinality_and_time() -> None:
@@ -301,6 +416,10 @@ def test_production_worker_composes_only_external_adapters(
         authority_bundle_bucket=None,
         authority_bundle_kms_key_id=None,
         receipt_subject_pseudonym_key_b64=None,
+        receipt_trusted_keys_json=None,
+        receipt_release_artifacts_bucket=None,
+        receipt_release_artifacts_prefix=None,
+        receipt_release_artifacts_manifest_json=None,
     )
     monkeypatch.setattr(config, "Settings", lambda: incomplete)
     with pytest.raises(ReceiptMaterialError, match="incomplete"):
@@ -314,16 +433,24 @@ def test_production_worker_composes_only_external_adapters(
         receipt_subject_pseudonym_key_b64=SecretStr(
             base64.urlsafe_b64encode(b"p" * 32).rstrip(b"=").decode()
         ),
+        receipt_trusted_keys_json=SecretStr(
+            '{"keys":[],"registry_version":"trusted-receipt-keys-v1","transitions":[]}'
+        ),
         receipt_trusted_keys_path=Path("keys.json"),
         aws_region="eu-west-1",
         database_url="postgresql://db",
         receipt_release_artifacts_path=Path("artifacts/release"),
+        receipt_release_artifacts_bucket="release-bucket",
+        receipt_release_artifacts_prefix="releases/release-v1",
+        receipt_release_artifacts_manifest_json=SecretStr(
+            _release_manifest(_release_documents())
+        ),
         outbox_max_attempts=9,
         outbox_lease_seconds=90,
     )
     monkeypatch.setattr(config, "Settings", lambda: values)
     registry = cast(TrustedKeyRegistry, object())
-    monkeypatch.setattr(finalizer.TrustedKeyRegistry, "load", lambda path: registry)
+    monkeypatch.setattr(finalizer.TrustedKeyRegistry, "from_bytes", lambda value: registry)
     clients = {"kms": object(), "s3": object()}
     monkeypatch.setattr("boto3.client", lambda name, region_name: clients[name])
 
@@ -339,6 +466,7 @@ def test_production_worker_composes_only_external_adapters(
     produced = finalizer.production_worker("worker")
     assert produced._worker_id == "worker"
     assert produced._max_attempts == 9 and produced._lease_seconds == 90
+    assert isinstance(produced._documents, S3ReceiptDocumentSource)
 
 
 def test_worker_cli_status_batch_watch_and_argument_guards(

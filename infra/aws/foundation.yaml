@@ -1,0 +1,221 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: RecallOps zero-spend-gated immutable release and evidence foundation
+
+Parameters:
+  EvidenceRetentionDays:
+    Type: Number
+    Default: 14
+    MinValue: 7
+    MaxValue: 90
+    Description: Governance-mode WORM retention for release and receipt evidence.
+
+Resources:
+  ContainerRepository:
+    Type: AWS::ECR::Repository
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      RepositoryName: recallops
+      EmptyOnDelete: true
+      ImageScanningConfiguration:
+        ScanOnPush: true
+      ImageTagMutability: IMMUTABLE
+      EncryptionConfiguration:
+        EncryptionType: AES256
+      LifecyclePolicy:
+        LifecyclePolicyText: >-
+          {"rules":[{"rulePriority":1,"description":"Expire untagged build layers after seven days","selection":{"tagStatus":"untagged","countType":"sinceImagePushed","countUnit":"days","countNumber":7},"action":{"type":"expire"}}]}
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: DataClass, Value: immutable-release }
+
+  ReceiptSigningKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: RecallOps Ed25519 authority receipt signing key
+      Enabled: true
+      EnableKeyRotation: false
+      KeySpec: ECC_NIST_EDWARDS25519
+      KeyUsage: SIGN_VERIFY
+      MultiRegion: false
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountIAMPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: kms:*
+            Resource: '*'
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: Purpose, Value: authority-receipt-signing }
+
+  ReceiptSigningAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/recallops-receipt-signing
+      TargetKeyId: !Ref ReceiptSigningKey
+
+  EvidenceEncryptionKey:
+    Type: AWS::KMS::Key
+    DeletionPolicy: RetainExceptOnCreate
+    UpdateReplacePolicy: Retain
+    Properties:
+      Description: RecallOps private release and authority-bundle encryption key
+      Enabled: true
+      EnableKeyRotation: true
+      KeySpec: SYMMETRIC_DEFAULT
+      KeyUsage: ENCRYPT_DECRYPT
+      MultiRegion: false
+      PendingWindowInDays: 7
+      KeyPolicy:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: EnableAccountIAMPolicies
+            Effect: Allow
+            Principal:
+              AWS: !Sub 'arn:${AWS::Partition}:iam::${AWS::AccountId}:root'
+            Action: kms:*
+            Resource: '*'
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: Purpose, Value: evidence-encryption }
+
+  EvidenceEncryptionAlias:
+    Type: AWS::KMS::Alias
+    Properties:
+      AliasName: alias/recallops-evidence-encryption
+      TargetKeyId: !Ref EvidenceEncryptionKey
+
+  EvidenceBucket:
+    Type: AWS::S3::Bucket
+    DeletionPolicy: Retain
+    UpdateReplacePolicy: Retain
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+            ServerSideEncryptionByDefault:
+              SSEAlgorithm: aws:kms
+              KMSMasterKeyID: !GetAtt EvidenceEncryptionKey.Arn
+      ObjectLockEnabled: true
+      ObjectLockConfiguration:
+        ObjectLockEnabled: Enabled
+        Rule:
+          DefaultRetention:
+            Mode: COMPLIANCE
+            Days: !Ref EvidenceRetentionDays
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+      VersioningConfiguration:
+        Status: Enabled
+      LifecycleConfiguration:
+        Rules:
+          - Id: expire-aborted-multipart-uploads
+            Status: Enabled
+            AbortIncompleteMultipartUpload:
+              DaysAfterInitiation: 1
+          - Id: expire-unlocked-noncurrent-versions
+            Status: Enabled
+            NoncurrentVersionExpiration:
+              NoncurrentDays: 30
+              NewerNoncurrentVersions: 3
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: DataClass, Value: synthetic-evidence }
+
+  EvidenceBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref EvidenceBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Sid: DenyInsecureTransport
+            Effect: Deny
+            Principal: '*'
+            Action: s3:*
+            Resource:
+              - !GetAtt EvidenceBucket.Arn
+              - !Sub '${EvidenceBucket.Arn}/*'
+            Condition:
+              Bool:
+                aws:SecureTransport: 'false'
+          - Sid: DenyUnencryptedObjectWrites
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${EvidenceBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption: aws:kms
+          - Sid: DenyWrongEncryptionKey
+            Effect: Deny
+            Principal: '*'
+            Action: s3:PutObject
+            Resource: !Sub '${EvidenceBucket.Arn}/*'
+            Condition:
+              StringNotEquals:
+                s3:x-amz-server-side-encryption-aws-kms-key-id: !GetAtt EvidenceEncryptionKey.Arn
+
+  JudgeRateLimitSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Name: !Sub '${AWS::StackName}/judge-rate-limit-key'
+      Description: RecallOps judge-session rate-limit HMAC key
+      GenerateSecretString:
+        ExcludeLowercase: false
+        ExcludeNumbers: false
+        ExcludePunctuation: true
+        ExcludeUppercase: false
+        IncludeSpace: false
+        PasswordLength: 64
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: DataClass, Value: secret }
+
+  ReceiptPseudonymSecret:
+    Type: AWS::SecretsManager::Secret
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      Name: !Sub '${AWS::StackName}/receipt-pseudonym-key'
+      Description: RecallOps domain-separated receipt subject pseudonym key
+      GenerateSecretString:
+        ExcludeLowercase: false
+        ExcludeNumbers: false
+        ExcludePunctuation: true
+        ExcludeUppercase: false
+        IncludeSpace: false
+        PasswordLength: 64
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: DataClass, Value: secret }
+
+Outputs:
+  RepositoryUri:
+    Value: !GetAtt ContainerRepository.RepositoryUri
+  ReceiptSigningKeyArn:
+    Value: !GetAtt ReceiptSigningKey.Arn
+  EvidenceEncryptionKeyArn:
+    Value: !GetAtt EvidenceEncryptionKey.Arn
+  EvidenceBucketName:
+    Value: !Ref EvidenceBucket
+  EvidenceBucketArn:
+    Value: !GetAtt EvidenceBucket.Arn
+  JudgeRateLimitSecretArn:
+    Value: !Ref JudgeRateLimitSecret
+  ReceiptPseudonymSecretArn:
+    Value: !Ref ReceiptPseudonymSecret

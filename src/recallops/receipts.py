@@ -37,6 +37,7 @@ AWS_MESSAGE_TYPE = "RAW"
 RECEIPT_TYP = "recallops-authority-receipt+jws"
 TRANSITION_TYP = "recallops-receipt-key-transition+jws"
 RELEASE_STATEMENT_TYP = "recallops-release-evidence+jws"
+SIGNING_PREFLIGHT_TYP = "recallops-kms-signing-preflight+jws"
 RECEIPT_VERSION = "authority-receipt-v1"
 RECEIPT_MANIFEST_MAX_BYTES = 2048
 KMS_RAW_MESSAGE_MAX_BYTES = 4096
@@ -588,6 +589,10 @@ class TrustedKeyRegistry:
             raw = path.read_bytes()
         except OSError as error:
             raise ReceiptPreflightError("trusted-key registry is unavailable") from error
+        return cls.from_bytes(raw)
+
+    @classmethod
+    def from_bytes(cls, raw: bytes) -> TrustedKeyRegistry:
         parsed = parse_canonical_json(raw)
         try:
             document = TrustedKeyDocument.model_validate(parsed)
@@ -692,6 +697,20 @@ class KmsReceiptSigner:
             raise ReceiptPreflightError("release statement differs from preflight binding")
         payload = canonical_bytes(statement.model_dump(mode="json"))
         return self._sign_payload(payload, RELEASE_STATEMENT_TYP)
+
+    def signing_preflight(self) -> str:
+        """Prove exact-key signing and local verification without signing a receipt claim."""
+        if self._kid is None:
+            raise ReceiptPreflightError("KMS receipt signer has not passed preflight")
+        payload = canonical_bytes(
+            {
+                "key_thumbprint": self._kid,
+                "profile": AWS_SIGNING_ALGORITHM,
+                "release_id": self._release_id,
+                "type": "recallops-kms-signing-preflight-v1",
+            }
+        )
+        return self._sign_payload(payload, SIGNING_PREFLIGHT_TYP)
 
     def _sign_payload(self, payload: bytes, typ: str) -> str:
         if self._public_key is None or self._kid is None or self._kms_key_id is None:
@@ -802,7 +821,12 @@ def production_preflight() -> str:
     settings = Settings()
     if settings.receipt_kms_key_id is None or settings.receipt_release_id is None:
         raise ReceiptPreflightError("receipt KMS key and release ID are required")
-    registry = TrustedKeyRegistry.load(settings.receipt_trusted_keys_path)
+    if settings.receipt_trusted_keys_json is None:
+        registry = TrustedKeyRegistry.load(settings.receipt_trusted_keys_path)
+    else:
+        registry = TrustedKeyRegistry.from_bytes(
+            settings.receipt_trusted_keys_json.get_secret_value().encode("utf-8")
+        )
     client = boto3.client("kms", region_name=settings.aws_region)
     signer = KmsReceiptSigner(
         cast(KmsClient, client),
@@ -810,7 +834,9 @@ def production_preflight() -> str:
         settings.receipt_release_id,
         registry,
     )
-    return signer.preflight()
+    kid = signer.preflight()
+    signer.signing_preflight()
+    return kid
 
 
 def main() -> None:

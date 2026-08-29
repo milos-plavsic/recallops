@@ -2,6 +2,15 @@
   "Version": "2012-10-17",
   "Statement": [
     {
+      "Sid": "VerifyStandaloneFreePlanBeforeMutation",
+      "Effect": "Allow",
+      "Action": [
+        "freetier:GetAccountPlanState",
+        "organizations:DescribeOrganization"
+      ],
+      "Resource": "*"
+    },
+    {
       "Sid": "ManageRecallOpsStacks",
       "Effect": "Allow",
       "Action": [
@@ -69,6 +78,41 @@
       "Effect": "Allow",
       "Action": "ecr:GetAuthorizationToken",
       "Resource": "*"
+    },
+    {
+      "Sid": "PinOnlyTaggedRecallOpsReceiptKey",
+      "Effect": "Allow",
+      "Action": "kms:GetPublicKey",
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Application": "RecallOps"
+        }
+      }
+    },
+    {
+      "Sid": "EncryptOnlyFrozenReleaseArtifacts",
+      "Effect": "Allow",
+      "Action": [
+        "kms:Encrypt",
+        "kms:GenerateDataKey"
+      ],
+      "Resource": "*",
+      "Condition": {
+        "StringEquals": {
+          "aws:ResourceTag/Application": "RecallOps",
+          "kms:ViaService": "s3.us-east-1.amazonaws.com"
+        }
+      }
+    },
+    {
+      "Sid": "PublishOnlyRecallOpsReleaseArtifacts",
+      "Effect": "Allow",
+      "Action": [
+        "s3:GetObject",
+        "s3:PutObject"
+      ],
+      "Resource": "arn:aws:s3:::recallops-*/releases/*"
     }
   ]
 }

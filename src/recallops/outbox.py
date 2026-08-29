@@ -191,6 +191,7 @@ def main() -> None:
         settings.provider_connect_timeout_seconds,
         settings.provider_read_timeout_seconds,
         settings.provider_max_attempts,
+        settings.evidence_kms_key_id,
     )
     worker_id = f"{socket.gethostname()}:{os.getpid()}"
     while True:

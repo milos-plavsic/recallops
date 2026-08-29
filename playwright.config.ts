@@ -10,7 +10,10 @@ export default defineConfig({
   fullyParallel: true,
   forbidOnly: Boolean(process.env.CI),
   retries: process.env.CI ? 2 : 0,
-  workers: process.env.CI ? 2 : undefined,
+  // Axe and delayed WebMCP-registration tests intentionally exercise a full document.
+  // Keep the same bounded concurrency locally and in CI so host CPU count cannot
+  // turn a lifecycle assertion into an infrastructure timeout.
+  workers: 2,
   reporter: process.env.CI ? [["line"], ["html", { open: "never" }]] : "list",
   use: {
     baseURL: "http://127.0.0.1:4173",

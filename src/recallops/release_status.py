@@ -104,10 +104,17 @@ class ReleaseStatusService:
     def production(cls, settings: Settings) -> ReleaseStatusService:
         if settings.receipt_release_id is None:
             return cls(settings)
+        trusted_keys = (
+            TrustedKeyRegistry.from_bytes(
+                settings.receipt_trusted_keys_json.get_secret_value().encode("utf-8")
+            )
+            if settings.receipt_trusted_keys_json is not None
+            else TrustedKeyRegistry.load(settings.receipt_trusted_keys_path)
+        )
         return cls(
             settings,
             PostgresReleaseEvidenceRepository(settings.database_url),
-            TrustedKeyRegistry.load(settings.receipt_trusted_keys_path),
+            trusted_keys,
         )
 
     def current(self) -> PublicReleaseStatus:

@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     bedrock_model_id: str = "amazon.nova-lite-v1:0"
     bedrock_embedding_model_id: str = "amazon.titan-embed-text-v2:0"
     evidence_bucket: str | None = None
+    evidence_kms_key_id: str | None = None
     evidence_verifier: Literal["manual_only", "aws"] = "manual_only"
     log_level: str = "INFO"
     provider_connect_timeout_seconds: float = Field(default=2.0, gt=0, le=30)
@@ -70,7 +71,11 @@ class Settings(BaseSettings):
     receipt_kms_key_id: str | None = None
     receipt_release_id: str | None = Field(default=None, min_length=3, max_length=100)
     receipt_trusted_keys_path: Path = Path("tools/trusted-receipt-keys.json")
+    receipt_trusted_keys_json: SecretStr | None = None
     receipt_release_artifacts_path: Path = Path("artifacts/release")
+    receipt_release_artifacts_bucket: str | None = None
+    receipt_release_artifacts_prefix: str | None = None
+    receipt_release_artifacts_manifest_json: SecretStr | None = None
     receipt_subject_pseudonym_key_b64: SecretStr | None = None
     receipt_policy_version: str = Field(
         default="authority-receipt-policy-v1", min_length=3, max_length=80

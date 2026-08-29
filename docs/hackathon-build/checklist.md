@@ -144,7 +144,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   horizontal scroll, inspect CSP/Permissions-Policy/OAC headers, scan for unsafe dynamic HTML, and
   manually approve the Live-story gate in both wide and constrained layouts.
 
-- [ ] **7. Build the pinned-key receipt cryptographic core**
+- [x] **7. Build the pinned-key receipt cryptographic core**
   Spec ref: `spec.md > Authority Receipt And Proof Bundle > Compact manifest schema`; `spec.md > Authority Receipt And Proof Bundle > JWS/KMS profile`
   What to build: Add migration 030 receipt/release records, strict I-JSON/RFC 8785 canonicalization,
   event-prefix verification, compact manifest construction, fully specified RFC 9864 `Ed25519` JWS,

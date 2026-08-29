@@ -1,471 +1,557 @@
 AWSTemplateFormatVersion: '2010-09-09'
-Description: RecallOps self-contained authenticated public judge demo
+Description: RecallOps no-signup judge deployment with capability-separated ECS tasks
 
 Parameters:
   BuildSha:
     Type: String
-    Default: unknown
-    AllowedPattern: '^(unknown|[a-f0-9]{40})$'
+    AllowedPattern: '^[a-f0-9]{40}$'
+  ImageDigest:
+    Type: String
+    AllowedPattern: '^sha256:[a-f0-9]{64}$'
   ImageUri:
     Type: String
     AllowedPattern: '^.+@sha256:[a-f0-9]{64}$'
+  ReleaseId:
+    Type: String
+    MinLength: 3
+    MaxLength: 100
+    AllowedPattern: '^[A-Za-z0-9._-]+$'
+  ReceiptKeyThumbprint:
+    Type: String
+    MinLength: 43
+    MaxLength: 43
+    AllowedPattern: '^[A-Za-z0-9_-]{43}$'
+  TrustedKeysJson:
+    Type: String
+    MinLength: 64
+    MaxLength: 4096
+  ReleaseArtifactsManifestJson:
+    Type: String
+    MinLength: 64
+    MaxLength: 4096
+  ReleaseArtifactsPrefix:
+    Type: String
+    AllowedPattern: '^releases/[A-Za-z0-9._/-]+$'
   DatabaseUrlSecretArn:
     Type: String
     NoEcho: true
-    Description: Runtime URL for a LOGIN principal granted only recallops_api.
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
   OutboxDatabaseUrlSecretArn:
     Type: String
     NoEcho: true
-    Description: Worker URL for a LOGIN principal granted only recallops_outbox.
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
   MigrationDatabaseUrlSecretArn:
     Type: String
     NoEcho: true
-    Default: ''
-    Description: Migration-owner URL. Defaults to DatabaseUrlSecretArn only for legacy stacks.
-  VpcId: { Type: 'AWS::EC2::VPC::Id' }
-  TaskSubnetIds: { Type: 'List<AWS::EC2::Subnet::Id>' }
-  OriginAvailabilityZoneA: { Type: 'AWS::EC2::AvailabilityZone::Name' }
-  OriginAvailabilityZoneB: { Type: 'AWS::EC2::AvailabilityZone::Name' }
-  OriginSubnetCidrA: { Type: String, Default: 172.31.240.0/28 }
-  OriginSubnetCidrB: { Type: String, Default: 172.31.240.16/28 }
-  ReasoningProvider:
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+  JudgeRateLimitSecretArn:
     Type: String
-    Default: deterministic
-    AllowedValues: [deterministic, bedrock]
-  EmbeddingProvider:
+    NoEcho: true
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+  ReceiptPseudonymSecretArn:
     Type: String
-    Default: deterministic
-    AllowedValues: [deterministic, bedrock]
-  BedrockModelId: { Type: String, Default: amazon.nova-lite-v1:0 }
-  BedrockEmbeddingModelId: { Type: String, Default: amazon.titan-embed-text-v2:0 }
-  BedrockModelArns:
-    Type: CommaDelimitedList
-    Default: arn:aws:bedrock:us-east-1::foundation-model/disabled
-    Description: Exact model ARNs required only when a Bedrock provider is selected.
-  DesiredCount: { Type: Number, Default: 1, MinValue: 1, MaxValue: 3 }
-  JudgeOperatorEmail: { Type: String, Default: recallops.operator@example.com }
-  JudgeReviewerEmail: { Type: String, Default: recallops.reviewer@example.com }
-  HealthCheckPath:
+    NoEcho: true
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+  ReceiptSigningKeyArn:
     Type: String
-    Default: /live
-    AllowedPattern: '^/.*$'
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+$'
+  EvidenceEncryptionKeyArn:
+    Type: String
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:kms:[a-z0-9-]+:[0-9]{12}:key/[a-f0-9-]+$'
+  EvidenceBucketName:
+    Type: String
+    AllowedPattern: '^[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$'
+  VpcId:
+    Type: AWS::EC2::VPC::Id
+  PublicSubnetIds:
+    Type: List<AWS::EC2::Subnet::Id>
+  DesiredApiCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 2
+  DesiredOutboxCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1
+    Description: Legacy evidence delivery is outside the judge path and remains stopped by default.
+  DesiredReceiptCount:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 1
+    Description: Enable only after the one-shot migration task succeeds.
   AlarmTopicArn:
     Type: String
     Default: ''
 
 Conditions:
   HasAlarmTopic: !Not [!Equals [!Ref AlarmTopicArn, '']]
-  HasSeparateMigrationSecret: !Not [!Equals [!Ref MigrationDatabaseUrlSecretArn, '']]
-  UsesBedrock: !Or
-    - !Equals [!Ref ReasoningProvider, bedrock]
-    - !Equals [!Ref EmbeddingProvider, bedrock]
 
 Resources:
-  OriginSubnetA:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VpcId
-      AvailabilityZone: !Ref OriginAvailabilityZoneA
-      CidrBlock: !Ref OriginSubnetCidrA
-      MapPublicIpOnLaunch: false
-      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-origin-a' }]
-  OriginSubnetB:
-    Type: AWS::EC2::Subnet
-    Properties:
-      VpcId: !Ref VpcId
-      AvailabilityZone: !Ref OriginAvailabilityZoneB
-      CidrBlock: !Ref OriginSubnetCidrB
-      MapPublicIpOnLaunch: false
-      Tags: [{ Key: Name, Value: !Sub '${AWS::StackName}-origin-b' }]
-
-  EvidenceBucket:
-    Type: AWS::S3::Bucket
-    DeletionPolicy: Retain
-    UpdateReplacePolicy: Retain
-    Properties:
-      BucketEncryption:
-        ServerSideEncryptionConfiguration:
-          - ServerSideEncryptionByDefault: { SSEAlgorithm: AES256 }
-      OwnershipControls:
-        Rules: [{ ObjectOwnership: BucketOwnerEnforced }]
-      PublicAccessBlockConfiguration:
-        BlockPublicAcls: true
-        BlockPublicPolicy: true
-        IgnorePublicAcls: true
-        RestrictPublicBuckets: true
-      VersioningConfiguration: { Status: Enabled }
-      LifecycleConfiguration:
-        Rules:
-          - Id: archive-old-versions
-            Status: Enabled
-            NoncurrentVersionTransitions:
-              - { StorageClass: STANDARD_IA, TransitionInDays: 30 }
-            NoncurrentVersionExpiration: { NoncurrentDays: 365 }
-  EvidenceBucketPolicy:
-    Type: AWS::S3::BucketPolicy
-    Properties:
-      Bucket: !Ref EvidenceBucket
-      PolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Sid: DenyInsecureTransport
-            Effect: Deny
-            Principal: '*'
-            Action: s3:*
-            Resource: [!GetAtt EvidenceBucket.Arn, !Sub '${EvidenceBucket.Arn}/*']
-            Condition: { Bool: { 'aws:SecureTransport': 'false' } }
-
-  TokenClaimsFunctionRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${AWS::StackName}-token-claims'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: { Service: lambda.amazonaws.com }
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: logs
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-token-claims:*'
-  TokenClaimsFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-token-claims'
-      Runtime: python3.13
-      Handler: index.handler
-      Role: !GetAtt TokenClaimsFunctionRole.Arn
-      Timeout: 5
-      MemorySize: 128
-      Code:
-        ZipFile: |
-          def handler(event, context):
-              del context
-              tenant = event.get("request", {}).get("userAttributes", {}).get("custom:tenant_id")
-              if not tenant:
-                  raise ValueError("custom:tenant_id is required")
-              event["response"] = {"claimsAndScopeOverrideDetails": {"accessTokenGeneration": {"claimsToAddOrOverride": {"tenant_id": tenant}}}}
-              return event
-  TokenClaimsPermission:
-    Type: AWS::Lambda::Permission
-    Properties:
-      Action: lambda:InvokeFunction
-      FunctionName: !Ref TokenClaimsFunction
-      Principal: cognito-idp.amazonaws.com
-
-  UserPool:
-    Type: AWS::Cognito::UserPool
-    DependsOn: TokenClaimsPermission
-    Properties:
-      UserPoolName: !Sub '${AWS::StackName}-judges'
-      AdminCreateUserConfig: { AllowAdminCreateUserOnly: true }
-      AutoVerifiedAttributes: [email]
-      UsernameAttributes: [email]
-      DeletionProtection: INACTIVE
-      MfaConfiguration: 'OFF'
-      Schema:
-        - Name: tenant_id
-          AttributeDataType: String
-          Mutable: false
-          Required: false
-          StringAttributeConstraints: { MinLength: '1', MaxLength: '80' }
-      Policies:
-        PasswordPolicy:
-          MinimumLength: 14
-          RequireLowercase: true
-          RequireNumbers: true
-          RequireSymbols: true
-          RequireUppercase: true
-          TemporaryPasswordValidityDays: 1
-      LambdaConfig:
-        PreTokenGeneration: !GetAtt TokenClaimsFunction.Arn
-        PreTokenGenerationConfig:
-          LambdaArn: !GetAtt TokenClaimsFunction.Arn
-          LambdaVersion: V2_0
-  OperatorGroup:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties: { GroupName: operator, UserPoolId: !Ref UserPool, Precedence: 10 }
-  ReviewerGroup:
-    Type: AWS::Cognito::UserPoolGroup
-    Properties: { GroupName: reviewer, UserPoolId: !Ref UserPool, Precedence: 10 }
-  JudgeProvisionerRole:
-    Type: AWS::IAM::Role
-    Properties:
-      RoleName: !Sub '${AWS::StackName}-judge-provisioner'
-      AssumeRolePolicyDocument:
-        Version: '2012-10-17'
-        Statement:
-          - Effect: Allow
-            Principal: { Service: lambda.amazonaws.com }
-            Action: sts:AssumeRole
-      Policies:
-        - PolicyName: provision-judges
-          PolicyDocument:
-            Version: '2012-10-17'
-            Statement:
-              - Effect: Allow
-                Action:
-                  - cognito-idp:AdminCreateUser
-                  - cognito-idp:AdminDeleteUser
-                  - cognito-idp:AdminGetUser
-                  - cognito-idp:AdminSetUserPassword
-                  - cognito-idp:AdminUpdateUserAttributes
-                  - cognito-idp:AdminAddUserToGroup
-                Resource: !GetAtt UserPool.Arn
-              - Effect: Allow
-                Action:
-                  - secretsmanager:CreateSecret
-                  - secretsmanager:DeleteSecret
-                  - secretsmanager:GetSecretValue
-                  - secretsmanager:PutSecretValue
-                Resource: !Sub 'arn:${AWS::Partition}:secretsmanager:${AWS::Region}:${AWS::AccountId}:secret:${AWS::StackName}/judge/*'
-              - Effect: Allow
-                Action: [logs:CreateLogGroup, logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !Sub 'arn:${AWS::Partition}:logs:${AWS::Region}:${AWS::AccountId}:log-group:/aws/lambda/${AWS::StackName}-judge-provisioner:*'
-  JudgeProvisionerFunction:
-    Type: AWS::Lambda::Function
-    Properties:
-      FunctionName: !Sub '${AWS::StackName}-judge-provisioner'
-      Runtime: python3.13
-      Handler: index.handler
-      Role: !GetAtt JudgeProvisionerRole.Arn
-      Timeout: 30
-      MemorySize: 128
-      Code:
-        ZipFile: |
-          import json
-          import secrets
-          import string
-          import urllib.request
-          import boto3
-
-          cognito = boto3.client("cognito-idp")
-          secret_store = boto3.client("secretsmanager")
-
-          def generated_password():
-              characters = [secrets.choice(string.ascii_lowercase), secrets.choice(string.ascii_uppercase), secrets.choice(string.digits), secrets.choice("!@#$%^&*()-_=+")]
-              characters.extend(secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*()-_=+") for _ in range(20))
-              secrets.SystemRandom().shuffle(characters)
-              return "".join(characters)
-
-          def credential(secret_name, username):
-              try:
-                  current = json.loads(secret_store.get_secret_value(SecretId=secret_name)["SecretString"])
-              except secret_store.exceptions.ResourceNotFoundException:
-                  current = {}
-              password = current.get("password") or generated_password()
-              if current.get("email") != username or "password" not in current:
-                  value = json.dumps({"email": username, "password": password})
-                  if current:
-                      secret_store.put_secret_value(SecretId=secret_name, SecretString=value)
-                  else:
-                      secret_store.create_secret(Name=secret_name, Description="RecallOps generated judge credential", SecretString=value)
-              return password
-
-          def respond(event, context, status, reason=None):
-              body = json.dumps({"Status": status, "Reason": reason or "complete", "PhysicalResourceId": event.get("PhysicalResourceId", event["ResourceProperties"]["Username"]), "StackId": event["StackId"], "RequestId": event["RequestId"], "LogicalResourceId": event["LogicalResourceId"], "NoEcho": True})
-              request = urllib.request.Request(event["ResponseURL"], data=body.encode(), method="PUT", headers={"content-type": "", "content-length": str(len(body))})
-              urllib.request.urlopen(request, timeout=10)
-
-          def handler(event, context):
-              properties = event["ResourceProperties"]
-              pool = properties["UserPoolId"]
-              username = properties["Username"]
-              try:
-                  if event["RequestType"] == "Delete":
-                      try:
-                          cognito.admin_delete_user(UserPoolId=pool, Username=username)
-                      except cognito.exceptions.UserNotFoundException:
-                          pass
-                      try:
-                          secret_store.delete_secret(SecretId=properties["CredentialSecretName"], ForceDeleteWithoutRecovery=True)
-                      except secret_store.exceptions.ResourceNotFoundException:
-                          pass
-                  else:
-                      password = credential(properties["CredentialSecretName"], username)
-                      attributes = [{"Name": "email", "Value": username}, {"Name": "email_verified", "Value": "true"}, {"Name": "custom:tenant_id", "Value": properties["TenantId"]}]
-                      try:
-                          cognito.admin_create_user(UserPoolId=pool, Username=username, UserAttributes=attributes, MessageAction="SUPPRESS")
-                      except cognito.exceptions.UsernameExistsException:
-                          pass
-                      cognito.admin_set_user_password(UserPoolId=pool, Username=username, Password=password, Permanent=True)
-                      cognito.admin_add_user_to_group(UserPoolId=pool, Username=username, GroupName=properties["Group"])
-                  respond(event, context, "SUCCESS")
-              except Exception as error:
-                  respond(event, context, "FAILED", str(error))
-  JudgeOperator:
-    Type: Custom::RecallOpsJudge
-    DependsOn: OperatorGroup
-    Properties:
-      ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
-      UserPoolId: !Ref UserPool
-      Username: !Ref JudgeOperatorEmail
-      CredentialSecretName: !Sub '${AWS::StackName}/judge/operator'
-      Group: operator
-      TenantId: demo
-  JudgeReviewer:
-    Type: Custom::RecallOpsJudge
-    DependsOn: ReviewerGroup
-    Properties:
-      ServiceToken: !GetAtt JudgeProvisionerFunction.Arn
-      UserPoolId: !Ref UserPool
-      Username: !Ref JudgeReviewerEmail
-      CredentialSecretName: !Sub '${AWS::StackName}/judge/reviewer'
-      Group: reviewer
-      TenantId: demo
-  UserPoolDomain:
-    Type: AWS::Cognito::UserPoolDomain
-    Properties:
-      Domain: !Sub 'recallops-${AWS::AccountId}-${AWS::Region}'
-      UserPoolId: !Ref UserPool
-
   Cluster:
     Type: AWS::ECS::Cluster
     Properties:
       ClusterName: !Sub '${AWS::StackName}-cluster'
-      ClusterSettings: [{ Name: containerInsights, Value: enabled }]
-  LogGroup:
+      ClusterSettings:
+        - Name: containerInsights
+          Value: disabled
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
+  ApiLogGroup:
     Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
     Properties:
-      LogGroupName: !Sub '/ecs/${AWS::StackName}'
-      RetentionInDays: 30
-  ExecutionRole:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}/api'
+      RetentionInDays: 14
+  OutboxLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}/outbox'
+      RetentionInDays: 14
+  ReceiptLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}/receipt'
+      RetentionInDays: 14
+  MigrationLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/ecs/${AWS::StackName}/migration'
+      RetentionInDays: 14
+  ApiAccessLogGroup:
+    Type: AWS::Logs::LogGroup
+    DeletionPolicy: Delete
+    UpdateReplacePolicy: Delete
+    Properties:
+      LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}'
+      RetentionInDays: 14
+
+  ApiExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${AWS::StackName}-execution'
+      RoleName: !Sub '${AWS::StackName}-api-execution'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal: { Service: ecs-tasks.amazonaws.com }
             Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
       Policies:
-        - PolicyName: execution
+        - PolicyName: api-task-startup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              -
+                Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              -
+                Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/recallops'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub '${ApiLogGroup.Arn}:*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref DatabaseUrlSecretArn, !Ref JudgeRateLimitSecretArn]
+
+  OutboxExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-outbox-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: outbox-task-startup
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
-                Action: [ecr:GetAuthorizationToken]
+                Action: ecr:GetAuthorizationToken
                 Resource: '*'
               - Effect: Allow
                 Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
                 Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/recallops'
               - Effect: Allow
                 Action: [logs:CreateLogStream, logs:PutLogEvents]
-                Resource: !GetAtt LogGroup.Arn
+                Resource: !Sub '${OutboxLogGroup.Arn}:*'
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource:
-                  - !Ref DatabaseUrlSecretArn
-                  - !Ref OutboxDatabaseUrlSecretArn
-                  - !If
-                    - HasSeparateMigrationSecret
-                    - !Ref MigrationDatabaseUrlSecretArn
-                    - !Ref DatabaseUrlSecretArn
-  TaskRole:
+                Resource: !Ref OutboxDatabaseUrlSecretArn
+
+  ReceiptExecutionRole:
     Type: AWS::IAM::Role
     Properties:
-      RoleName: !Sub '${AWS::StackName}-task'
+      RoleName: !Sub '${AWS::StackName}-receipt-execution'
       AssumeRolePolicyDocument:
         Version: '2012-10-17'
         Statement:
           - Effect: Allow
             Principal: { Service: ecs-tasks.amazonaws.com }
             Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
       Policies:
-        - PolicyName: runtime
+        - PolicyName: receipt-task-startup
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
-              - !If
-                - UsesBedrock
-                - Effect: Allow
-                  Action: bedrock:InvokeModel
-                  Resource: !Ref BedrockModelArns
-                - !Ref 'AWS::NoValue'
               - Effect: Allow
-                Action: [s3:PutObject, s3:GetObject]
-                Resource: !Sub '${EvidenceBucket.Arn}/tenants/*'
-              - Effect: Allow
-                Action: cloudwatch:DescribeAlarms
+                Action: ecr:GetAuthorizationToken
                 Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/recallops'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub '${ReceiptLogGroup.Arn}:*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: [!Ref OutboxDatabaseUrlSecretArn, !Ref ReceiptPseudonymSecretArn]
+
+  MigrationExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-migration-execution'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: migration-task-startup
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: ecr:GetAuthorizationToken
+                Resource: '*'
+              - Effect: Allow
+                Action: [ecr:BatchCheckLayerAvailability, ecr:GetDownloadUrlForLayer, ecr:BatchGetImage]
+                Resource: !Sub 'arn:${AWS::Partition}:ecr:${AWS::Region}:${AWS::AccountId}:repository/recallops'
+              - Effect: Allow
+                Action: [logs:CreateLogStream, logs:PutLogEvents]
+                Resource: !Sub '${MigrationLogGroup.Arn}:*'
+              - Effect: Allow
+                Action: secretsmanager:GetSecretValue
+                Resource: !Ref MigrationDatabaseUrlSecretArn
+
+  ApiTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-api-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: finalized-public-bundle-read
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObjectVersion, s3:GetObjectVersionAttributes]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/synthetic-authority-bundles/*'
+              - Effect: Allow
+                Action: kms:Decrypt
+                Resource: !Ref EvidenceEncryptionKeyArn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.${AWS::URLSuffix}'
+
+  OutboxTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-outbox-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: bounded-legacy-evidence-write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: s3:PutObject
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/tenants/*'
+              - Effect: Allow
+                Action: [kms:Encrypt, kms:GenerateDataKey]
+                Resource: !Ref EvidenceEncryptionKeyArn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.${AWS::URLSuffix}'
+
+  ReceiptTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-receipt-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+      Policies:
+        - PolicyName: exact-receipt-signing
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: kms:GetPublicKey
+                Resource: !Ref ReceiptSigningKeyArn
+              - Effect: Allow
+                Action: kms:Sign
+                Resource: !Ref ReceiptSigningKeyArn
+                Condition:
+                  StringEquals:
+                    kms:SigningAlgorithm: ED25519_SHA_512
+        - PolicyName: pinned-release-read-and-bundle-write
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action: [s3:GetObjectVersion, s3:GetObjectVersionAttributes]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/${ReleaseArtifactsPrefix}/*'
+              - Effect: Allow
+                Action: [s3:PutObject, s3:GetObject, s3:GetObjectVersion]
+                Resource: !Sub 'arn:${AWS::Partition}:s3:::${EvidenceBucketName}/synthetic-authority-bundles/*'
+              - Effect: Allow
+                Action: [kms:Decrypt, kms:Encrypt, kms:GenerateDataKey]
+                Resource: !Ref EvidenceEncryptionKeyArn
+                Condition:
+                  StringEquals:
+                    kms:ViaService: !Sub 's3.${AWS::Region}.${AWS::URLSuffix}'
+
+  MigrationTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      RoleName: !Sub '${AWS::StackName}-migration-task'
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal: { Service: ecs-tasks.amazonaws.com }
+            Action: sts:AssumeRole
+            Condition:
+              ArnLike:
+                aws:SourceArn: !Sub 'arn:${AWS::Partition}:ecs:${AWS::Region}:${AWS::AccountId}:*'
+              StringEquals:
+                aws:SourceAccount: !Ref AWS::AccountId
+
+  LoadBalancerSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RecallOps internal ALB receives only API Gateway VPC Link traffic
+      VpcId: !Ref VpcId
+      Tags:
+        - { Key: Application, Value: RecallOps }
 
   VpcLinkSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: API Gateway VPC Link egress
+      GroupDescription: RecallOps API Gateway VPC Link egress
       VpcId: !Ref VpcId
-  LoadBalancerSecurityGroup:
+      SecurityGroupEgress: []
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
+  VpcLinkToLoadBalancerEgress:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !Ref VpcLinkSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      DestinationSecurityGroupId: !Ref LoadBalancerSecurityGroup
+
+  LoadBalancerFromVpcLinkIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !Ref LoadBalancerSecurityGroup
+      IpProtocol: tcp
+      FromPort: 80
+      ToPort: 80
+      SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
+
+  ApiTaskSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: CloudFront VPC origin ingress
-      VpcId: !Ref VpcId
-      SecurityGroupIngress:
-        - IpProtocol: tcp
-          FromPort: 80
-          ToPort: 80
-          SourceSecurityGroupId: !Ref VpcLinkSecurityGroup
-  TaskSecurityGroup:
-    Type: AWS::EC2::SecurityGroup
-    Properties:
-      GroupDescription: RecallOps tasks accept only ALB traffic
+      GroupDescription: RecallOps API task ingress only from internal ALB
       VpcId: !Ref VpcId
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 8080
           ToPort: 8080
           SourceSecurityGroupId: !Ref LoadBalancerSecurityGroup
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
+  WorkerTaskSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: RecallOps worker tasks have no ingress
+      VpcId: !Ref VpcId
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
   LoadBalancer:
     Type: AWS::ElasticLoadBalancingV2::LoadBalancer
     Properties:
       Scheme: internal
       Type: application
+      IpAddressType: ipv4
       SecurityGroups: [!Ref LoadBalancerSecurityGroup]
-      Subnets: [!Ref OriginSubnetA, !Ref OriginSubnetB]
+      Subnets: !Ref PublicSubnetIds
       LoadBalancerAttributes:
         - { Key: routing.http.drop_invalid_header_fields.enabled, Value: 'true' }
+        - { Key: routing.http.desync_mitigation_mode, Value: strictest }
+        - { Key: routing.http.x_amzn_tls_version_and_cipher_suite.enabled, Value: 'true' }
         - { Key: deletion_protection.enabled, Value: 'false' }
+        - { Key: idle_timeout.timeout_seconds, Value: '60' }
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
   TargetGroup:
     Type: AWS::ElasticLoadBalancingV2::TargetGroup
     Properties:
       VpcId: !Ref VpcId
       Port: 8080
       Protocol: HTTP
+      ProtocolVersion: HTTP1
       TargetType: ip
-      HealthCheckPath: !Ref HealthCheckPath
+      HealthCheckEnabled: true
+      HealthCheckPath: /health
+      HealthCheckIntervalSeconds: 15
+      HealthCheckTimeoutSeconds: 5
+      HealthyThresholdCount: 2
+      UnhealthyThresholdCount: 2
       Matcher: { HttpCode: '200' }
       TargetGroupAttributes:
-        - { Key: deregistration_delay.timeout_seconds, Value: '30' }
+        - { Key: deregistration_delay.timeout_seconds, Value: '20' }
+      Tags:
+        - { Key: Application, Value: RecallOps }
+
   HttpListener:
     Type: AWS::ElasticLoadBalancingV2::Listener
     Properties:
       LoadBalancerArn: !Ref LoadBalancer
       Port: 80
       Protocol: HTTP
-      DefaultActions: [{ Type: forward, TargetGroupArn: !Ref TargetGroup }]
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref TargetGroup
 
-  ApiAccessLogGroup:
-    Type: AWS::Logs::LogGroup
+  WebAcl:
+    Type: AWS::WAFv2::WebACL
     Properties:
-      LogGroupName: !Sub '/aws/apigateway/${AWS::StackName}'
-      RetentionInDays: 30
+      Name: !Sub '${AWS::StackName}-regional'
+      Scope: REGIONAL
+      DefaultAction: { Allow: {} }
+      VisibilityConfig:
+        CloudWatchMetricsEnabled: true
+        MetricName: !Sub '${AWS::StackName}-web-acl'
+        SampledRequestsEnabled: false
+      Rules:
+        - Name: rate-limit
+          Priority: 0
+          Action: { Block: {} }
+          Statement:
+            RateBasedStatement:
+              AggregateKeyType: IP
+              EvaluationWindowSec: 300
+              Limit: 500
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${AWS::StackName}-rate-limit'
+            SampledRequestsEnabled: false
+        - Name: aws-common-rule-set
+          Priority: 1
+          OverrideAction: { None: {} }
+          Statement:
+            ManagedRuleGroupStatement:
+              VendorName: AWS
+              Name: AWSManagedRulesCommonRuleSet
+          VisibilityConfig:
+            CloudWatchMetricsEnabled: true
+            MetricName: !Sub '${AWS::StackName}-common-rules'
+            SampledRequestsEnabled: false
+
+  WebAclAssociation:
+    Type: AWS::WAFv2::WebACLAssociation
+    Properties:
+      ResourceArn: !Ref LoadBalancer
+      WebACLArn: !GetAtt WebAcl.Arn
+
   Api:
     Type: AWS::ApiGatewayV2::Api
     Properties:
       Name: !Sub '${AWS::StackName}-api'
       ProtocolType: HTTP
       DisableExecuteApiEndpoint: false
+
   ApiVpcLink:
     Type: AWS::ApiGatewayV2::VpcLink
     Properties:
       Name: !Sub '${AWS::StackName}-link'
       SecurityGroupIds: [!Ref VpcLinkSecurityGroup]
-      SubnetIds: [!Ref OriginSubnetA, !Ref OriginSubnetB]
+      SubnetIds: !Ref PublicSubnetIds
+      Tags:
+        Application: RecallOps
+
   ApiIntegration:
     Type: AWS::ApiGatewayV2::Integration
     Properties:
@@ -476,12 +562,15 @@ Resources:
       ConnectionType: VPC_LINK
       ConnectionId: !Ref ApiVpcLink
       PayloadFormatVersion: '1.0'
+      TimeoutInMillis: 30000
+
   ApiRoute:
     Type: AWS::ApiGatewayV2::Route
     Properties:
       ApiId: !Ref Api
       RouteKey: '$default'
       Target: !Join ['/', [integrations, !Ref ApiIntegration]]
+
   ApiStage:
     Type: AWS::ApiGatewayV2::Stage
     Properties:
@@ -490,233 +579,353 @@ Resources:
       AutoDeploy: true
       DefaultRouteSettings:
         DetailedMetricsEnabled: true
-        ThrottlingBurstLimit: 50
-        ThrottlingRateLimit: 25
+        ThrottlingBurstLimit: 40
+        ThrottlingRateLimit: 20
       AccessLogSettings:
         DestinationArn: !GetAtt ApiAccessLogGroup.Arn
-        Format: '{"requestId":"$context.requestId","ip":"$context.identity.sourceIp","method":"$context.httpMethod","path":"$context.path","status":"$context.status","latencyMs":"$context.responseLatency"}'
+        Format: '{"requestId":"$context.requestId","method":"$context.httpMethod","path":"$context.path","status":"$context.status","latencyMs":"$context.responseLatency"}'
 
-  UserPoolClient:
-    Type: AWS::Cognito::UserPoolClient
-    Properties:
-      UserPoolId: !Ref UserPool
-      ClientName: !Sub '${AWS::StackName}-browser'
-      GenerateSecret: false
-      AllowedOAuthFlowsUserPoolClient: true
-      AllowedOAuthFlows: [code]
-      AllowedOAuthScopes: [openid]
-      SupportedIdentityProviders: [COGNITO]
-      CallbackURLs: [!Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/']
-      LogoutURLs: [!Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/']
-      EnableTokenRevocation: true
-      PreventUserExistenceErrors: ENABLED
-      AccessTokenValidity: 1
-      TokenValidityUnits: { AccessToken: hours }
-
-  TaskDefinition:
+  ApiTaskDefinition:
     Type: AWS::ECS::TaskDefinition
     Properties:
       Family: !Sub '${AWS::StackName}-api'
-      RequiresCompatibilities: [FARGATE]
+      Cpu: '256'
+      Memory: '512'
       NetworkMode: awsvpc
-      Cpu: '512'
-      Memory: '1024'
-      ExecutionRoleArn: !GetAtt ExecutionRole.Arn
-      TaskRoleArn: !GetAtt TaskRole.Arn
-      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ExecutionRoleArn: !GetAtt ApiExecutionRole.Arn
+      TaskRoleArn: !GetAtt ApiTaskRole.Arn
       ContainerDefinitions:
-        - Name: migrate
-          Image: !Ref ImageUri
-          Essential: false
-          ReadonlyRootFilesystem: true
-          User: '65532'
-          LinuxParameters:
-            InitProcessEnabled: true
-            Capabilities: { Drop: [ALL] }
-          Command: [recallops-migrate]
-          Secrets:
-            - Name: RECALLOPS_DATABASE_URL
-              ValueFrom: !If
-                - HasSeparateMigrationSecret
-                - !Ref MigrationDatabaseUrlSecretArn
-                - !Ref DatabaseUrlSecretArn
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref LogGroup
-              awslogs-region: !Ref 'AWS::Region'
-              awslogs-stream-prefix: migrate
-        - Name: seed
-          Image: !Ref ImageUri
-          Essential: false
-          ReadonlyRootFilesystem: true
-          User: '65532'
-          LinuxParameters:
-            InitProcessEnabled: true
-            Capabilities: { Drop: [ALL] }
-          DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
-          Command: [python, -m, recallops.demo]
-          Secrets:
-            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
-          Environment:
-            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: !Ref EmbeddingProvider }
-            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
-            - { Name: RECALLOPS_BEDROCK_EMBEDDING_MODEL_ID, Value: !Ref BedrockEmbeddingModelId }
-          LogConfiguration:
-            LogDriver: awslogs
-            Options:
-              awslogs-group: !Ref LogGroup
-              awslogs-region: !Ref 'AWS::Region'
-              awslogs-stream-prefix: seed
         - Name: api
           Image: !Ref ImageUri
           Essential: true
           ReadonlyRootFilesystem: true
-          User: '65532'
           LinuxParameters:
-            InitProcessEnabled: true
             Capabilities: { Drop: [ALL] }
-          DependsOn: [{ ContainerName: seed, Condition: SUCCESS }]
-          Command: [uvicorn, recallops.main:app, --host, 0.0.0.0, --port, '8080']
-          PortMappings: [{ ContainerPort: 8080, Protocol: tcp }]
+            InitProcessEnabled: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
           Secrets:
-            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref DatabaseUrlSecretArn }
+            - Name: RECALLOPS_DATABASE_URL
+              ValueFrom: !Ref DatabaseUrlSecretArn
+            - Name: RECALLOPS_JUDGE_RATE_LIMIT_KEY
+              ValueFrom: !Ref JudgeRateLimitSecretArn
           Environment:
             - { Name: RECALLOPS_STORE, Value: postgres }
+            - { Name: RECALLOPS_AUTH_MODE, Value: judge }
+            - { Name: RECALLOPS_JUDGE_COOKIE_SECURE, Value: 'true' }
+            - { Name: RECALLOPS_REASONING_PROVIDER, Value: deterministic }
+            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: deterministic }
+            - { Name: RECALLOPS_DIAGNOSTIC_PROVIDER, Value: none }
+            - Name: RECALLOPS_PUBLIC_ORIGIN
+              Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
             - { Name: RECALLOPS_BUILD_SHA, Value: !Ref BuildSha }
-            - { Name: RECALLOPS_REASONING_PROVIDER, Value: !Ref ReasoningProvider }
-            - { Name: RECALLOPS_EMBEDDING_PROVIDER, Value: !Ref EmbeddingProvider }
-            - { Name: RECALLOPS_AUTH_MODE, Value: oidc }
-            - { Name: RECALLOPS_OIDC_TENANT_CLAIM, Value: tenant_id }
-            - { Name: RECALLOPS_OIDC_ROLES_CLAIM, Value: 'cognito:groups' }
-            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
-            - { Name: RECALLOPS_BEDROCK_MODEL_ID, Value: !Ref BedrockModelId }
-            - { Name: RECALLOPS_BEDROCK_EMBEDDING_MODEL_ID, Value: !Ref BedrockEmbeddingModelId }
-            - { Name: RECALLOPS_OIDC_ISSUER, Value: !Sub 'https://cognito-idp.${AWS::Region}.${AWS::URLSuffix}/${UserPool}' }
-            - { Name: RECALLOPS_OIDC_AUDIENCE, Value: !Ref UserPoolClient }
-            - { Name: RECALLOPS_OIDC_AUTHORIZATION_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/authorize' }
-            - { Name: RECALLOPS_OIDC_TOKEN_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/oauth2/token' }
-            - { Name: RECALLOPS_OIDC_LOGOUT_URL, Value: !Sub 'https://${UserPoolDomain}.auth.${AWS::Region}.amazoncognito.com/logout' }
-            - { Name: RECALLOPS_OIDC_REDIRECT_URL, Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}/' }
-            - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
-            - { Name: RECALLOPS_EVIDENCE_VERIFIER, Value: aws }
-          HealthCheck:
-            Command:
-              - CMD
-              - python
-              - -c
-              - !Sub "import urllib.request; urllib.request.urlopen('http://localhost:8080${HealthCheckPath}', timeout=2)"
-            Interval: 30
-            Timeout: 5
-            Retries: 3
-            StartPeriod: 90
+            - { Name: RECALLOPS_RELEASE_IMAGE_DIGEST, Value: !Ref ImageDigest }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ID, Value: !Ref ReleaseId }
+            - { Name: RECALLOPS_RECEIPT_TRUSTED_KEYS_JSON, Value: !Ref TrustedKeysJson }
+            - { Name: RECALLOPS_AUTHORITY_BUNDLE_BUCKET, Value: !Ref EvidenceBucketName }
+            - { Name: RECALLOPS_AUTHORITY_BUNDLE_KMS_KEY_ID, Value: !Ref EvidenceEncryptionKeyArn }
+            - { Name: RECALLOPS_EVALUATION_VERSION, Value: governed-benchmark-v1 }
+            - { Name: RECALLOPS_CAPABILITY_POLICY_VERSION, Value: webmcp-capability-v1 }
+            - { Name: RECALLOPS_RECEIPT_POLICY_VERSION, Value: authority-receipt-policy-v1 }
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Ref LogGroup
-              awslogs-region: !Ref 'AWS::Region'
+              awslogs-group: !Ref ApiLogGroup
+              awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: api
+          StopTimeout: 30
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  OutboxTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-outbox'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      ExecutionRoleArn: !GetAtt OutboxExecutionRole.Arn
+      TaskRoleArn: !GetAtt OutboxTaskRole.Arn
+      ContainerDefinitions:
         - Name: outbox
           Image: !Ref ImageUri
           Essential: true
+          Command: [recallops-outbox, --watch, --poll-seconds, '5']
           ReadonlyRootFilesystem: true
-          User: '65532'
           LinuxParameters:
-            InitProcessEnabled: true
             Capabilities: { Drop: [ALL] }
-          DependsOn: [{ ContainerName: migrate, Condition: SUCCESS }]
-          Command: [recallops-outbox, --watch, --limit, '25', --poll-seconds, '5']
+            InitProcessEnabled: true
           Secrets:
-            - { Name: RECALLOPS_DATABASE_URL, ValueFrom: !Ref OutboxDatabaseUrlSecretArn }
+            - Name: RECALLOPS_DATABASE_URL
+              ValueFrom: !Ref OutboxDatabaseUrlSecretArn
           Environment:
-            - { Name: RECALLOPS_AWS_REGION, Value: !Ref 'AWS::Region' }
-            - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucket }
+            - { Name: RECALLOPS_EVIDENCE_BUCKET, Value: !Ref EvidenceBucketName }
+            - { Name: RECALLOPS_EVIDENCE_KMS_KEY_ID, Value: !Ref EvidenceEncryptionKeyArn }
           LogConfiguration:
             LogDriver: awslogs
             Options:
-              awslogs-group: !Ref LogGroup
-              awslogs-region: !Ref 'AWS::Region'
+              awslogs-group: !Ref OutboxLogGroup
+              awslogs-region: !Ref AWS::Region
               awslogs-stream-prefix: outbox
-  Service:
+          StopTimeout: 30
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  ReceiptTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-receipt'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      ExecutionRoleArn: !GetAtt ReceiptExecutionRole.Arn
+      TaskRoleArn: !GetAtt ReceiptTaskRole.Arn
+      ContainerDefinitions:
+        - Name: receipt
+          Image: !Ref ImageUri
+          Essential: true
+          Command: [recallops-receipt-worker, --watch, --poll-seconds, '2']
+          ReadonlyRootFilesystem: true
+          LinuxParameters:
+            Capabilities: { Drop: [ALL] }
+            InitProcessEnabled: true
+          Secrets:
+            - Name: RECALLOPS_DATABASE_URL
+              ValueFrom: !Ref OutboxDatabaseUrlSecretArn
+            - Name: RECALLOPS_RECEIPT_SUBJECT_PSEUDONYM_KEY_B64
+              ValueFrom: !Ref ReceiptPseudonymSecretArn
+          Environment:
+            - { Name: RECALLOPS_AWS_REGION, Value: !Ref AWS::Region }
+            - { Name: RECALLOPS_BUILD_SHA, Value: !Ref BuildSha }
+            - { Name: RECALLOPS_RELEASE_IMAGE_DIGEST, Value: !Ref ImageDigest }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ID, Value: !Ref ReleaseId }
+            - { Name: RECALLOPS_RECEIPT_KMS_KEY_ID, Value: !Ref ReceiptSigningKeyArn }
+            - { Name: RECALLOPS_RECEIPT_TRUSTED_KEYS_JSON, Value: !Ref TrustedKeysJson }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ARTIFACTS_BUCKET, Value: !Ref EvidenceBucketName }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ARTIFACTS_PREFIX, Value: !Ref ReleaseArtifactsPrefix }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ARTIFACTS_MANIFEST_JSON, Value: !Ref ReleaseArtifactsManifestJson }
+            - { Name: RECALLOPS_AUTHORITY_BUNDLE_BUCKET, Value: !Ref EvidenceBucketName }
+            - { Name: RECALLOPS_AUTHORITY_BUNDLE_KMS_KEY_ID, Value: !Ref EvidenceEncryptionKeyArn }
+            - { Name: RECALLOPS_EVALUATION_VERSION, Value: governed-benchmark-v1 }
+            - { Name: RECALLOPS_CAPABILITY_POLICY_VERSION, Value: webmcp-capability-v1 }
+            - { Name: RECALLOPS_RECEIPT_POLICY_VERSION, Value: authority-receipt-policy-v1 }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ReceiptLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: receipt
+          StopTimeout: 30
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  MigrationTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub '${AWS::StackName}-migration'
+      Cpu: '256'
+      Memory: '512'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      RuntimePlatform: { CpuArchitecture: X86_64, OperatingSystemFamily: LINUX }
+      ExecutionRoleArn: !GetAtt MigrationExecutionRole.Arn
+      TaskRoleArn: !GetAtt MigrationTaskRole.Arn
+      ContainerDefinitions:
+        - Name: migration
+          Image: !Ref ImageUri
+          Essential: true
+          Command: [recallops-migrate]
+          ReadonlyRootFilesystem: true
+          LinuxParameters:
+            Capabilities: { Drop: [ALL] }
+            InitProcessEnabled: true
+          Secrets:
+            - Name: RECALLOPS_DATABASE_URL
+              ValueFrom: !Ref MigrationDatabaseUrlSecretArn
+          Environment:
+            - { Name: RECALLOPS_BUILD_SHA, Value: !Ref BuildSha }
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref MigrationLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: migration
+          StopTimeout: 30
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  ApiService:
     Type: AWS::ECS::Service
-    DependsOn: HttpListener
+    DependsOn: [HttpListener, WebAclAssociation]
     Properties:
       ServiceName: !Sub '${AWS::StackName}-api'
       Cluster: !Ref Cluster
-      TaskDefinition: !Ref TaskDefinition
-      DesiredCount: !Ref DesiredCount
+      TaskDefinition: !Ref ApiTaskDefinition
+      DesiredCount: !Ref DesiredApiCount
       LaunchType: FARGATE
-      PlatformVersion: LATEST
-      HealthCheckGracePeriodSeconds: 120
+      PlatformVersion: 1.4.0
+      EnableECSManagedTags: true
+      EnableExecuteCommand: false
+      PropagateTags: TASK_DEFINITION
       DeploymentConfiguration:
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
         MaximumPercent: 200
         MinimumHealthyPercent: 100
-        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+      HealthCheckGracePeriodSeconds: 60
+      LoadBalancers:
+        - ContainerName: api
+          ContainerPort: 8080
+          TargetGroupArn: !Ref TargetGroup
       NetworkConfiguration:
         AwsvpcConfiguration:
           AssignPublicIp: ENABLED
-          SecurityGroups: [!Ref TaskSecurityGroup]
-          Subnets: !Ref TaskSubnetIds
-      LoadBalancers:
-        - { ContainerName: api, ContainerPort: 8080, TargetGroupArn: !Ref TargetGroup }
-  CpuAlarm:
+          SecurityGroups: [!Ref ApiTaskSecurityGroup]
+          Subnets: !Ref PublicSubnetIds
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  OutboxService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-outbox'
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref OutboxTaskDefinition
+      DesiredCount: !Ref DesiredOutboxCount
+      LaunchType: FARGATE
+      PlatformVersion: 1.4.0
+      EnableECSManagedTags: true
+      EnableExecuteCommand: false
+      PropagateTags: TASK_DEFINITION
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref WorkerTaskSecurityGroup]
+          Subnets: !Ref PublicSubnetIds
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  ReceiptService:
+    Type: AWS::ECS::Service
+    Properties:
+      ServiceName: !Sub '${AWS::StackName}-receipt'
+      Cluster: !Ref Cluster
+      TaskDefinition: !Ref ReceiptTaskDefinition
+      DesiredCount: !Ref DesiredReceiptCount
+      LaunchType: FARGATE
+      PlatformVersion: 1.4.0
+      EnableECSManagedTags: true
+      EnableExecuteCommand: false
+      PropagateTags: TASK_DEFINITION
+      DeploymentConfiguration:
+        DeploymentCircuitBreaker: { Enable: true, Rollback: true }
+        MaximumPercent: 200
+        MinimumHealthyPercent: 0
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          SecurityGroups: [!Ref WorkerTaskSecurityGroup]
+          Subnets: !Ref PublicSubnetIds
+      Tags:
+        - { Key: Application, Value: RecallOps }
+        - { Key: ReleaseId, Value: !Ref ReleaseId }
+
+  HealthyTargetCountAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: RecallOps sustained high CPU
-      Namespace: AWS/ECS
-      MetricName: CPUUtilization
-      Dimensions:
-        - { Name: ClusterName, Value: !Ref Cluster }
-        - { Name: ServiceName, Value: !GetAtt Service.Name }
-      Statistic: Average
-      Period: 300
-      EvaluationPeriods: 2
-      DatapointsToAlarm: 2
-      Threshold: 80
-      ComparisonOperator: GreaterThanThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
-  Target5xxAlarm:
-    Type: AWS::CloudWatch::Alarm
-    Properties:
-      AlarmDescription: RecallOps target errors
+      AlarmName: !Sub '${AWS::StackName}-healthy-target-shortfall'
       Namespace: AWS/ApplicationELB
-      MetricName: HTTPCode_Target_5XX_Count
+      MetricName: HealthyHostCount
       Dimensions:
-        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
-        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
-      Statistic: Sum
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !GetAtt TargetGroup.TargetGroupFullName
+      Statistic: Minimum
       Period: 60
       EvaluationPeriods: 2
       DatapointsToAlarm: 2
-      Threshold: 5
-      ComparisonOperator: GreaterThanOrEqualToThreshold
-      TreatMissingData: notBreaching
-      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+      Threshold: !Ref DesiredApiCount
+      ComparisonOperator: LessThanThreshold
+      TreatMissingData: breaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
 
-  UnhealthyTargetsAlarm:
+  UnhealthyTargetAlarm:
     Type: AWS::CloudWatch::Alarm
     Properties:
-      AlarmDescription: RecallOps has no healthy application targets
+      AlarmName: !Sub '${AWS::StackName}-unhealthy-targets'
       Namespace: AWS/ApplicationELB
       MetricName: UnHealthyHostCount
       Dimensions:
-        - { Name: LoadBalancer, Value: !GetAtt LoadBalancer.LoadBalancerFullName }
-        - { Name: TargetGroup, Value: !GetAtt TargetGroup.TargetGroupFullName }
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !GetAtt TargetGroup.TargetGroupFullName
       Statistic: Maximum
       Period: 60
       EvaluationPeriods: 2
       DatapointsToAlarm: 2
-      Threshold: 1
-      ComparisonOperator: GreaterThanOrEqualToThreshold
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
       TreatMissingData: breaching
-      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref 'AWS::NoValue']
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
+
+  Target5xxAlarm:
+    Type: AWS::CloudWatch::Alarm
+    Properties:
+      AlarmName: !Sub '${AWS::StackName}-target-5xx'
+      Namespace: AWS/ApplicationELB
+      MetricName: HTTPCode_Target_5XX_Count
+      Dimensions:
+        - Name: LoadBalancer
+          Value: !GetAtt LoadBalancer.LoadBalancerFullName
+        - Name: TargetGroup
+          Value: !GetAtt TargetGroup.TargetGroupFullName
+      Statistic: Sum
+      Period: 60
+      EvaluationPeriods: 2
+      DatapointsToAlarm: 2
+      Threshold: 0
+      ComparisonOperator: GreaterThanThreshold
+      TreatMissingData: notBreaching
+      AlarmActions: !If [HasAlarmTopic, [!Ref AlarmTopicArn], !Ref AWS::NoValue]
 
 Outputs:
-  ServiceUrl: { Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}' }
-  ApiId: { Value: !Ref Api }
-  ClusterName: { Value: !Ref Cluster }
-  ServiceName: { Value: !GetAtt Service.Name }
-  UserPoolId: { Value: !Ref UserPool }
-  UserPoolClientId: { Value: !Ref UserPoolClient }
-  EvidenceBucketName: { Value: !Ref EvidenceBucket }
+  PublicUrl:
+    Value: !Sub 'https://${Api}.execute-api.${AWS::Region}.${AWS::URLSuffix}'
+  ClusterName:
+    Value: !Ref Cluster
+  ApiServiceName:
+    Value: !GetAtt ApiService.Name
+  OutboxServiceName:
+    Value: !GetAtt OutboxService.Name
+  ReceiptServiceName:
+    Value: !GetAtt ReceiptService.Name
+  MigrationTaskDefinitionArn:
+    Value: !Ref MigrationTaskDefinition
+  WorkerTaskSecurityGroupId:
+    Value: !Ref WorkerTaskSecurityGroup
+  ApiTaskSecurityGroupId:
+    Value: !Ref ApiTaskSecurityGroup
+  PublicSubnetIds:
+    Value: !Join [',', !Ref PublicSubnetIds]
+  ReleaseIdentity:
+    Value: !Sub '${ReleaseId}:${BuildSha}:${ImageDigest}:${ReceiptKeyThumbprint}'

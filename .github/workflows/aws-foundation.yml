@@ -1,0 +1,88 @@
+name: AWS zero-spend release foundation
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Frozen release identifier to authorize in the initial receipt trust root
+        required: true
+        default: webmcp-rc1
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: recallops-aws-foundation
+  cancel-in-progress: false
+
+jobs:
+  foundation:
+    name: Verify plan, provision foundation, export trust root
+    runs-on: ubuntu-latest
+    environment: recallops-production
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install the frozen release tooling boundary
+        run: |
+          python -m pip install --requirement requirements.lock
+          python -m pip install --no-deps --editable .
+
+      - name: Acquire short-lived bounded AWS credentials
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::158363272009:role/RecallOpsGitHubDeployment
+          role-session-name: recallops-foundation-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Enforce the standalone Free Plan gate
+        run: >-
+          python scripts/aws-zero-spend-preflight.py
+          --minimum-credits 50 --minimum-days 14
+          --output artifacts/aws/zero-spend-preflight.json
+
+      - name: Validate and deploy the immutable foundation
+        shell: bash
+        run: |
+          set -euo pipefail
+          aws cloudformation validate-template --template-body file://infra/aws/foundation.yaml >/dev/null
+          aws cloudformation deploy \
+            --stack-name recallops-foundation \
+            --template-file infra/aws/foundation.yaml \
+            --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
+            --no-fail-on-empty-changeset \
+            --tags Application=RecallOps ManagedBy=CloudFormation ZeroCardSpend=true
+
+      - name: Pin the live Ed25519 public key without signing authority
+        shell: bash
+        env:
+          RELEASE_ID: ${{ inputs.release_id }}
+        run: |
+          set -euo pipefail
+          signing_key="$(aws cloudformation describe-stacks \
+            --stack-name recallops-foundation \
+            --query "Stacks[0].Outputs[?OutputKey=='ReceiptSigningKeyArn'].OutputValue | [0]" \
+            --output text)"
+          test -n "$signing_key" && test "$signing_key" != None
+          mkdir -p artifacts/aws
+          python scripts/pin-kms-receipt-key.py \
+            --key-id "$signing_key" --release-id "$RELEASE_ID" \
+            --output artifacts/aws/trusted-receipt-keys.json
+
+      - name: Retain the sanitized gate and repository trust-root candidate
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recallops-foundation-${{ github.run_id }}
+          path: |
+            artifacts/aws/zero-spend-preflight.json
+            artifacts/aws/trusted-receipt-keys.json
+          if-no-files-found: error
+          retention-days: 7

@@ -119,6 +119,7 @@ def outbox_settings(bucket: str | None = "bucket") -> SimpleNamespace:
     return SimpleNamespace(
         database_url="postgresql://db",
         evidence_bucket=bucket,
+        evidence_kms_key_id="arn:aws:kms:us-east-1:123:key/key-id",
         aws_region="us-east-1",
         provider_connect_timeout_seconds=1,
         provider_read_timeout_seconds=2,

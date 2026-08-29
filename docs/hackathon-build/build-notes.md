@@ -658,3 +658,49 @@
 - Item 12 remains unmarked until the frozen live URL, exact two-client results, manual accessibility
   record, public video URL, final screenshots, entrant-confirmed form answers, and verified Devpost
   project page exist. Preparing these files does not submit anything to Devpost.
+
+### Item 7 — pinned receipt core and standalone Free Plan foundation (complete)
+
+- Replaced the obsolete Cognito/shared-task public template with a no-signup judge-session topology
+  and separate API, evidence-outbox, receipt-finalizer, and one-shot migration task/execution roles.
+  The API can only read exact finalized bundle versions; only the receipt task can call the exact
+  Ed25519 key, and only `kms:Sign` is constrained to `ED25519_SHA_512`.
+- Added a separate foundation stack for the immutable ECR repository, non-exportable
+  `ECC_NIST_EDWARDS25519` receipt key, customer-managed evidence encryption key, generated HMAC
+  secrets, and a private versioned S3 bucket with KMS encryption, public-access blocking, TLS-only
+  policy, and 14-day compliance-mode Object Lock. The signing and encryption keys are retained with
+  the evidence so stack deletion cannot silently destroy later verification. The CloudFormation
+  execution policy is bounded to
+  RecallOps-named resources in `us-east-1`.
+- Added a fail-closed AWS account preflight that requires `FREE` + `ACTIVE`, at least USD 50 of
+  remaining credits, at least 14 days before expiration, and a provably standalone account. Added
+  root bootstrap and GitHub OIDC foundation workflows; neither principal has receipt-signing
+  permission. The initial trust-root helper accepts only the frozen Ed25519 profile and refuses
+  replacement without an explicit signed transition.
+- Replaced local-only production receipt materials with exact S3 version/digest pins and injected
+  canonical trust registries for both the API readiness verifier and receipt worker. Added
+  idempotent release-artifact upload reconciliation and customer-managed KMS encryption for the
+  legacy evidence outbox when configured.
+- Verification passed: tracked Ruff, strict mypy, CloudFormation lint for all three templates,
+  focused AWS bootstrap tests, 475/475 combined unit/API/fresh-Cockroach tests, 5,359/5,359
+  application statements and 1,192/1,192 branches (100.00%), 10/10 browser tests, 4/4 native
+  Chromium WebMCP tests, and 15/15 offline authority vectors. Browser concurrency is now fixed at
+  the same two-worker contract locally and in CI after an eight-worker host-saturation run exposed
+  timeout variance.
+- Added 23 focused AWS boundary tests that parse the CloudFormation and IAM documents and fail on
+  weakened immutability, key durability, role separation, signing authority, bundle access,
+  ingress topology, bootstrap counts, retired-account references, organization mutation, or broad
+  identity mutation. The refreshed templates pass those tests and CloudFormation lint locally.
+- Live AWS validation passed in standalone account `158363272009`: both identity policies have zero
+  Access Analyzer findings, both templates pass the service-side validator, and the foundation is
+  `CREATE_COMPLETE` and `IN_SYNC` with zero drifted resources. The repository now pins live KMS
+  thumbprint `VIqQfWwrVJ8OqkQu974E2c8zdd0xw1f2W4YFkgEQCTE`; startup performed a real
+  `ED25519_SHA_512`/`RAW` signature and locally verified the returned 64-byte signature. Live checks
+  confirmed immutable/scanned ECR, enabled symmetric-key rotation, private KMS-encrypted versioned
+  S3, 14-day compliance Object Lock, full public-access blocking, a $50 cost budget, and the
+  fail-closed standalone `FREE`/`ACTIVE` plan gate with $120 credits and card spending disallowed.
+- Two failed foundation attempts produced useful negative evidence before success. The first exposed
+  an omitted `GetRandomPassword` permission; the second exposed an ECR policy rejected by the live
+  service. Both rolled back. The first attempt's two exact retained keys were scheduled for deletion
+  on 2026-09-05; `RetainExceptOnCreate` now prevents future create-rollbacks from orphaning keys.
+  The corrected templates and IAM policies carry regression tests for every discovered boundary.
