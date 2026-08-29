@@ -274,19 +274,79 @@ def encoded_document() -> bytes:
     return (json.dumps(build_document(), indent=2, ensure_ascii=False) + "\n").encode("utf-8")
 
 
+def validate_document(actual: dict[str, object]) -> bool:
+    expected = build_document()
+    if any(
+        actual.get(field) != expected[field]
+        for field in (
+            "schema_version",
+            "source_prd",
+            "source_prd_sha256",
+            "counts",
+            "status_policy",
+        )
+    ):
+        return False
+    source_revision = actual.get("source_revision")
+    if not isinstance(source_revision, str) or not re.fullmatch(r"[a-f0-9]{40}", source_revision):
+        return False
+    actual_records = actual.get("requirements")
+    expected_records = expected["requirements"]
+    if not isinstance(actual_records, list) or not isinstance(expected_records, list):
+        return False
+    if len(actual_records) != 180:
+        return False
+    exact_fields = (
+        "id",
+        "requirement",
+        "requirement_sha256",
+        "owner",
+        "enforcing_boundary",
+        "positive_test",
+        "negative_test",
+        "live_proof",
+        "assurance_artifact",
+    )
+    allowed_statuses = set(expected["status_policy"]["allowed"])
+    seen: set[str] = set()
+    for record, expected_record in zip(actual_records, expected_records, strict=True):
+        if not isinstance(record, dict) or not isinstance(expected_record, dict):
+            return False
+        if any(record.get(field) != expected_record[field] for field in exact_fields):
+            return False
+        identifier = record.get("id")
+        if not isinstance(identifier, str) or identifier in seen:
+            return False
+        seen.add(identifier)
+        if record.get("source_revision") != source_revision:
+            return False
+        if record.get("status") not in allowed_statuses:
+            return False
+        for field in ("claim_ids", "raw_evidence", "receipt_fields"):
+            value = record.get(field)
+            if not isinstance(value, list) or not value:
+                return False
+        if not isinstance(record.get("reproduce"), str) or not record["reproduce"]:
+            return False
+    return True
+
+
 def main() -> int:
     parser = argparse.ArgumentParser()
     parser.add_argument("--check", action="store_true")
     args = parser.parse_args()
-    expected = encoded_document()
     if args.check:
-        if not OUTPUT_PATH.exists() or OUTPUT_PATH.read_bytes() != expected:
+        try:
+            actual = json.loads(OUTPUT_PATH.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            actual = {}
+        if not validate_document(actual):
             print(f"stale requirement trace: {OUTPUT_PATH.relative_to(ROOT)}")
             return 1
         print("requirements trace valid: 149/149 story, 16/16 edge, 15/15 cross-cutting")
         return 0
     OUTPUT_PATH.parent.mkdir(parents=True, exist_ok=True)
-    OUTPUT_PATH.write_bytes(expected)
+    OUTPUT_PATH.write_bytes(encoded_document())
     print(f"wrote {OUTPUT_PATH.relative_to(ROOT)}")
     return 0
 

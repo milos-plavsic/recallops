@@ -544,3 +544,31 @@
 - The remaining item-8 external boundary is unchanged: run the same production worker against the
   release-pinned AWS KMS key and versioned private S3 bucket, then download and independently verify
   that exact live object version. Local emulation is not represented as live AWS proof.
+
+### Item 9 — generated evidence and dual-gate core (external statement gate open)
+
+- Added a deterministic 12-case governed-retrieval benchmark and nine bounded WebMCP agent cases.
+  Similarity-only and governed selection consume the identical candidate arrays and deterministic
+  tie-break. The measured local result is 11/12 unsafe similarity-only selections versus 0/12
+  governed unsafe selections, 2 versus 0 pending-memory leaks, 3/3 correct abstentions, and a
+  recommendation change only after independent review. Results are explicitly synthetic and make
+  no production incident-rate claim.
+- Added a 12-claim registry with claim-specific live routes, workflow event types, test paths,
+  evaluation cases, receipt fields, raw artifacts, and an exact regeneration command. Enriched all
+  180 frozen requirements without marking any verified: each remains `implemented` until item 10
+  derives its status from complete assurance artifacts.
+- Implemented independent Live proof and Assurance gate derivation. Missing, failed, duplicate,
+  stale-SHA, stale-image, or mismatched artifacts keep their gate red, and release readiness is the
+  strict intersection. Two clean-directory generations are byte-identical in automated tests.
+- Added an acyclic release-statement payload plus KMS-signing and repository-pinned verification.
+  The public `/v1/release` projection compares database evidence to the running source, image,
+  policies, and evaluation version, then verifies the exact signed gate digests. Completing the
+  demo no longer changes a readiness badge; local evidence remains visibly pending.
+- Fixed a real concurrent registration weakness found by repeated native-client testing: a tool
+  lifecycle controller is reserved before awaiting browser registration, preventing duplicate
+  registrations during simultaneous authoritative refreshes. Native assessment readiness now waits
+  for completed registration rather than merely observing an intermediate tool name.
+- The committed local evidence identity deliberately uses an all-zero image digest and unpinned
+  placeholder key thumbprint, so both gates and release readiness are false. The final KMS-signed
+  statement can only be produced after the immutable image and AWS key exist; this external proof
+  is not claimed or replaced with a local signer.
