@@ -2,19 +2,26 @@
   "Version": "2012-10-17",
   "Statement": [
     {
-      "Sid": "RecallOpsCloudFormation",
+      "Sid": "ManageRecallOpsStacks",
       "Effect": "Allow",
       "Action": [
         "cloudformation:CreateStack",
         "cloudformation:UpdateStack",
         "cloudformation:DeleteStack",
         "cloudformation:ContinueUpdateRollback",
+        "cloudformation:CreateChangeSet",
+        "cloudformation:DeleteChangeSet",
+        "cloudformation:DescribeChangeSet",
+        "cloudformation:ExecuteChangeSet",
         "cloudformation:DescribeStacks",
         "cloudformation:DescribeStackEvents",
         "cloudformation:DescribeStackResources",
-        "cloudformation:GetTemplateSummary"
+        "cloudformation:DescribeStackResource",
+        "cloudformation:GetTemplate",
+        "cloudformation:GetTemplateSummary",
+        "cloudformation:ListStackResources"
       ],
-      "Resource": "arn:aws:cloudformation:*:778900739705:stack/recallops-*/*"
+      "Resource": "arn:aws:cloudformation:us-east-1:158363272009:stack/recallops-*/*"
     },
     {
       "Sid": "ValidateRecallOpsTemplates",
@@ -26,146 +33,42 @@
       "Resource": "*"
     },
     {
-      "Sid": "RecallOpsEcr",
+      "Sid": "PassOnlyRecallOpsCloudFormationRole",
       "Effect": "Allow",
-      "Action": [
-        "ecr:CreateRepository",
-        "ecr:DescribeRepositories",
-        "ecr:DescribeImages",
-        "ecr:PutLifecyclePolicy",
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:BatchGetImage",
-        "ecr:InitiateLayerUpload",
-        "ecr:UploadLayerPart",
-        "ecr:CompleteLayerUpload",
-        "ecr:PutImage"
-      ],
-      "Resource": "arn:aws:ecr:*:778900739705:repository/recallops"
+      "Action": "iam:PassRole",
+      "Resource": "arn:aws:iam::158363272009:role/recallops-cloudformation-execution",
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "cloudformation.amazonaws.com"
+        }
+      }
     },
     {
-      "Sid": "EcrLogin",
+      "Sid": "ReadRecallOpsCloudFormationRole",
+      "Effect": "Allow",
+      "Action": "iam:GetRole",
+      "Resource": "arn:aws:iam::158363272009:role/recallops-cloudformation-execution"
+    },
+    {
+      "Sid": "PublishImmutableRecallOpsImages",
+      "Effect": "Allow",
+      "Action": [
+        "ecr:BatchCheckLayerAvailability",
+        "ecr:CompleteLayerUpload",
+        "ecr:DescribeImages",
+        "ecr:DescribeRepositories",
+        "ecr:GetDownloadUrlForLayer",
+        "ecr:InitiateLayerUpload",
+        "ecr:PutImage",
+        "ecr:UploadLayerPart"
+      ],
+      "Resource": "arn:aws:ecr:us-east-1:158363272009:repository/recallops"
+    },
+    {
+      "Sid": "AuthenticateToEcr",
       "Effect": "Allow",
       "Action": "ecr:GetAuthorizationToken",
       "Resource": "*"
-    },
-    {
-      "Sid": "RecallOpsRuntimeInfrastructure",
-      "Effect": "Allow",
-      "Action": [
-        "ecs:CreateCluster",
-        "ecs:DeleteCluster",
-        "ecs:DescribeClusters",
-        "ecs:TagResource",
-        "ecs:UntagResource",
-        "ecs:PutClusterCapacityProviders",
-        "ecs:RegisterTaskDefinition",
-        "ecs:DeregisterTaskDefinition",
-        "ecs:DescribeTaskDefinition",
-        "ecs:RunTask",
-        "ecs:DescribeTasks",
-        "ecs:StopTask",
-        "ecs:CreateService",
-        "ecs:UpdateService",
-        "ecs:DeleteService",
-        "ecs:DescribeServices",
-        "logs:CreateLogGroup",
-        "logs:DeleteLogGroup",
-        "logs:DescribeLogGroups",
-        "logs:DescribeLogStreams",
-        "logs:GetLogEvents",
-        "logs:PutRetentionPolicy",
-        "logs:TagResource",
-        "logs:UntagResource"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "RecallOpsNetworking",
-      "Effect": "Allow",
-      "Action": [
-        "ec2:DescribeVpcs",
-        "ec2:DescribeSubnets",
-        "ec2:DescribeSecurityGroups",
-        "ec2:DescribeInternetGateways",
-        "ec2:CreateSecurityGroup",
-        "ec2:DeleteSecurityGroup",
-        "ec2:AuthorizeSecurityGroupIngress",
-        "ec2:RevokeSecurityGroupIngress",
-        "ec2:CreateTags",
-        "elasticloadbalancing:CreateLoadBalancer",
-        "elasticloadbalancing:DeleteLoadBalancer",
-        "elasticloadbalancing:CreateTargetGroup",
-        "elasticloadbalancing:DeleteTargetGroup",
-        "elasticloadbalancing:CreateListener",
-        "elasticloadbalancing:DeleteListener",
-        "elasticloadbalancing:DescribeLoadBalancers",
-        "elasticloadbalancing:DescribeTargetGroups",
-        "elasticloadbalancing:DescribeListeners",
-        "elasticloadbalancing:DescribeTargetHealth",
-        "elasticloadbalancing:AddTags",
-        "elasticloadbalancing:RemoveTags"
-      ],
-      "Resource": "*"
-    },
-    {
-      "Sid": "RecallOpsStorage",
-      "Effect": "Allow",
-      "Action": [
-        "s3:CreateBucket",
-        "s3:DeleteBucket",
-        "s3:GetBucketLocation",
-        "s3:GetBucketPolicy",
-        "s3:PutBucketPolicy",
-        "s3:DeleteBucketPolicy",
-        "s3:GetBucketPublicAccessBlock",
-        "s3:PutBucketPublicAccessBlock",
-        "s3:GetEncryptionConfiguration",
-        "s3:PutEncryptionConfiguration",
-        "s3:GetLifecycleConfiguration",
-        "s3:PutLifecycleConfiguration",
-        "s3:GetBucketVersioning",
-        "s3:PutBucketVersioning",
-        "s3:GetBucketTagging",
-        "s3:PutBucketTagging",
-        "s3:DeleteBucketTagging"
-      ],
-      "Resource": [
-        "arn:aws:s3:::recallops-*",
-        "arn:aws:s3:::recallops-*/*"
-      ]
-    },
-    {
-      "Sid": "RecallOpsIamRoles",
-      "Effect": "Allow",
-      "Action": [
-        "iam:CreateRole",
-        "iam:DeleteRole",
-        "iam:GetRole",
-        "iam:TagRole",
-        "iam:UntagRole",
-        "iam:PutRolePolicy",
-        "iam:DeleteRolePolicy",
-        "iam:GetRolePolicy",
-        "iam:AttachRolePolicy",
-        "iam:DetachRolePolicy",
-        "iam:ListRolePolicies",
-        "iam:ListAttachedRolePolicies",
-        "iam:PassRole"
-      ],
-      "Resource": "arn:aws:iam::778900739705:role/recallops-*"
-    },
-    {
-      "Sid": "ManageRecallOpsSecrets",
-      "Effect": "Allow",
-      "Action": [
-        "secretsmanager:CreateSecret",
-        "secretsmanager:DescribeSecret",
-        "secretsmanager:GetSecretValue",
-        "secretsmanager:PutSecretValue",
-        "secretsmanager:TagResource"
-      ],
-      "Resource": "arn:aws:secretsmanager:*:778900739705:secret:recallops/*"
     }
   ]
 }
