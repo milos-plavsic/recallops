@@ -787,3 +787,8 @@
   Receipt creation still locks the mutable ledger head, but reads the append-only terminal event
   under the same serializable transaction without requesting forbidden event-update authority.
   Direct event mutation remains denied and a query-shape regression test preserves both facts.
+- CockroachDB then required queue-read authority for `ON CONFLICT DO NOTHING` on
+  `receipt_requests`. That authority remains withheld. The receipt request is part of the single-use
+  reviewer transition and its serializable transaction, so it now uses a plain insert: transaction
+  retries remain safe, while any committed duplicate fails closed instead of being silently
+  accepted. The API still cannot inspect or mutate the worker's private queue.

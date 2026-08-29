@@ -650,8 +650,7 @@ class PostgresAuthorityLedgerRepository:
             cursor.execute(
                 """INSERT INTO receipt_requests
                 (request_id,receipt_id,run_id,tenant_id,target_sequence,target_ledger_hash,
-                 publish_public) VALUES (%s,%s,%s,%s,%s,%s,%s)
-                ON CONFLICT (receipt_id) DO NOTHING""",
+                 publish_public) VALUES (%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     request_id,
                     receipt_id,

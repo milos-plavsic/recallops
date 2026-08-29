@@ -302,6 +302,8 @@ def test_postgres_receipt_request_guards_and_status_projection() -> None:
     assert "FOR UPDATE" in successful_pool.cursor.executions[0]
     assert "authority_events" in successful_pool.cursor.executions[1]
     assert "FOR UPDATE" not in successful_pool.cursor.executions[1]
+    assert "receipt_requests" in successful_pool.cursor.executions[3]
+    assert "ON CONFLICT" not in successful_pool.cursor.executions[3]
 
     assert (
         PostgresAuthorityLedgerRepository(_ScriptedPool([None])).receipt_status(
