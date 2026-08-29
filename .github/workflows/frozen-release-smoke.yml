@@ -1,0 +1,63 @@
+name: Frozen release public-path smoke
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: recallops-frozen-release-smoke
+  cancel-in-progress: false
+
+jobs:
+  public-smoke:
+    name: Verify live journey and offline receipt
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    env:
+      RECALLOPS_LIVE_URL: https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com
+      RECALLOPS_EXPECTED_RELEASE_ID: webmcp-rc7
+      RECALLOPS_RELEASE_TAG: webmcp-rc7-source
+      RECALLOPS_TRUSTED_KEYS: tools/trusted-receipt-keys.json
+      RECALLOPS_SMOKE_OUTPUT: artifacts/smoke-live.json
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          fetch-depth: 0
+
+      - name: Resolve immutable source tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          expected_source_sha="$(git rev-list --verify --max-count=1 "$RECALLOPS_RELEASE_TAG")"
+          test -n "$expected_source_sha"
+          echo "RECALLOPS_EXPECTED_SOURCE_SHA=$expected_source_sha" >> "$GITHUB_ENV"
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - run: npm ci
+      - run: npx playwright install --with-deps chromium
+
+      - name: Exercise full public path and verify bundle offline
+        run: node scripts/smoke-live.mjs
+
+      - name: Retain the exact point-in-time record
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: recallops-public-smoke-${{ github.run_id }}
+          path: |
+            artifacts/smoke-live.json
+            artifacts/item10-live-browser/live-browser-proof.json
+            artifacts/item10-live-browser/playwright-results.json
+            artifacts/item10-live-browser/authority-bundle.zip
+            artifacts/item10-live-browser/operator-reviewed.png
+            artifacts/item10-live-browser/independent-reviewer.png
+          if-no-files-found: warn
+          retention-days: 14

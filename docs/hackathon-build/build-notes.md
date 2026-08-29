@@ -849,3 +849,9 @@
   public/worker services at zero; run migrations and independently query the exact immutable
   record; only then enable the API and receipt worker under the same release identity. This removes
   the request-before-bootstrap race without granting the migrator proof-gate or signing authority.
+- Added the missing six-hour external monitor as a credential-free GitHub Actions workflow. It runs
+  the complete public browser journey, verifies the downloaded receipt bundle offline, compares
+  release identity before/bundle/after, retains evidence for 14 days, and fails the workflow on any
+  drift. It has repository read permission only and therefore cannot mutate AWS, the database, or
+  either proof gate. The frozen source is resolved from the explicit `webmcp-rc7-source` tag rather
+  than copied into a self-referential build file.

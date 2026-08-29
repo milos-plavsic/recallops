@@ -177,6 +177,14 @@ alter database policy and must be protected as release authority. Proof-gate fin
 signed release statement are separately derived, artifact-bound operations and are never performed
 by this migration path.
 
+The credential-free `.github/workflows/frozen-release-smoke.yml` runs the complete synthetic public
+journey on a six-hour schedule. It resolves the frozen source from the explicit release tag,
+checks release identity before and after the journey, downloads the public bundle, verifies it with
+the repository-pinned key while offline, and retains the result. The workflow has only repository
+read permission and no AWS, database, KMS, S3, or release-finalization credential, so a compromised
+or falsely passing smoke cannot turn either release gate green. A failed scheduled workflow is the
+operator alert surface; repository notification policy must route failed Actions runs to the owner.
+
 The CockroachDB secret must retain `sslmode=verify-full` and point `sslrootcert` to
 the runtime CA bundle (`/etc/ssl/certs/ca-certificates.crt` in the supplied image).
 Validate the exact image before deployment:
