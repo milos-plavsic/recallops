@@ -82,6 +82,18 @@ separate from judge mode and is not used as identity proof.
 
 ## Milestone 6: evaluation, deployment, and submission proof
 
+- Treat zero payment-card spend as a fail-closed release invariant. No metered AWS resource may be
+  created until the account is independently shown to be on an eligible Free Plan with sufficient
+  active credits and a safe expiry horizon. Never create or join an AWS Organization from the
+  deployment account. A budget, alert, forecast, or automation is defense in depth and never
+  satisfies this gate because AWS billing data is delayed.
+- Retain a sanitized pre-deployment billing gate artifact containing the account-plan status,
+  remaining-credit amount, credit expiry, eligible-service scope, projected maximum deployment
+  cost, safety margin, planned teardown time, and approving evidence. Never record payment data,
+  credit identifiers, email addresses, or other account secrets in the repository.
+- If the plan is `PAID`, credits are absent/ineligible, AWS cannot confirm zero card exposure, or
+  any required value is unknown, keep AWS deployment blocked and produce local evaluation proof
+  instead. Do not weaken this condition to meet the submission deadline.
 - Run WebMCP prompt, tool, state, journey, failure, and browser evaluations.
 - Regenerate existing SBOM, deployment, and supply-chain evidence for the final image.
 - Test the live deployment in ChatGPT's in-app browser and the permitted Chrome configuration.

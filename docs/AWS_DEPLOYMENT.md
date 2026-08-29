@@ -1,5 +1,32 @@
 # Secure AWS deployment
 
+> **Zero-spend release gate:** this project must not be deployed to a metered AWS service merely
+> because credits are expected to cover it. Before provisioning, verify and retain sanitized
+> evidence of an eligible `FREE` and `ACTIVE` account plan, sufficient active credits, expiry after
+> the scheduled teardown plus safety margin, and service eligibility. AWS Budgets and cost alerts
+> are delayed controls, not hard spending caps. If AWS cannot confirm zero payment-card exposure,
+> deployment is blocked.
+
+An earlier candidate account was retired from deployment after an Organizations setup changed it to
+`PAID` and expired its Free Tier credit. Its single-account Organization was deleted, and both
+orphaned IAM Identity Center multi-Region KMS keys were scheduled for deletion with the minimum
+seven-day recovery window. AWS documents that customer-managed keys scheduled for deletion do not
+incur key-storage charges. That account must never receive a RecallOps workload.
+
+The active deployment account was independently verified on 2026-08-29 as standalone, `FREE`, and
+`ACTIVE`, with USD 100 usable credits, no existing metered workload, and a Free Plan expiration of
+2027-02-28. AWS Organizations and organization-level IAM Identity Center are prohibited. GitHub
+Actions obtains short-lived credentials through an IAM OIDC role bound to the repository's
+immutable owner/repository subject, the `recallops-production` environment, and its `main`-only
+deployment branch policy. The role has no general infrastructure permissions: it can publish only
+to the `recallops` ECR repository, manage only `recallops-*` CloudFormation stacks, and pass only
+the exact CloudFormation execution role. A USD 50 gross-cost monthly budget supplies early actual
+and forecast alerts; the Free Plan remains the hard no-charge boundary.
+
+Root has no access keys and its local bootstrap session was logged out. Root MFA was explicitly
+deferred and remains a red security/readiness gate; enable it before any application resource is
+created or any submission-ready security claim is made.
+
 RecallOps runs on ECS Fargate behind an HTTPS Application Load Balancer. AWS WAF
 rate-limits abusive clients. Tasks run without public IP addresses, retrieve the
 CockroachDB URL from Secrets Manager and write versioned evidence objects to a private S3 bucket.
@@ -15,6 +42,9 @@ Arbitrary HTTP references are rejected to avoid SSRF.
 
 ## Prerequisites
 
+- A passed zero-spend release gate. The evidence must show account plan, plan state, remaining
+  eligible credits, expiry, projected worst-case cost, safety margin, and teardown deadline. Values
+  must come from AWS Billing or written AWS Support confirmation, not assumptions.
 - Two public subnets for the ALB and two private subnets for Fargate, across at least
   two Availability Zones.
 - Private-subnet egress through NAT. RecallOps needs outbound TLS to CockroachDB,
