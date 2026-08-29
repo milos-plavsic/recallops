@@ -6,6 +6,7 @@ relationship is rejected by a named database constraint.
 """
 
 import argparse
+import hashlib
 import json
 import os
 from collections.abc import Sequence
@@ -80,10 +81,10 @@ def _seed_boundary_rows(
         cursor.execute(
             """INSERT INTO memories
                (id, tenant_id, service, service_version, symptom, action, outcome,
-                outcome_score, confidence, embedding)
+                outcome_score, confidence, memory_digest, embedding)
                VALUES (%s, %s, 'boundary-service', '1.0.0', 'probe', 'inspect',
-                       'probe', 0, 0.5, %s::VECTOR)""",
-            (memory_id, tenant, _vector()),
+                       'probe', 1, 0.5, %s, %s::VECTOR)""",
+            (memory_id, tenant, hashlib.sha256(str(memory_id).encode()).hexdigest(), _vector()),
         )
     execution_id, observation_id = uuid4(), uuid4()
     cursor.execute(
@@ -171,20 +172,20 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     connection,
                     """INSERT INTO memory_events
                        (id, memory_id, tenant_id, actor_id, action, reason, from_state,
-                        to_state)
+                        to_state, memory_digest)
                        VALUES (%s, %s, 'boundary_b', 'probe', 'quarantine',
-                               'boundary probe', 'active', 'quarantined')""",
-                    (uuid4(), memory_a),
+                               'boundary probe', 'active', 'quarantined', %s)""",
+                    (uuid4(), memory_a, "e" * 64),
                     "memory_events_memory_tenant_fk",
                 ),
                 _expect_fk_rejection(
                     connection,
                     """INSERT INTO memories
                        (id, tenant_id, service, service_version, symptom, action, outcome,
-                        outcome_score, confidence, source_incident_id, embedding)
+                        outcome_score, confidence, source_incident_id, memory_digest, embedding)
                        VALUES (%s, 'boundary_b', 'boundary-service', '1.0.0', 'probe',
-                               'inspect', 'probe', 0, 0.5, %s, %s::VECTOR)""",
-                    (uuid4(), incident_a, _vector()),
+                               'inspect', 'probe', 1, 0.5, %s, %s, %s::VECTOR)""",
+                    (uuid4(), incident_a, "f" * 64, _vector()),
                     "memories_source_incident_tenant_fk",
                 ),
                 _expect_fk_rejection(

@@ -24,11 +24,13 @@ from recallops.domain import (
     Memory,
     MemoryEvent,
     MemoryGovernanceRequest,
+    MemoryOutcome,
     MemoryState,
     PolicyVerdict,
     PostcheckAssessment,
     PostcheckObservation,
     RetrievedMemory,
+    ReviewReasonCode,
     SandboxExecution,
 )
 
@@ -128,31 +130,62 @@ def _governance_target(
     memory: Memory, request: MemoryGovernanceRequest, memories: Iterable[Memory]
 ) -> MemoryState:
     targets = {
+        GovernanceAction.CERTIFY: MemoryState.ACTIVE,
         GovernanceAction.ACTIVATE: MemoryState.ACTIVE,
         GovernanceAction.QUARANTINE: MemoryState.QUARANTINED,
+        GovernanceAction.REJECT: MemoryState.REJECTED,
         GovernanceAction.SUPERSEDE: MemoryState.SUPERSEDED,
         GovernanceAction.REVOKE: MemoryState.REVOKED,
+        GovernanceAction.EXPIRE: MemoryState.EXPIRED,
     }
     allowed = {
         MemoryState.PENDING_REVIEW: {
             MemoryState.ACTIVE,
             MemoryState.QUARANTINED,
-            MemoryState.REVOKED,
+            MemoryState.REJECTED,
         },
         MemoryState.ACTIVE: {
             MemoryState.QUARANTINED,
             MemoryState.SUPERSEDED,
             MemoryState.REVOKED,
+            MemoryState.EXPIRED,
         },
-        MemoryState.QUARANTINED: {MemoryState.ACTIVE, MemoryState.REVOKED},
+        MemoryState.QUARANTINED: {
+            MemoryState.ACTIVE,
+            MemoryState.REJECTED,
+            MemoryState.REVOKED,
+            MemoryState.EXPIRED,
+        },
+        MemoryState.REJECTED: set(),
         MemoryState.SUPERSEDED: set(),
         MemoryState.REVOKED: set(),
+        MemoryState.EXPIRED: set(),
     }
     target = targets[request.action]
     if target not in allowed[memory.state]:
         raise MemoryGovernanceError(f"cannot transition {memory.state} to {target}")
+    if (
+        request.action is GovernanceAction.CERTIFY
+        and memory.outcome_semantics is MemoryOutcome.INCONCLUSIVE
+    ):
+        raise MemoryGovernanceError("inconclusive evidence cannot be certified")
+    if request.action is GovernanceAction.CERTIFY and (
+        request.reason_code is not ReviewReasonCode.EVIDENCE_ACCEPTED
+    ):
+        raise MemoryGovernanceError("certification requires EVIDENCE_ACCEPTED")
+    revocation_reasons = {
+        ReviewReasonCode.NEW_CONTRADICTORY_EVIDENCE,
+        ReviewReasonCode.POLICY_CHANGE,
+        ReviewReasonCode.COMPATIBILITY_INVALIDATED,
+        ReviewReasonCode.DATA_QUALITY,
+        ReviewReasonCode.OTHER_BOUNDED,
+    }
+    if request.action is GovernanceAction.REVOKE and request.reason_code not in revocation_reasons:
+        raise MemoryGovernanceError("invalid revocation reason code")
     if target is MemoryState.ACTIVE and memory.observed_by == request.actor_id:
         raise MemoryGovernanceError("independent reviewer required for activation")
+    if request.reason_code is ReviewReasonCode.OTHER_BOUNDED and not request.reason.strip():
+        raise MemoryGovernanceError("OTHER_BOUNDED requires a reviewer note")
     if target is MemoryState.SUPERSEDED:
         replacement = next(
             (
@@ -161,11 +194,26 @@ def _governance_target(
                 if candidate.id == request.replacement_memory_id
                 and candidate.tenant_id == memory.tenant_id
                 and candidate.state is MemoryState.ACTIVE
+                and candidate.valid
+                and candidate.service == memory.service
+                and version_compatibility(
+                    candidate.service_version,
+                    memory.service_version,
+                    candidate.compatibility_policy,
+                )
+                == 1.0
+                and candidate.outcome_semantics is not MemoryOutcome.INCONCLUSIVE
+                and (
+                    candidate.expires_at is None or candidate.expires_at > datetime.now(UTC)
+                )
             ),
             None,
         )
         if replacement is None or replacement.id == memory.id:
-            raise MemoryGovernanceError("active same-tenant replacement memory required")
+            raise MemoryGovernanceError(
+                "active same-tenant replacement memory required; replacement must be "
+                "same-service, admissible, and conclusive"
+            )
     elif request.replacement_memory_id is not None:
         raise MemoryGovernanceError("replacement memory is only valid for supersession")
     return target
@@ -185,6 +233,7 @@ class MemoryStore(Protocol):
     def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None: ...
     def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None: ...
     def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None: ...
+    def list_memories(self, tenant_id: str, service: str) -> list[Memory]: ...
     def save_outcome_memory(self, memory: Memory) -> Memory: ...
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None: ...
     def record_approval(
@@ -212,6 +261,9 @@ class MemoryStore(Protocol):
     def record_postcheck_assessment(
         self, assessment: PostcheckAssessment
     ) -> PostcheckAssessment: ...
+    def get_postcheck_assessment(
+        self, incident_id: UUID, tenant_id: str
+    ) -> PostcheckAssessment | None: ...
 
 
 class InMemoryStore:
@@ -256,6 +308,10 @@ class InMemoryStore:
             and memory.embedding_space == embedding_space
             and memory.valid
             and memory.state is MemoryState.ACTIVE
+            and memory.outcome_semantics is not MemoryOutcome.INCONCLUSIVE
+            and (memory.expires_at is None or memory.expires_at > as_of)
+            and memory.superseded_at is None
+            and memory.revoked_at is None
         )
         return sorted(
             candidates,
@@ -297,6 +353,13 @@ class InMemoryStore:
             None,
         )
 
+    def list_memories(self, tenant_id: str, service: str) -> list[Memory]:
+        return [
+            memory
+            for memory in self.memories
+            if memory.tenant_id == tenant_id and memory.service == service
+        ]
+
     def save_outcome_memory(self, memory: Memory) -> Memory:
         if memory.source_incident_id is None:
             raise ValueError("outcome memory requires a source incident")
@@ -320,13 +383,26 @@ class InMemoryStore:
         if memory is None:
             return None
         target = _governance_target(memory, request, self.memories)
+        reviewed_at = datetime.now(UTC)
         updated = memory.model_copy(
             update={
                 "state": target,
                 "valid": target is MemoryState.ACTIVE,
                 "reviewed_by": request.actor_id,
-                "reviewed_at": datetime.now(UTC),
+                "reviewed_at": reviewed_at,
                 "superseded_by": request.replacement_memory_id,
+                "governance_version": memory.governance_version + 1,
+                "superseded_at": (
+                    reviewed_at if target is MemoryState.SUPERSEDED else memory.superseded_at
+                ),
+                "revoked_at": (
+                    reviewed_at if target is MemoryState.REVOKED else memory.revoked_at
+                ),
+                "expires_at": (
+                    memory.expires_at or reviewed_at
+                    if target is MemoryState.EXPIRED
+                    else memory.expires_at
+                ),
             }
         )
         self.memories[self.memories.index(memory)] = updated
@@ -339,6 +415,8 @@ class InMemoryStore:
                 actor_id=request.actor_id,
                 action=request.action,
                 reason=request.reason,
+                reason_code=request.reason_code,
+                memory_digest=cast(str, memory.memory_digest),
                 from_state=memory.state,
                 to_state=target,
             )
@@ -436,6 +514,11 @@ class InMemoryStore:
         self.postcheck_assessments[key] = assessment
         return assessment
 
+    def get_postcheck_assessment(
+        self, incident_id: UUID, tenant_id: str
+    ) -> PostcheckAssessment | None:
+        return self.postcheck_assessments.get((tenant_id, incident_id))
+
 
 class PostgresStore:
     transactional_archive = True
@@ -526,12 +609,16 @@ class PostgresStore:
                     """INSERT INTO memories
                 (id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                 outcome_score, confidence, valid, state,
+                 superseded_by, source_incident_id,
                  observed_by, evidence_verification, evidence_refs,
                  observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 observation_digest, assessment_digest, verdict_digest, memory_digest,
+                 governance_policy_version, governance_version, expires_at,
+                 superseded_at, revoked_at,
                  embedding_space, embedding, created_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
-                        %s::JSONB,%s,%s,%s,%s::VECTOR,%s)
+                        %s::JSONB,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (id) DO NOTHING""",
                     (
                         memory.id,
@@ -556,6 +643,15 @@ class PostgresStore:
                         json.dumps(memory.postconditions),
                         memory.reviewed_by,
                         memory.reviewed_at,
+                        memory.observation_digest,
+                        memory.assessment_digest,
+                        memory.verdict_digest,
+                        memory.memory_digest,
+                        memory.governance_policy_version,
+                        memory.governance_version,
+                        memory.expires_at,
+                        memory.superseded_at,
+                        memory.revoked_at,
                         memory.embedding_space,
                         self._vector(memory.embedding),
                         memory.created_at,
@@ -574,14 +670,21 @@ class PostgresStore:
         semantic_pool_limit = candidate_limit * 4
         columns = """id, tenant_id, service, service_version, compatibility_policy,
                    compatibility_policy_version, symptom, action, outcome,
-                   outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                   outcome_score, outcome_semantics, confidence, valid, state,
+                   superseded_by, source_incident_id,
                    observed_by, evidence_verification, evidence_refs,
                    observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                   observation_digest, assessment_digest, verdict_digest, memory_digest,
+                   governance_policy_version, governance_version, expires_at,
+                   superseded_at, revoked_at,
                    embedding_space,
                    embedding::STRING AS embedding,
                    created_at, 1 - (embedding <=> %s::VECTOR) AS similarity"""
         predicates = """tenant_id = %s AND service = %s AND embedding_space = %s
-                     AND valid AND state = 'active'"""
+                     AND valid AND state = 'active'
+                     AND outcome_semantics != 'inconclusive'
+                     AND (expires_at IS NULL OR expires_at > now())
+                     AND superseded_at IS NULL AND revoked_at IS NULL"""
         with self._pool.connection() as connection, connection.cursor() as cursor:
             # Protect safe-candidate recall from a dense cluster of close failures or
             # obsolete versions. The exact-version-success lane is intentionally
@@ -750,15 +853,39 @@ class PostgresStore:
             cursor.execute(
                 """SELECT id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                 outcome_score, confidence, valid, state,
+                 superseded_by, source_incident_id,
                  observed_by, evidence_verification, evidence_refs,
                  observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 observation_digest, assessment_digest, verdict_digest, memory_digest,
+                 governance_policy_version, governance_version, expires_at,
+                 superseded_at, revoked_at,
                  embedding_space, embedding::STRING AS embedding, created_at
                  FROM memories WHERE id=%s AND tenant_id=%s""",
                 (memory_id, tenant_id),
             )
             row = cursor.fetchone()
         return self._memory(row) if row is not None else None
+
+    def list_memories(self, tenant_id: str, service: str) -> list[Memory]:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, tenant_id, service, service_version, compatibility_policy,
+                 compatibility_policy_version, symptom, action, outcome,
+                 outcome_score, outcome_semantics, confidence, valid, state,
+                 superseded_by, source_incident_id,
+                 observed_by, evidence_verification, evidence_refs,
+                 observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 observation_digest, assessment_digest, verdict_digest, memory_digest,
+                 governance_policy_version, governance_version, expires_at,
+                 superseded_at, revoked_at,
+                 embedding_space, embedding::STRING AS embedding, created_at
+                 FROM memories WHERE tenant_id=%s AND service=%s
+                 ORDER BY created_at DESC, id DESC""",
+                (tenant_id, service),
+            )
+            rows = cursor.fetchall()
+        return [self._memory(row) for row in rows]
 
     def save_outcome_memory(self, memory: Memory) -> Memory:
         if memory.source_incident_id is None:
@@ -770,19 +897,27 @@ class PostgresStore:
                     """INSERT INTO memories
                 (id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                 outcome_score, confidence, valid, state,
+                 superseded_by, source_incident_id,
                  observed_by, evidence_verification, evidence_refs,
                  observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 observation_digest, assessment_digest, verdict_digest, memory_digest,
+                 governance_policy_version, governance_version, expires_at,
+                 superseded_at, revoked_at,
                  embedding_space, embedding, created_at)
                 VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::JSONB,%s,
-                        %s::JSONB,%s,%s,%s,%s::VECTOR,%s)
+                        %s::JSONB,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s::VECTOR,%s)
                 ON CONFLICT (source_incident_id) DO UPDATE
                 SET source_incident_id=excluded.source_incident_id
                 RETURNING id, tenant_id, service, service_version, compatibility_policy,
                  compatibility_policy_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+                 outcome_score, outcome_semantics, confidence, valid, state,
+                 superseded_by, source_incident_id,
                  observed_by, evidence_verification, evidence_refs,
                  observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+                 observation_digest, assessment_digest, verdict_digest, memory_digest,
+                 governance_policy_version, governance_version, expires_at,
+                 superseded_at, revoked_at,
                  embedding_space,
                  embedding::STRING AS embedding,
                  created_at""",
@@ -809,6 +944,15 @@ class PostgresStore:
                         json.dumps(memory.postconditions),
                         memory.reviewed_by,
                         memory.reviewed_at,
+                        memory.observation_digest,
+                        memory.assessment_digest,
+                        memory.verdict_digest,
+                        memory.memory_digest,
+                        memory.governance_policy_version,
+                        memory.governance_version,
+                        memory.expires_at,
+                        memory.superseded_at,
+                        memory.revoked_at,
                         memory.embedding_space,
                         self._vector(memory.embedding),
                         memory.created_at,
@@ -829,9 +973,13 @@ class PostgresStore:
     ) -> Memory | None:
         columns = """id, tenant_id, service, service_version, compatibility_policy,
             compatibility_policy_version, symptom, action, outcome,
-            outcome_score, confidence, valid, state, superseded_by, source_incident_id,
+            outcome_score, outcome_semantics, confidence, valid, state,
+            superseded_by, source_incident_id,
             observed_by, evidence_verification, evidence_refs,
             observation_window_seconds, postconditions, reviewed_by, reviewed_at,
+            observation_digest, assessment_digest, verdict_digest, memory_digest,
+            governance_policy_version, governance_version, expires_at,
+            superseded_at, revoked_at,
             embedding_space,
             embedding::STRING AS embedding, created_at"""
         with self._pool.connection() as connection, connection.cursor() as cursor:
@@ -856,7 +1004,11 @@ class PostgresStore:
             reviewed_at = datetime.now(UTC)
             cursor.execute(  # nosec B608  # nosemgrep
                 """UPDATE memories SET state=%s, valid=%s, reviewed_by=%s, reviewed_at=%s,
-                superseded_by=%s WHERE id=%s AND tenant_id=%s
+                superseded_by=%s, governance_version=governance_version+1,
+                superseded_at=CASE WHEN %s='superseded' THEN %s ELSE superseded_at END,
+                revoked_at=CASE WHEN %s='revoked' THEN %s ELSE revoked_at END,
+                expires_at=CASE WHEN %s='expired' THEN COALESCE(expires_at,%s) ELSE expires_at END
+                WHERE id=%s AND tenant_id=%s
                 RETURNING """
                 + columns,  # nosec B608
                 (
@@ -865,6 +1017,12 @@ class PostgresStore:
                     request.actor_id,
                     reviewed_at,
                     request.replacement_memory_id,
+                    target,
+                    reviewed_at,
+                    target,
+                    reviewed_at,
+                    target,
+                    reviewed_at,
                     memory_id,
                     request.tenant_id,
                 ),
@@ -878,14 +1036,17 @@ class PostgresStore:
                 actor_id=request.actor_id,
                 action=request.action,
                 reason=request.reason,
+                reason_code=request.reason_code,
+                memory_digest=cast(str, memory.memory_digest),
                 from_state=memory.state,
                 to_state=target,
                 created_at=reviewed_at,
             )
             cursor.execute(
                 """INSERT INTO memory_events
-                (id, memory_id, tenant_id, actor_id, action, reason, from_state, to_state,
-                 created_at) VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
+                (id, memory_id, tenant_id, actor_id, action, reason, reason_code,
+                 memory_digest, from_state, to_state, created_at)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)""",
                 (
                     event.id,
                     event.memory_id,
@@ -893,6 +1054,8 @@ class PostgresStore:
                     event.actor_id,
                     event.action,
                     event.reason,
+                    event.reason_code,
+                    event.memory_digest,
                     event.from_state,
                     event.to_state,
                     event.created_at,
@@ -1205,3 +1368,16 @@ class PostgresStore:
             return recorded
 
         return self._run_write(record_once)
+
+    def get_postcheck_assessment(
+        self, incident_id: UUID, tenant_id: str
+    ) -> PostcheckAssessment | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT id, observation_id, incident_id, tenant_id, agent_subject,
+                 classification, rationale, observation_digest, created_at
+                 FROM postcheck_assessments WHERE incident_id=%s AND tenant_id=%s""",
+                (incident_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        return PostcheckAssessment.model_validate(dict(row)) if row is not None else None

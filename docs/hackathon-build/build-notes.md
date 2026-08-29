@@ -9,8 +9,9 @@
   now originates only from an isolated anonymous judge-run allocation; reviewer authority originates
   only from a 256-bit, fragment-delivered, short-lived, single-consumption handoff.
 - Bound operator and reviewer cookies to different `__Host-` names and exact run generation. Only
-  hashes persist; exact Origin and distinct per-session CSRF remain mandatory. Mixed role cookies
-  fail closed instead of allowing implicit role selection.
+  hashes persist; exact Origin and distinct per-session CSRF remain mandatory. When both cookies
+  coexist, the server route selects exactly one role cookie; cookie order and client role hints
+  cannot choose authority.
 - Reset closes the old run, revokes its sessions and outstanding handoffs, and allocates a new run,
   tenant, incident, operator subject, generation, CSRF secret, and cookie. Old credentials remain
   invalid even when replayed after the new run exists.
@@ -18,8 +19,8 @@
   independently recoverable for later governance authorization; operator sessions cannot carry a
   reviewer grant.
 - Verified two-run isolation, cross-run guessing, launch quota, exact request shape, CSRF/Origin,
-  mixed cookies, handoff expiry/replay, same-subject denial, reset races, stale-cookie replay, and
-  purpose/state prerequisites in memory-backed API tests.
+  route-specific mixed-cookie selection, handoff expiry/replay, same-subject denial, reset races,
+  stale-cookie replay, and purpose/state prerequisites in memory-backed API tests.
 - Applied all 27 migrations to a fresh CockroachDB database and verified composite relationship
   failures, exact grants/denials, hashed credential persistence, PostgreSQL-path handoff exchange,
   expiry, and atomic reset. The complete Python source touched by this item reaches 100% statement
@@ -293,6 +294,33 @@
   hidden-risk, proof-quality, item-size, release-order, and submission-readiness audit instead.
 
 ## 2026-08-29 — Build execution
+
+### Item 3 — governed memory lifecycle and recurrence semantics
+
+- Added RFC 8785/domain-separated canonical digests for new memories and three independently
+  bound evidence layers. Supplied v1 digests are recomputed and constant-time checked; migrated
+  pre-existing rows are explicitly labeled `legacy-memory-v1` instead of being misrepresented as
+  canonical v1 evidence.
+- Completed certification, quarantine, rejection, revocation, expiry, and compatible supersession
+  semantics. Policy—not the reviewer or agent—derives positive, negative, or inconclusive meaning;
+  inconclusive evidence is structurally barred from active state, and certified negative evidence
+  can warn but cannot become a recommendation.
+- Added CockroachDB checks plus a database trigger that permits governance metadata transitions but
+  rejects changes to immutable memory evidence, digests, policy bindings, embeddings, or creation
+  identity. Retrieval now applies tenant, service, lifecycle, expiry, revocation, supersession, and
+  conclusiveness predicates before ranking.
+- Added exact-digest, purpose-bound reviewer handoffs and role-route cookie selection, immutable
+  reviewer evidence packets, closed reason/decision combinations, `If-Match` generation/epoch
+  preconditions, transactionally coupled initial disposition, and protected secondary revocation.
+- Added immutable `checkout-latency-43` recurrence comparison. It exposes the identical candidate
+  pool to the published similarity-only baseline while the governed result can select only a
+  compatible certified positive; certified negatives are bounded warnings and every other
+  lifecycle state is absent from governed influence.
+- Verification passed from a fresh database through migrations 001–028c: 214 unit/property/API
+  tests and 11 real CockroachDB integration tests, including evidence-tamper rejection, active-
+  inconclusive constraint failure, lifecycle filtering, revocation immediacy, historical
+  inspectability, exact handoff binding, and transactional reviewer disposition. Ruff and strict
+  mypy pass; all 8 Playwright product tests and all 3 native Chromium WebMCP regressions pass.
 
 ### Item 1 — requirement/provenance/regression baseline
 

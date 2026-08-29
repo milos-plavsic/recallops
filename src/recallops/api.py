@@ -1,5 +1,4 @@
-import hashlib
-import json
+import hmac
 import os
 import secrets
 import threading
@@ -8,7 +7,7 @@ from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import urlsplit
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
@@ -33,15 +32,22 @@ from recallops.domain import (
     CompatibilityPolicy,
     ExecutionAttestation,
     ExecutionAttestationRequest,
+    GovernanceAction,
+    HandoffPurpose,
     IncidentAnalysis,
     IncidentCreate,
     Memory,
     MemoryGovernanceRequest,
+    MemoryOutcome,
     MemoryState,
     OutcomeObservation,
     PostcheckAssessment,
     PostcheckAssessmentRequest,
     PostcheckRetryRequest,
+    RecurrenceView,
+    ReviewerDispositionRequest,
+    ReviewerHandoffRequest,
+    ReviewerRevocationRequest,
     SandboxExecution,
     SandboxExecutionRequest,
 )
@@ -50,6 +56,7 @@ from recallops.evaluation import EvaluationReport, evaluate, load_dataset
 from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
 from recallops.resilience import DependencyUnavailable
 from recallops.sandbox import (
+    SANDBOX_ACTION_COMMAND,
     CheckoutSandbox,
     DeterministicObservationProvider,
     ObservationProvider,
@@ -184,6 +191,7 @@ def create_app(
         evidence_verifier=evidence_verifier,
         default_compatibility_policy=CompatibilityPolicy(settings.default_compatibility_policy),
         compatibility_policy_version=settings.compatibility_policy_version,
+        memory_ttl_days=settings.memory_ttl_days,
         diagnostic_tools=diagnostic_tools,
     )
     judge_repository = (
@@ -279,18 +287,15 @@ def create_app(
         x_actor_id: str | None = Header(default=None, max_length=200),
         x_roles: str | None = Header(default=None, max_length=500),
     ) -> Principal:
-        role_cookies = [
-            request.cookies[name]
-            for name in (role_cookie_name("operator"), role_cookie_name("reviewer"))
-            if name in request.cookies
-        ]
-        if settings.auth_mode == "judge" and len(role_cookies) > 1:
-            raise HTTPException(
-                status.HTTP_401_UNAUTHORIZED,
-                "ambiguous judge role session",
-                headers={"WWW-Authenticate": "Session"},
+        # Judge cookies intentionally coexist. Authority is selected by the server route,
+        # never by cookie order, a client-provided role, or a shared browser toggle.
+        if settings.auth_mode == "judge":
+            selected_role = (
+                "reviewer" if request.url.path.startswith("/v1/reviewer/") else "operator"
             )
-        session_cookie = role_cookies[0] if role_cookies else None
+            session_cookie = request.cookies.get(role_cookie_name(selected_role))
+        else:
+            session_cookie = None
         try:
             return authenticator.authenticate(
                 authorization, x_tenant_id, x_actor_id, x_roles, session_cookie
@@ -364,6 +369,7 @@ def create_app(
         run_id = uuid4()
         tenant_id = f"judge_{run_id.hex[:24]}"
         operator_subject = f"operator_{secrets.token_hex(12)}"
+        now = datetime.now(UTC)
         incident = IncidentCreate(
             tenant_id=tenant_id,
             service="checkout",
@@ -371,25 +377,69 @@ def create_app(
             symptom="checkout-latency-42: p95 latency and error rate exceed the sandbox SLO",
             idempotency_key=f"scenario-{run_id.hex}",
         )
-        prepared = service.prepare_analysis(incident)
-        now = datetime.now(UTC)
-        run = JudgeRun(
-            run_id=run_id,
-            tenant_id=tenant_id,
-            generation=generation,
-            scenario_version=settings.scenario_version,
-            source_incident_id=prepared.incident_id,
-            operator_subject=operator_subject,
-            build_sha=settings.build_sha,
-            capability_policy_version=settings.capability_policy_version,
-            created_at=now,
-            expires_at=now + timedelta(seconds=settings.judge_run_ttl_seconds),
+        fixture_memories = (
+            Memory(
+                id=uuid5(NAMESPACE_URL, f"recallops:{run_id}:known-failure"),
+                tenant_id=tenant_id,
+                service="checkout",
+                service_version="v1.9.8",
+                symptom=incident.symptom,
+                action="restart checkout workers without reducing concurrency",
+                outcome="known failure: saturation immediately recurred",
+                outcome_score=-1.0,
+                confidence=0.99,
+                state=MemoryState.ACTIVE,
+                valid=True,
+                reviewed_by="fixture-reviewer",
+                reviewed_at=now - timedelta(days=14),
+                expires_at=now + timedelta(days=settings.memory_ttl_days),
+                embedding_space=embedder.space_id,
+                embedding=embedder.embed(f"checkout {incident.symptom}"),
+                created_at=now - timedelta(days=14),
+            ),
+            Memory(
+                id=uuid5(NAMESPACE_URL, f"recallops:{run_id}:compatible-success"),
+                tenant_id=tenant_id,
+                service="checkout",
+                service_version=incident.service_version,
+                symptom=incident.symptom,
+                action=SANDBOX_ACTION_COMMAND,
+                outcome="reviewed recovery without recurrence",
+                outcome_score=1.0,
+                confidence=0.96,
+                state=MemoryState.ACTIVE,
+                valid=True,
+                reviewed_by="fixture-reviewer",
+                reviewed_at=now - timedelta(days=21),
+                expires_at=now + timedelta(days=settings.memory_ttl_days),
+                embedding_space=embedder.space_id,
+                embedding=embedder.embed(f"checkout {incident.symptom}"),
+                created_at=now - timedelta(days=21),
+            ),
         )
+
+        def build_run(prepared: IncidentAnalysis) -> JudgeRun:
+            return JudgeRun(
+                run_id=run_id,
+                tenant_id=tenant_id,
+                generation=generation,
+                scenario_version=settings.scenario_version,
+                source_incident_id=prepared.incident_id,
+                operator_subject=operator_subject,
+                build_sha=settings.build_sha,
+                capability_policy_version=settings.capability_policy_version,
+                created_at=now,
+                expires_at=now + timedelta(seconds=settings.judge_run_ttl_seconds),
+            )
 
         if isinstance(store, PostgresStore):
 
-            def persist(connection_store: PostgresStore, connection: object) -> object:
+            def persist(connection_store: PostgresStore, connection: object) -> JudgeRun:
                 bound_service = service.using_store(connection_store)
+                for memory in fixture_memories:
+                    connection_store.add_memory(memory)
+                prepared = bound_service.prepare_analysis(incident)
+                run = build_run(prepared)
                 saved = bound_service.persist_analysis(incident, prepared)
                 WorkflowCoordinator(
                     PostgresWorkflowRepository.from_connection(connection)
@@ -399,13 +449,17 @@ def create_app(
                 PostgresJudgeSessionRepository.from_connection(connection).save_run(
                     run, settings.judge_active_run_limit
                 )
-                return saved
+                return run
 
-            store.atomic(persist)
+            run = store.atomic(persist)
         else:
             with authority_lock:
                 if judge_repository.active_run_count() >= settings.judge_active_run_limit:
                     raise JudgeRunCapacityError("judge scenario capacity reached")
+                for memory in fixture_memories:
+                    store.add_memory(memory)
+                prepared = service.prepare_analysis(incident)
+                run = build_run(prepared)
                 saved = service.persist_analysis(incident, prepared)
                 workflows.ensure_for_analysis(
                     tenant_id, saved.incident_id, saved.proposed_action.action_hash, False
@@ -527,10 +581,19 @@ def create_app(
         )
         if memory.state is not expected_memory_state:
             raise HTTPException(status.HTTP_409_CONFLICT, "no reviewable evidence is ready")
+        if purpose == HandoffPurpose.REVOCATION.value and (
+            not memory.valid
+            or memory.expires_at is not None
+            and memory.expires_at <= datetime.now(UTC)
+            or memory.superseded_at is not None
+            or memory.revoked_at is not None
+        ):
+            raise HTTPException(status.HTTP_409_CONFLICT, "no reviewable evidence is ready")
         return memory
 
     @app.post("/v1/operator/reviewer-handoff", status_code=status.HTTP_201_CREATED)
-    async def create_reviewer_handoff(
+    def create_reviewer_handoff(
+        payload: ReviewerHandoffRequest,
         request: Request,
         identity: AuthenticatedPrincipal,
         x_csrf_token: str | None = Header(default=None, max_length=200),
@@ -539,24 +602,20 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
         require_protected_request(request, identity, x_csrf_token)
         require_role(identity, "operator")
-        body = await request.json()
-        purpose = body.get("purpose") if isinstance(body, dict) else None
-        if purpose not in {"initial_review", "revocation"}:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "valid handoff purpose required")
         run = current_run(identity)
-        memory = review_target(run, purpose)
+        memory = review_target(run, payload.purpose.value)
+        memory_digest = cast(str, memory.memory_digest)
+        if not hmac.compare_digest(payload.memory_digest, memory_digest):
+            raise HTTPException(status.HTTP_409_CONFLICT, "stale or mismatched memory digest")
         code = secrets.token_urlsafe(32)
-        memory_bytes = json.dumps(
-            memory.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
-        ).encode()
         handoff = ReviewHandoff(
             code_hash=authenticator.digest(code),
             run_id=run.run_id,
             tenant_id=run.tenant_id,
             workflow_id=run.source_incident_id,
             memory_id=memory.id,
-            memory_digest=hashlib.sha256(memory_bytes).hexdigest(),
-            purpose=purpose,
+            memory_digest=memory_digest,
+            purpose=payload.purpose.value,
             issued_by_subject=identity.subject,
             expires_at=datetime.now(UTC) + timedelta(seconds=settings.judge_handoff_ttl_seconds),
         )
@@ -621,6 +680,217 @@ def create_app(
                 "purpose": handoff.purpose,
             },
         }
+
+    def reviewer_scope(
+        identity: Principal, expected_purpose: HandoffPurpose | None = None
+    ) -> tuple[JudgeRun, ReviewHandoff, Memory]:
+        require_role(identity, "reviewer")
+        handoff_hash = identity.review_handoff_hash
+        if handoff_hash is None:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "reviewer handoff authority required")
+        handoff = judge_repository.get_handoff(handoff_hash)
+        now = datetime.now(UTC)
+        if (
+            handoff is None
+            or handoff.consumed_at is None
+            or handoff.revoked_at is not None
+            or handoff.expires_at <= now
+            or expected_purpose is not None
+            and handoff.purpose != expected_purpose.value
+        ):
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "reviewer handoff is no longer valid")
+        run = current_run(identity)
+        if handoff.run_id != run.run_id or handoff.tenant_id != run.tenant_id:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "review evidence not found")
+        memory = service.get_memory(handoff.memory_id, run.tenant_id)
+        if (
+            memory is None
+            or memory.source_incident_id != handoff.workflow_id
+            or memory.memory_digest is None
+            or not hmac.compare_digest(memory.memory_digest, handoff.memory_digest)
+        ):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "review evidence not found")
+        if identity.subject in {
+            run.operator_subject,
+            handoff.issued_by_subject,
+            memory.observed_by,
+        }:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "independent reviewer required")
+        return run, handoff, memory
+
+    def require_if_match(
+        request: Request, run: JudgeRun, workflow: WorkflowSnapshot
+    ) -> None:
+        supplied = request.headers.get("if-match")
+        if supplied is None:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "If-Match required")
+        expected = f'"{run.generation}:{workflow.epoch}"'
+        if not hmac.compare_digest(supplied, expected):
+            raise HTTPException(status.HTTP_412_PRECONDITION_FAILED, "stale workflow precondition")
+
+    @app.get("/v1/reviewer/evidence")
+    def get_reviewer_evidence(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        run, handoff, memory = reviewer_scope(identity)
+        postcheck = service.get_postcheck(handoff.workflow_id, run.tenant_id)
+        assessment = service.get_postcheck_assessment(handoff.workflow_id, run.tenant_id)
+        observation, verdict = postcheck if postcheck is not None else (None, None)
+        allowed = (
+            ["quarantine", "reject"]
+            if memory.outcome_semantics is MemoryOutcome.INCONCLUSIVE
+            else ["certify", "quarantine", "reject"]
+        )
+        return {
+            "purpose": handoff.purpose,
+            "memory": memory.model_dump(mode="json", exclude={"embedding"}),
+            "immutable_observation": observation,
+            "agent_assessment": assessment,
+            "policy_verdict": verdict,
+            "assessment_policy_agree": (
+                assessment is not None
+                and verdict is not None
+                and assessment.classification is verdict.classification
+            ),
+            "allowed_dispositions": allowed if handoff.purpose == "initial_review" else [],
+        }
+
+    @app.post("/v1/reviewer/disposition")
+    def disposition_reviewer_evidence(
+        payload: ReviewerDispositionRequest,
+        request: Request,
+        identity: AuthenticatedPrincipal,
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        require_protected_request(request, identity, x_csrf_token)
+        run, handoff, scoped_memory = reviewer_scope(identity, HandoffPurpose.INITIAL_REVIEW)
+        if not hmac.compare_digest(payload.memory_digest, handoff.memory_digest):
+            raise HTTPException(status.HTTP_409_CONFLICT, "stale or mismatched memory digest")
+        workflow = workflows.get(handoff.workflow_id, run.tenant_id)
+        if workflow is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "review workflow not found")
+        require_if_match(request, run, workflow)
+        actions = {
+            "certify": GovernanceAction.CERTIFY,
+            "quarantine": GovernanceAction.QUARANTINE,
+            "reject": GovernanceAction.REJECT,
+        }
+        governance = MemoryGovernanceRequest(
+            tenant_id=run.tenant_id,
+            actor_id=identity.subject,
+            action=actions[payload.decision.value],
+            reason=payload.note.strip() or payload.reason_code.value,
+            reason_code=payload.reason_code,
+        )
+
+        def disposition_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            memory = tx_service.get_memory(scoped_memory.id, run.tenant_id)
+            if (
+                memory is None
+                or memory.memory_digest is None
+                or not hmac.compare_digest(memory.memory_digest, payload.memory_digest)
+                or memory.state is not MemoryState.PENDING_REVIEW
+            ):
+                raise MemoryGovernanceError("review target is stale or unavailable")
+            tx_workflows.validate_transition(
+                handoff.workflow_id,
+                run.tenant_id,
+                workflow.epoch,
+                WorkflowState.PENDING_REVIEW,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="reviewer",
+            )
+            governed = tx_service.govern_memory(memory.id, governance)
+            if governed is None:  # pragma: no cover - row is locked above
+                raise MemoryGovernanceError("review target is unavailable")
+            completed = tx_workflows.transition(
+                handoff.workflow_id,
+                run.tenant_id,
+                workflow.epoch,
+                WorkflowState.PENDING_REVIEW,
+                WorkflowState.REVIEWED,
+                channel=RequestChannel.UI,
+                actor_subject=identity.subject,
+                role="reviewer",
+            )
+            return {"memory": governed, "workflow": completed}
+
+        try:
+            return cast(dict[str, object], authority_transaction(disposition_atomically))
+        except (MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.post("/v1/reviewer/revocation")
+    def revoke_reviewer_evidence(
+        payload: ReviewerRevocationRequest,
+        request: Request,
+        identity: AuthenticatedPrincipal,
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        require_protected_request(request, identity, x_csrf_token)
+        run, handoff, scoped_memory = reviewer_scope(identity, HandoffPurpose.REVOCATION)
+        if not hmac.compare_digest(payload.memory_digest, handoff.memory_digest):
+            raise HTTPException(status.HTTP_409_CONFLICT, "stale or mismatched memory digest")
+        workflow = workflows.get(handoff.workflow_id, run.tenant_id)
+        if workflow is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "review workflow not found")
+        require_if_match(request, run, workflow)
+        governance = MemoryGovernanceRequest(
+            tenant_id=run.tenant_id,
+            actor_id=identity.subject,
+            action=GovernanceAction.REVOKE,
+            reason=payload.note.strip() or payload.reason_code.value,
+            reason_code=payload.reason_code,
+        )
+
+        def revoke_atomically(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> object:
+            current = tx_workflows.get(handoff.workflow_id, run.tenant_id)
+            if (
+                current is None
+                or not current.active
+                or current.state is not WorkflowState.REVIEWED
+                or current.epoch != workflow.epoch
+            ):
+                raise WorkflowConflict("stale workflow state or epoch")
+            memory = tx_service.get_memory(scoped_memory.id, run.tenant_id)
+            if (
+                memory is None
+                or memory.memory_digest is None
+                or not hmac.compare_digest(memory.memory_digest, payload.memory_digest)
+                or memory.state is not MemoryState.ACTIVE
+                or not memory.valid
+                or memory.expires_at is not None
+                and memory.expires_at <= datetime.now(UTC)
+            ):
+                raise MemoryGovernanceError("revocation target is stale or unavailable")
+            governed = tx_service.govern_memory(memory.id, governance)
+            if governed is None:  # pragma: no cover - row is locked above
+                raise MemoryGovernanceError("revocation target is unavailable")
+            return {"memory": governed, "workflow": current}
+
+        try:
+            return cast(dict[str, object], authority_transaction(revoke_atomically))
+        except (MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.get("/v1/webmcp/recurrence", response_model=RecurrenceView)
+    def recall_recurrence(identity: AuthenticatedPrincipal) -> RecurrenceView:
+        require_role(identity, "agent")
+        run = current_run(identity)
+        workflow = workflows.get(run.source_incident_id, run.tenant_id)
+        if workflow is None or not workflow.active or workflow.state is not WorkflowState.REVIEWED:
+            raise HTTPException(status.HTTP_409_CONFLICT, "reviewed recurrence is unavailable")
+        recurrence = IncidentCreate(
+            tenant_id=run.tenant_id,
+            service="checkout",
+            service_version="v2.4.1",
+            symptom="checkout-latency-43: compatible recurrence of elevated p95 latency",
+            idempotency_key=f"recurrence-{run.run_id.hex}",
+        )
+        return service.recurrence_view(recurrence)
 
     def channel(value: str | None) -> RequestChannel:
         try:
@@ -1327,6 +1597,11 @@ def create_app(
         x_recallops_channel: str | None = Header(default=None, max_length=20),
         x_csrf_token: str | None = Header(default=None, max_length=200),
     ) -> Memory:
+        if settings.auth_mode == "judge":
+            raise HTTPException(
+                status.HTTP_410_GONE,
+                "legacy memory governance is disabled in the judge workflow",
+            )
         require_protected_request(request, identity, x_csrf_token)
         require_role(identity, "reviewer")
         if payload.tenant_id != identity.tenant_id or payload.actor_id != identity.subject:

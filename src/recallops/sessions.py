@@ -69,6 +69,7 @@ class JudgeSessionRepository(Protocol):
     def reset_run(self, run_id: UUID) -> bool: ...
     def run_is_current(self, run_id: UUID, tenant_id: str, generation: int) -> bool: ...
     def save_handoff(self, handoff: ReviewHandoff) -> None: ...
+    def get_handoff(self, code_hash: str) -> ReviewHandoff | None: ...
     def consume_handoff(self, code_hash: str) -> ReviewHandoff | None: ...
     def active_run_count(self) -> int: ...
 
@@ -164,6 +165,10 @@ class InMemoryJudgeSessionRepository:
             if handoff.code_hash in self._handoffs:
                 raise ValueError("review handoff already exists")
             self._handoffs[handoff.code_hash] = handoff
+
+    def get_handoff(self, code_hash: str) -> ReviewHandoff | None:
+        with self._lock:
+            return self._handoffs.get(code_hash)
 
     def consume_handoff(self, code_hash: str) -> ReviewHandoff | None:
         with self._lock:
@@ -377,6 +382,12 @@ class PostgresJudgeSessionRepository:
                 )
 
         run_serializable(save_once)
+
+    def get_handoff(self, code_hash: str) -> ReviewHandoff | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute("SELECT * FROM review_handoffs WHERE code_hash=%s", (code_hash,))
+            row = cursor.fetchone()
+        return ReviewHandoff.model_validate(dict(cast(Any, row))) if row is not None else None
 
     def consume_handoff(self, code_hash: str) -> ReviewHandoff | None:
         def consume_once() -> ReviewHandoff | None:

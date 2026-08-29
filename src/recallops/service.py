@@ -2,6 +2,7 @@ import hashlib
 import json
 from copy import copy
 from dataclasses import asdict
+from datetime import UTC, datetime, timedelta
 from typing import Protocol
 from uuid import UUID
 
@@ -10,6 +11,7 @@ import structlog
 from botocore.exceptions import BotoCoreError, ClientError
 
 from recallops.archive import EvidenceArchive, NullEvidenceArchive
+from recallops.canonical import content_digest
 from recallops.diagnostics import DiagnosticScope, ReadOnlyDiagnosticTools
 from recallops.domain import (
     ActionRisk,
@@ -27,6 +29,7 @@ from recallops.domain import (
     IncidentCreate,
     Memory,
     MemoryGovernanceRequest,
+    MemoryOutcome,
     MemoryState,
     OutcomeObservation,
     PolicyVerdict,
@@ -34,6 +37,7 @@ from recallops.domain import (
     PostcheckClassification,
     PostcheckObservation,
     ProposedAction,
+    RecurrenceView,
     RetrievedMemory,
     SandboxExecution,
     ToolStatus,
@@ -41,7 +45,7 @@ from recallops.domain import (
 from recallops.embedding import Embedder
 from recallops.evidence import EvidenceVerifier, ManualOnlyEvidenceVerifier
 from recallops.resilience import DependencyUnavailable, aws_client_config
-from recallops.store import MemoryStore
+from recallops.store import MemoryStore, cosine_similarity, version_compatibility
 
 
 class IncidentWorkflowError(ValueError):
@@ -141,6 +145,7 @@ class IncidentService:
         default_compatibility_policy: CompatibilityPolicy = CompatibilityPolicy.EXACT,
         compatibility_policy_version: str = "semver-v1",
         diagnostic_tools: ReadOnlyDiagnosticTools | None = None,
+        memory_ttl_days: int = 180,
     ) -> None:
         self._store = store
         self._embedder = embedder
@@ -157,6 +162,7 @@ class IncidentService:
         self._default_compatibility_policy = default_compatibility_policy
         self._compatibility_policy_version = compatibility_policy_version
         self._diagnostic_tools = diagnostic_tools
+        self._memory_ttl_days = memory_ttl_days
 
     def using_store(self, store: MemoryStore) -> "IncidentService":
         bound = copy(self)
@@ -176,8 +182,6 @@ class IncidentService:
             reasons.append("rank_score_below_threshold")
         if best.compatibility < 1.0:
             reasons.append("service_version_incompatible")
-        if best.memory.outcome_score <= 0:
-            reasons.append("outcome_not_positive")
         if self._top_candidates_conflict(memories):
             reasons.append("top_candidates_ambiguous")
         return reasons
@@ -250,8 +254,15 @@ class IncidentService:
                 degraded_reason=("embedding_unavailable" if embedding is None else None),
             )
         )
-        abstention_reasons = self._abstention_reasons(memories)
-        best = memories[0] if memories and not abstention_reasons else None
+        positive_memories = [
+            item for item in memories if item.memory.outcome_semantics is MemoryOutcome.POSITIVE
+        ]
+        abstention_reasons = (
+            ["outcome_not_positive"]
+            if memories and not positive_memories
+            else self._abstention_reasons(positive_memories)
+        )
+        best = positive_memories[0] if positive_memories and not abstention_reasons else None
         diagnostic_evidence: dict[str, object] = {}
         next_sequence = 3
         if self._diagnostic_tools is not None:
@@ -542,6 +553,11 @@ class IncidentService:
     ) -> tuple[PostcheckObservation, PolicyVerdict] | None:
         return self._store.get_postcheck(incident_id, tenant_id)
 
+    def get_postcheck_assessment(
+        self, incident_id: UUID, tenant_id: str
+    ) -> PostcheckAssessment | None:
+        return self._store.get_postcheck_assessment(incident_id, tenant_id)
+
     def attest_execution(
         self, incident_id: UUID, request: ExecutionAttestationRequest
     ) -> ExecutionAttestation | None:
@@ -620,6 +636,7 @@ class IncidentService:
             evidence_refs=observation.evidence_refs,
             observation_window_seconds=observation.observation_window_seconds,
             postconditions=observation.postconditions,
+            expires_at=datetime.now(UTC) + timedelta(days=self._memory_ttl_days),
             embedding_space=self._embedder.space_id,
             embedding=embedding,
         )
@@ -676,6 +693,32 @@ class IncidentService:
             ),
         }
         outcome, outcome_score = outcomes[verdict.classification]
+        outcome_semantics = {
+            PostcheckClassification.RECOVERED: MemoryOutcome.POSITIVE,
+            PostcheckClassification.NOT_RECOVERED: MemoryOutcome.NEGATIVE,
+            PostcheckClassification.INCONCLUSIVE: MemoryOutcome.INCONCLUSIVE,
+        }[verdict.classification]
+        assessment_digest = content_digest(
+            "recallops-assessment-v1",
+            {
+                "observation_digest": assessment.observation_digest,
+                "agent_subject": assessment.agent_subject,
+                "classification": assessment.classification.value,
+                "rationale": assessment.rationale,
+                "created_at": assessment.created_at.isoformat().replace("+00:00", "Z"),
+            },
+        )
+        verdict_digest = content_digest(
+            "recallops-verdict-v1",
+            {
+                "observation_digest": verdict.observation_digest,
+                "classification": verdict.classification.value,
+                "checks_passed": verdict.checks_passed,
+                "checks_failed": verdict.checks_failed,
+                "policy_version": verdict.policy_version,
+                "computed_at": verdict.computed_at.isoformat().replace("+00:00", "Z"),
+            },
+        )
         return Memory(
             tenant_id=incident.tenant_id,
             service=incident.service,
@@ -686,6 +729,7 @@ class IncidentService:
             action=analysis_action(self._store, incident_id, incident.tenant_id),
             outcome=outcome,
             outcome_score=outcome_score,
+            outcome_semantics=outcome_semantics,
             confidence=1.0,
             valid=False,
             state=MemoryState.PENDING_REVIEW,
@@ -699,6 +743,10 @@ class IncidentService:
             ],
             observation_window_seconds=observation.observation_window_seconds,
             postconditions=[*verdict.checks_passed, *verdict.checks_failed],
+            observation_digest=observation.observation_digest,
+            assessment_digest=assessment_digest,
+            verdict_digest=verdict_digest,
+            expires_at=datetime.now(UTC) + timedelta(days=self._memory_ttl_days),
             embedding_space=self._embedder.space_id,
             embedding=embedding,
         )
@@ -717,6 +765,68 @@ class IncidentService:
 
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
         return self._store.govern_memory(memory_id, request)
+
+    def recurrence_view(self, incident: IncidentCreate) -> RecurrenceView:
+        """Compare similarity-only recall with governed, read-only recurrence recall.
+
+        The baseline deliberately sees the same tenant/service candidate pool before lifecycle
+        policy. Governed selection delegates to the normal pre-ranking store predicates and then
+        permits only compatible, certified positive evidence to become a recommendation.
+        """
+        embedding = self._embedder.embed(f"{incident.service} {incident.symptom}")
+        all_candidates = [
+            memory
+            for memory in self._store.list_memories(incident.tenant_id, incident.service)
+            if memory.embedding_space == self._embedder.space_id
+        ]
+        baseline = max(
+            all_candidates,
+            key=lambda memory: (
+                cosine_similarity(memory.embedding, embedding),
+                memory.created_at,
+                str(memory.id),
+            ),
+            default=None,
+        )
+        governed_candidates = self._store.find_memories(
+            incident, embedding, self._embedder.space_id, self._max_memories
+        )
+        compatible_positive = [
+            item
+            for item in governed_candidates
+            if item.memory.outcome_semantics is MemoryOutcome.POSITIVE
+            and item.compatibility == 1.0
+        ]
+        governed = compatible_positive[0] if compatible_positive else None
+        warnings = [
+            item.memory.id
+            for item in governed_candidates
+            if item.memory.outcome_semantics is MemoryOutcome.NEGATIVE
+            and version_compatibility(
+                item.memory.service_version,
+                incident.service_version,
+                item.memory.compatibility_policy,
+            )
+            == 1.0
+        ]
+        return RecurrenceView(
+            service=incident.service,
+            service_version=incident.service_version,
+            symptom=incident.symptom,
+            baseline_memory_id=baseline.id if baseline else None,
+            baseline_recommendation=(
+                baseline.action if baseline else "abstain: no historical memory"
+            ),
+            governed_memory_id=governed.memory.id if governed else None,
+            governed_recommendation=(
+                governed.memory.action
+                if governed
+                else "abstain: no compatible certified positive memory"
+            ),
+            eligible_memory_ids=[item.memory.id for item in compatible_positive],
+            negative_warning_memory_ids=warnings,
+            compatibility_policy_version=self._compatibility_policy_version,
+        )
 
 
 def analysis_action(store: MemoryStore, incident_id: UUID, tenant_id: str) -> str:

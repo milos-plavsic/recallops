@@ -39,7 +39,10 @@ def active_memory(**updates: object) -> Memory:
         confidence=0.9,
         embedding=[0.0] * 1024,
     )
-    return base.model_copy(update=updates)
+    payload = base.model_dump()
+    payload.update(updates)
+    payload["memory_digest"] = None
+    return Memory.model_validate(payload)
 
 
 def test_store_policy_failure_paths_are_explicit() -> None:

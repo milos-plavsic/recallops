@@ -169,13 +169,13 @@ def test_reset_compare_and_swap_has_one_authoritative_result() -> None:
     assert response.status_code == 409
 
 
-def test_mixed_role_cookies_fail_closed() -> None:
+def test_mixed_role_cookies_are_selected_by_route() -> None:
     client = TestClient(create_app(settings(), InMemoryStore()))
     create_run(client)
     client.cookies.set("recallops_reviewer", "attacker-controlled-cookie")
     response = client.get("/v1/me")
-    assert response.status_code == 401
-    assert response.json()["detail"] == "ambiguous judge role session"
+    assert response.status_code == 200
+    assert client.get("/v1/reviewer/evidence").status_code == 401
 
 
 def test_reviewer_handoff_is_single_use_purpose_bound_and_separate() -> None:
@@ -218,7 +218,7 @@ def test_reviewer_handoff_is_single_use_purpose_bound_and_separate() -> None:
     issued = operator.post(
         "/v1/operator/reviewer-handoff",
         headers={"Origin": "http://testserver", "X-CSRF-Token": str(started["csrf_token"])},
-        json={"purpose": "initial_review"},
+        json={"purpose": "initial_review", "memory_digest": memory.memory_digest},
     )
     assert issued.status_code == 201
     code = urlsplit(issued.json()["reviewer_url"]).fragment.removeprefix("review=")
@@ -254,15 +254,15 @@ def test_handoff_and_exchange_reject_missing_prerequisites() -> None:
         operator.post(
             "/v1/operator/reviewer-handoff",
             headers=headers,
-            json={"purpose": "invalid"},
+            json={"purpose": "invalid", "memory_digest": "0" * 64},
         ).status_code
-        == 400
+        == 422
     )
     assert (
         operator.post(
             "/v1/operator/reviewer-handoff",
             headers=headers,
-            json={"purpose": "initial_review"},
+            json={"purpose": "initial_review", "memory_digest": "0" * 64},
         ).status_code
         == 409
     )
@@ -284,7 +284,7 @@ def test_handoff_and_exchange_reject_missing_prerequisites() -> None:
         operator.post(
             "/v1/operator/reviewer-handoff",
             headers=headers,
-            json={"purpose": "initial_review"},
+            json={"purpose": "initial_review", "memory_digest": "0" * 64},
         ).status_code
         == 409
     )
@@ -307,7 +307,7 @@ def test_handoff_and_exchange_reject_missing_prerequisites() -> None:
         operator.post(
             "/v1/operator/reviewer-handoff",
             headers=headers,
-            json={"purpose": "initial_review"},
+            json={"purpose": "initial_review", "memory_digest": active_memory.memory_digest},
         ).status_code
         == 409
     )
@@ -324,7 +324,7 @@ def test_handoff_and_exchange_reject_missing_prerequisites() -> None:
         operator.post(
             "/v1/operator/reviewer-handoff",
             headers=headers,
-            json={"purpose": "revocation"},
+            json={"purpose": "revocation", "memory_digest": active_memory.memory_digest},
         ).status_code
         == 201
     )

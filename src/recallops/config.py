@@ -65,6 +65,7 @@ class Settings(BaseSettings):
     capability_policy_version: str = Field(
         default="webmcp-capability-v1", min_length=3, max_length=80
     )
+    memory_ttl_days: int = Field(default=180, ge=1, le=3650)
 
 
 @lru_cache

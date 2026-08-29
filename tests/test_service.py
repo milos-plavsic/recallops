@@ -178,12 +178,15 @@ def test_compatible_successful_memory_drives_guarded_action() -> None:
 
 def test_versioned_compatibility_policy_can_authorize_reviewed_patch_reuse() -> None:
     embedder = DeterministicEmbedder()
-    compatible = memory(embedder, "2.4.1", 1.0, "reduce concurrency").model_copy(
-        update={
+    payload = memory(embedder, "2.4.1", 1.0, "reduce concurrency").model_dump()
+    payload.update(
+        {
             "compatibility_policy": CompatibilityPolicy.SEMVER_PATCH,
             "compatibility_policy_version": "semver-v1",
+            "memory_digest": None,
         }
     )
+    compatible = Memory.model_validate(payload)
     result = IncidentService(
         InMemoryStore([compatible]), embedder, DeterministicReasoner()
     ).analyze(incident("2.4.9"))
@@ -474,12 +477,16 @@ def test_positive_evidence_decays_but_known_failure_penalty_persists() -> None:
     embedder = DeterministicEmbedder()
     as_of = datetime(2026, 8, 1, tzinfo=UTC)
     created_at = as_of - timedelta(days=360)
-    success = memory(embedder, "2026.07.31", 1.0, "successful remediation").model_copy(
-        update={"confidence": 1.0, "created_at": created_at}
-    )
-    failure = memory(embedder, "2026.07.31", -1.0, "failed remediation").model_copy(
-        update={"confidence": 1.0, "created_at": created_at}
-    )
+    success_payload = memory(
+        embedder, "2026.07.31", 1.0, "successful remediation"
+    ).model_dump()
+    success_payload.update({"confidence": 1.0, "created_at": created_at, "memory_digest": None})
+    success = Memory.model_validate(success_payload)
+    failure_payload = memory(
+        embedder, "2026.07.31", -1.0, "failed remediation"
+    ).model_dump()
+    failure_payload.update({"confidence": 1.0, "created_at": created_at, "memory_digest": None})
+    failure = Memory.model_validate(failure_payload)
 
     ranked_success = rank_memory(success, 1.0, "2026.07.31", as_of=as_of)
     ranked_failure = rank_memory(failure, 1.0, "2026.07.31", as_of=as_of)

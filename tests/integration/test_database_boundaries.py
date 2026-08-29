@@ -20,7 +20,9 @@ from recallops.domain import (
     IncidentCreate,
     Memory,
     MemoryGovernanceRequest,
+    MemoryState,
     OutcomeObservation,
+    ReviewReasonCode,
 )
 from recallops.embedding import DeterministicEmbedder
 from recallops.sandbox import SANDBOX_ACTION_COMMAND
@@ -34,6 +36,123 @@ from recallops.workflow import (
     WorkflowCoordinator,
     WorkflowState,
 )
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_memory_evidence_is_immutable_and_lifecycle_predicates_precede_ranking() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    tenant = f"governance_{uuid4().hex[:16]}"
+    now = datetime.now(UTC)
+    embedder = DeterministicEmbedder()
+
+    def candidate(
+        suffix: str,
+        *,
+        state: MemoryState = MemoryState.ACTIVE,
+        score: float = 1.0,
+        expires_at: datetime | None = None,
+    ) -> Memory:
+        return Memory(
+            tenant_id=tenant,
+            service="checkout",
+            service_version="v2.4.1",
+            symptom=f"checkout latency {suffix}",
+            action=f"bounded action {suffix}",
+            outcome="measured outcome",
+            outcome_score=score,
+            confidence=0.95,
+            valid=state is MemoryState.ACTIVE,
+            state=state,
+            observed_by="agent-assessor",
+            reviewed_by="reviewer-a" if state is MemoryState.ACTIVE else None,
+            reviewed_at=now if state is MemoryState.ACTIVE else None,
+            expires_at=expires_at,
+            embedding=embedder.embed(f"checkout latency {suffix}"),
+        )
+
+    store = PostgresStore(database_url)
+    active = candidate("active")
+    pending = candidate("pending", state=MemoryState.PENDING_REVIEW)
+    expired = candidate("expired", expires_at=now - timedelta(seconds=1))
+    negative = candidate("negative", score=-1)
+    try:
+        for item in (active, pending, expired, negative):
+            store.add_memory(item)
+        assert {item.id for item in store.list_memories(tenant, "checkout")} == {
+            active.id,
+            pending.id,
+            expired.id,
+            negative.id,
+        }
+        incident = IncidentCreate(
+            tenant_id=tenant,
+            service="checkout",
+            service_version="v2.4.1",
+            symptom="checkout latency active",
+            idempotency_key=f"governance-{uuid4().hex}",
+        )
+        found = store.find_memories(
+            incident,
+            embedder.embed("checkout latency active"),
+            embedder.space_id,
+            10,
+        )
+        assert {item.memory.id for item in found} == {active.id, negative.id}
+
+        original_digest = pending.memory_digest
+        certified = store.govern_memory(
+            pending.id,
+            MemoryGovernanceRequest(
+                tenant_id=tenant,
+                actor_id="reviewer-b",
+                action=GovernanceAction.CERTIFY,
+                reason="evidence accepted",
+                reason_code=ReviewReasonCode.EVIDENCE_ACCEPTED,
+            ),
+        )
+        assert certified is not None
+        assert certified.state is MemoryState.ACTIVE
+        assert certified.memory_digest == original_digest
+
+        with (
+            psycopg.connect(database_url) as connection,
+            pytest.raises(psycopg.errors.CheckViolation, match="memory evidence is immutable"),
+        ):
+            connection.execute(
+                "UPDATE memories SET action='tampered' WHERE id=%s AND tenant_id=%s",
+                (active.id, tenant),
+            )
+
+        inconclusive = candidate("inconclusive", score=0)
+        with pytest.raises(psycopg.errors.CheckViolation):
+            store.add_memory(inconclusive)
+
+        revoked = store.govern_memory(
+            certified.id,
+            MemoryGovernanceRequest(
+                tenant_id=tenant,
+                actor_id="reviewer-c",
+                action=GovernanceAction.REVOKE,
+                reason="new contradictory evidence",
+                reason_code=ReviewReasonCode.NEW_CONTRADICTORY_EVIDENCE,
+            ),
+        )
+        assert revoked is not None and revoked.state is MemoryState.REVOKED
+        assert store.get_memory(revoked.id, tenant) is not None
+        assert revoked.id not in {
+            item.memory.id
+            for item in store.find_memories(
+                incident,
+                embedder.embed("checkout latency pending"),
+                embedder.space_id,
+                10,
+            )
+        }
+    finally:
+        store.close()
 
 
 @pytest.mark.skipif(
@@ -84,10 +203,17 @@ def test_judge_run_session_and_handoff_composite_relationships_fail_closed() -> 
             connection.execute(
                 """INSERT INTO memories
                 (id, tenant_id, service, service_version, symptom, action, outcome,
-                 outcome_score, confidence, valid, state, source_incident_id, embedding)
+                 outcome_score, confidence, valid, state, source_incident_id,
+                 memory_digest, embedding)
                 VALUES (%s,%s,'checkout','v1','latency','inspect','recovered',1,0.9,
-                        false,'pending_review',%s,%s::VECTOR)""",
-                (memory_id, tenant, incident_id, vector),
+                        false,'pending_review',%s,%s,%s::VECTOR)""",
+                (
+                    memory_id,
+                    tenant,
+                    incident_id,
+                    hashlib.sha256(str(memory_id).encode()).hexdigest(),
+                    vector,
+                ),
             )
             connection.execute(
                 """INSERT INTO judge_runs
@@ -288,7 +414,7 @@ def test_postgres_store_complete_governed_memory_lifecycle() -> None:
         replacement = Memory(
             tenant_id="integration",
             service="checkout",
-            service_version="2026.08",
+            service_version="1.2.3",
             symptom="latency",
             action="safer action",
             outcome="verified",
@@ -406,6 +532,11 @@ def test_postgres_sandbox_evidence_and_assessment_are_distinct_and_bound() -> No
     )
     assert assessment.status_code == 201
     assert assessment.json()["policy_verdict"]["classification"] == "recovered"
+    recorded_assessment = store.get_postcheck_assessment(
+        UUID(str(incident["incident_id"])), "sandbox-db"
+    )
+    assert recorded_assessment is not None
+    assert recorded_assessment.classification == "not_recovered"
     with psycopg.connect(database_url) as connection:
         row = connection.execute(
             """SELECT a.classification, v.classification, m.state, m.valid,
@@ -825,7 +956,7 @@ def test_postgres_judge_run_handoff_expiry_and_reset_are_atomic() -> None:
             "Origin": "http://testserver",
             "X-CSRF-Token": first_response.json()["csrf_token"],
         },
-        json={"purpose": "initial_review"},
+        json={"purpose": "initial_review", "memory_digest": memory.memory_digest},
     )
     assert handoff_response.status_code == 201
     code = urlsplit(handoff_response.json()["reviewer_url"]).fragment.removeprefix("review=")

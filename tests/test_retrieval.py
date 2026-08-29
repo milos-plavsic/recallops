@@ -209,12 +209,16 @@ def test_postgres_retrieval_deduplicates_lane_overlap() -> None:
 def test_retrieval_order_is_deterministic_for_equal_scores() -> None:
     embedder = DeterministicEmbedder()
     created_at = datetime(2026, 8, 10, tzinfo=UTC)
-    first = _memory().model_copy(
-        update={"id": UUID(int=1), "created_at": created_at, "action": "first"}
+    first_payload = _memory().model_dump()
+    first_payload.update(
+        {"id": UUID(int=1), "created_at": created_at, "action": "first", "memory_digest": None}
     )
-    second = _memory().model_copy(
-        update={"id": UUID(int=2), "created_at": created_at, "action": "second"}
+    first = Memory.model_validate(first_payload)
+    second_payload = _memory().model_dump()
+    second_payload.update(
+        {"id": UUID(int=2), "created_at": created_at, "action": "second", "memory_digest": None}
     )
+    second = Memory.model_validate(second_payload)
     store = InMemoryStore([first, second])
 
     observed_orders = {

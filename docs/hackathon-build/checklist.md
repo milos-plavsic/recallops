@@ -76,7 +76,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   two parallel runs, mixed cookies, expired/reused handoffs, same-subject review, reset races, and
   cross-run object guesses; require one authoritative result and zero cross-run disclosures.
 
-- [ ] **3. Complete governed memory lifecycle and recurrence semantics**
+- [x] **3. Complete governed memory lifecycle and recurrence semantics**
   Spec ref: `spec.md > Data Model And Database Boundaries > Migration 028 — complete memory governance`; `spec.md > Sandbox, Observation, And Policy > Memory outcome semantics`
   What to build: Add certification, quarantine, rejection, revocation, expiry, and supersession
   constraints; immutable memory digests; policy-defined positive/negative/inconclusive semantics;

@@ -109,7 +109,7 @@ def test_judge_session_routes_are_absent_outside_judge_mode() -> None:
         client.post(
             "/v1/operator/reviewer-handoff",
             headers={"X-Tenant-ID": "demo"},
-            json={"purpose": "initial_review"},
+            json={"purpose": "initial_review", "memory_digest": "0" * 64},
         ).status_code
         == 404
     )
