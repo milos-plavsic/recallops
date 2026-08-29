@@ -41,7 +41,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The public entry requires no account creation, credentials, terminal command, manual workflow ID, or role configuration.",
       "requirement_sha256": "869319f9356eea47babcebc3ce8605212fab6b1b0412ecade0960477ee51c827",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -79,7 +79,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Starting a scenario opens a fresh isolated workflow and does not expose another judge's state.",
       "requirement_sha256": "e405cd18c131d04e7aa98107ed666e0f279999424d828b8f5caf223b7e5bf437",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -117,7 +117,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The first meaningful view contains real scenario data rather than an empty dashboard or splash page.",
       "requirement_sha256": "11233f1a42235d7c436414a4aa646ec159203b894c42b5380c4f2d452d452102",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -155,7 +155,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The room identifies the scenario as a synthetic checkout sandbox and does not imply production infrastructure access.",
       "requirement_sha256": "e279eb81e38a6fb304fa6817c9840d0b2c0b17a5344bd7f337a5985f55dc2c9a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -193,7 +193,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "If a new scenario cannot be allocated, the page explains the bounded availability problem and a safe retry path; it does not reuse an unrelated active workflow.",
       "requirement_sha256": "a32dd6f1a95525afed0de8e193df354e52423c090549546ac80cdd812cff1416",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -231,7 +231,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Without scrolling, the judge can identify what failed, what the agent can do now, who owns the next decision, which evidence is trusted, and the next judge action.",
       "requirement_sha256": "dd42db4e45d5a7446292fe7400384a877fcb3893290aa34284fa60115069c413",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -269,7 +269,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The high-similarity incompatible known failure is visible with its similarity and plain-language rejection reasons.",
       "requirement_sha256": "3406eabae0aa57c572b960d9d7e99c5599e6306dcb281fe717657f661812d09d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -307,7 +307,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "A copyable prompt tells the visiting agent to investigate and prepare without authorizing or executing.",
       "requirement_sha256": "9704bfd76515f8141cf88dd9769f4998d85e90c14de13cc436ed3df98beb5387",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -345,7 +345,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The Capability Inspector and Activity Rail are visible or immediately reachable without leaving the room.",
       "requirement_sha256": "e644130c7c53b1e8b2b0c3e8c2bed5720a6bbf07455e12a3aedfa7a2d52ee25d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -383,7 +383,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The operator identity and role remain visible for the duration of the operator journey.",
       "requirement_sha256": "5324f5a39efa412cd33f93303eea84067db2f100774f35c2f17be6544db65cbe",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -421,7 +421,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "`inspect_incident` is available for every non-expired workflow state in which inspection is safe.",
       "requirement_sha256": "94d7efeaf16b92839c9e2afe80de3583a06c80cdb3515bb5dd3461629a0b906f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -459,7 +459,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Its result identifies the incident, current workflow meaning, current authority owner, and bounded operational evidence.",
       "requirement_sha256": "f9dbe99ae690d254330496e9d7a24e40d91418dc89969584dd4dda5c1cc48497",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -497,7 +497,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "External incident and historical text is marked untrusted in both the tool result and page.",
       "requirement_sha256": "5cb777a86b1ef9160a3184e5ecd170c883fb166db47065ed6a93a8ac964785eb",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -535,7 +535,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "The result contains no credentials, session material, unrestricted logs, raw embeddings, or data belonging to another tenant or workflow.",
       "requirement_sha256": "8f1356f0da1595271f2b2284778ff81a49ecf39499f948246b6340b2c0219f16",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -573,7 +573,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Calling the tool updates the same page the operator sees and appends an attributable activity event.",
       "requirement_sha256": "d5f0d2c7d230cbb2e9cd9d92bc4263f35924cda3e445057928c6ef52b5abf2f8",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -611,7 +611,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Candidate evidence presents similarity separately from eligibility.",
       "requirement_sha256": "7c4c6ac26a1551a4fdb9a9310499ff8edc94aee2dc2f946e1f14c08d16683f47",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -649,7 +649,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "An incompatible, pending, quarantined, rejected, revoked, expired, cross-tenant, or known-failed candidate cannot be shown as a recommended remediation.",
       "requirement_sha256": "b5ae861918ecaa7698a23e448cf7605e4fb9ed08c4bd9626134e4e06e93fafc3",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -687,7 +687,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Rejection reasons are bounded, machine-readable in proof details, and understandable in the default view.",
       "requirement_sha256": "9c25279a3774cb48accf793ea0ec18a8eeda16016fe9d85ef81dfdfa9a7a548d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -725,7 +725,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "If no memory is eligible, the product explicitly abstains from a memory-backed recommendation.",
       "requirement_sha256": "1a13e31107d021f6d146e08f1f7f3ff59a4902139605c2ad86a94b72d1d66f5c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -763,7 +763,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "An ineligible memory cannot reappear under a softer label such as advisory or contextual evidence to influence the recommendation.",
       "requirement_sha256": "e9c1e5660408158e1c60687d9bee36aa8b50ad80730fcbfb7848581cc742d6c0",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -801,7 +801,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Instructions found in incident or memory text cannot add tools, change roles, advance state, override eligibility, or supply protected-action arguments.",
       "requirement_sha256": "07d96035069e1b8da915376bf585bfced5318b3127afe41de80f0fc40c3ee8dd",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -839,7 +839,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "When untrusted instructions are ignored, the product can show a concise explanatory proof event without reproducing unsafe or excessive content.",
       "requirement_sha256": "a7853593d9e4e6aa8f60e670e069d611776a2c72c8f7ccdc87bb56ecc7c8aee2",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -877,7 +877,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Bounded evidence remains useful for diagnosis despite its untrusted designation.",
       "requirement_sha256": "617012428df9690309085cab31673487977828b9ffca9ef8c7d45e2daad9af25",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -915,7 +915,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "`propose_mitigation` appears only while the incident is accepting a proposal.",
       "requirement_sha256": "c6977350b1464f1909a2f7a3f1dcd6be63cc8898e78bbab96706d86366013529",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -953,7 +953,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "The tool accepts only the bounded service/version/symptom context and rationale needed for the allowlisted scenario.",
       "requirement_sha256": "eb37fa5ff0827520208dd7c594389e54a661a343e8b3e1ee5367429d07f16d94",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -991,7 +991,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "A successful proposal visibly identifies the exact incident, evidence basis, action, proposal digest, expiry status, and current authority owner.",
       "requirement_sha256": "9165930a20bb9082770e0258d1b63967ae2864b207de78d930e6481f169d598f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1029,7 +1029,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "Repeating the same accepted request cannot create multiple live proposals.",
       "requirement_sha256": "2e33b40ce24ecd3ec969d9c9eb6aa9b4e5feadcfc22e46dda3e7d88fe5d50195",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1067,7 +1067,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "The agent cannot use proposal text to change the executable action or authorize it.",
       "requirement_sha256": "974e2398b810c2fdb7c8fabf86507f923888a393caf21c90dc7ed52746f0de69",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1105,7 +1105,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "Immediately after proposal creation, `propose_mitigation` moves from **Available to agent** to **Withdrawn**.",
       "requirement_sha256": "2cfeba4abd0d6275e39967b99e7e0ffeb85da8ffdd3c7920681de351ded797e9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1143,7 +1143,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "The interface states that an unresolved proposal now requires the human operator.",
       "requirement_sha256": "e98bd740d317e3060bcb0a27a8c881693ac21bb6c8986d7191b59c55cce80f9b",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1181,7 +1181,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "The authority owner visibly changes from agent to operator.",
       "requirement_sha256": "06281643baf8354b0d8c36a87dc21852a294fcc989d72b3b364fd783ce854bd9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1219,7 +1219,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "A stale callback, repeated invocation, or guessed call after withdrawal is denied and cannot create or replace a proposal.",
       "requirement_sha256": "5bc513fab35800d8d58c83c24a9d3ceebea4582e294cfca990f0154afc767070",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1257,7 +1257,7 @@
       "reproduce": "npm run test:webmcp:native -- tests/webmcp-native/native.spec.ts",
       "requirement": "The denial returns bounded current-state and allowed-next-action guidance without revealing sensitive policy or endpoint details.",
       "requirement_sha256": "202a21f340d5e99316d3c5bb171f5dae0a08d5436104a5c3745d6f265698cc4c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1295,7 +1295,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Only the operator sees approval and rejection controls.",
       "requirement_sha256": "4bff2b3aa52bdf6a88ca5210471555e268125c9fee987b50e9b0c3a00113a360",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1333,7 +1333,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The approval view shows the human-readable action and exact bound incident/proposal identifiers before confirmation.",
       "requirement_sha256": "d5a66d235702ae0f0fcfa0d39e54d04ee55a0f2372ac57e9db85d57c67958687",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1371,7 +1371,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Approval of an expired, replaced, reset, stale, cross-workflow, or already-resolved proposal is denied.",
       "requirement_sha256": "b6dfbf3eb40bbe2f7781caf1a32c0a11fab0254f1b657233b193c448709ca72a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1409,7 +1409,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Approval never automatically applies the sandbox action; the next protected step remains visibly distinct.",
       "requirement_sha256": "b0b66910eeed331bd0aeb06b615965bbde85c1c09c3185dd625c2e7d1ca375e2",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1447,7 +1447,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Repeated or concurrent approval attempts yield one authoritative result and reconcile all open views to it.",
       "requirement_sha256": "f44e4d08bf616312676080ba3ea5640f0015f1f710e4f2d1a93472a211805957",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1485,7 +1485,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The apply control appears only after valid approval and only to the operator.",
       "requirement_sha256": "4b322a745e1297266b478771bd8f99ec6268dc35d249b25114a232e14e451b9a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1523,7 +1523,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The confirmation states that the target is the isolated checkout sandbox and previews the exact approved action.",
       "requirement_sha256": "c770ac07a8ad2d2492c438952b509cbaa2f06afb5361f66c2d0a51e160319c83",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1561,7 +1561,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The product cannot accept arbitrary commands, user-supplied measurements, or a different action under the approved proposal.",
       "requirement_sha256": "0001e181d64d3599442d43f7019b197595bc4ebf0680a2d5fe06d6c328ce97e9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1599,7 +1599,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "A retry or double-click cannot repeat an already-recorded sandbox mutation.",
       "requirement_sha256": "107b5ecddd3de7125424f9584f647b51d425887eeb70d9543dc30aceb8c0066a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1637,7 +1637,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The activity rail distinguishes agent proposal, operator approval, sandbox application, and system observation as different actors and events.",
       "requirement_sha256": "ac4bbba36b806790a3eb4bf29ce5a0c1b5f2253b5ca3e88d6357269c330c1ebf",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1675,7 +1675,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The page shows bounded before/after telemetry, observation identity, collection status, and policy verdict after measurement succeeds.",
       "requirement_sha256": "a5727d27a10ae8e476f34814cddb952e62cb0cb08ee4d5b7d9ab3e5d3962e71c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1713,7 +1713,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Measurements are presented as immutable evidence bound to the current workflow, proposal, and sandbox action.",
       "requirement_sha256": "d2a23913e34725ae735e9f63f7996564f05bf7f5c46358878724c3d537734510",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1751,7 +1751,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The policy verdict is visibly identified as independent of the later agent assessment.",
       "requirement_sha256": "d3a77b6130156f1f28cc7acbb1cc86ae5448bb9b0d00db2c84f7c71e199b4cb4",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1789,7 +1789,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "No assessment capability or memory exists before a valid observation exists.",
       "requirement_sha256": "32b6c9978fd95ce8b62b5badb8cdd6fb7dbff1257c7b0ea8745469042ed1c2f6",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1827,7 +1827,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The product never labels operator attestation or agent-provided numbers as verified telemetry.",
       "requirement_sha256": "e5d200efe5e8c038ccf106b8337a903d99d38d3ccebf1273568eeabf4bf644e8",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1865,7 +1865,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Observation failure produces a clear `POSTCHECK_UNAVAILABLE` product state.",
       "requirement_sha256": "20c307170d1545dca235813498480f67890e5d6ba8890fbf5be0be4057eae916",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1903,7 +1903,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "`record_postcheck_assessment` remains absent, and no memory is created.",
       "requirement_sha256": "201dbd57783f7e1e6208112b6417d1c05fed35175a1723c7cfb90bca0ab66181",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1941,7 +1941,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Only the operator sees retry or reset recovery actions.",
       "requirement_sha256": "5996586c88b63a4f1a79e67ccf0ad400c9fa3cb8758957fdb7190d2bf5f8b88d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -1979,7 +1979,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Observation retry does not repeat the completed sandbox mutation.",
       "requirement_sha256": "01004aef2ecabc5c6e51e250af0dd3849f1d578e28c832c249c4dfa48fda01ff",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2017,7 +2017,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "**Verify evidence** for the failure shows that no observation, assessment, or memory write was accepted.",
       "requirement_sha256": "9cae5f60c77c238f4b78503237bd661336f91c6996b461962b63f2ed9097e835",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2055,7 +2055,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "`record_postcheck_assessment` appears only after the bound verified observation is ready.",
       "requirement_sha256": "a2241001f6151db4c0b27c4b833ed80249823ac6485e226cbf5e0aa0741872c6",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2093,7 +2093,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The agent supplies only a bounded classification and concise rationale for that observation.",
       "requirement_sha256": "356d77810152efd3b61e89118e6721967a4293ecb4f170c648b69490eddfcbdb",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2131,7 +2131,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "The resulting view shows immutable observation, agent assessment, and policy verdict as three separate layers.",
       "requirement_sha256": "68e6a6e9f72788b8eecab1a0ac0a6f47ace60cb27fe897f6b4aa5051417feeca",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2169,7 +2169,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "Agreement and disagreement are both preserved; the agent cannot modify the policy verdict.",
       "requirement_sha256": "d98da9ee90c5cb0ff606d3e94378b9351af0c42d5908f29dc7da35bca7c9e256",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2207,7 +2207,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "A stale, mismatched, cross-workflow, repeated, or invalid assessment creates no additional memory.",
       "requirement_sha256": "02586c37e04065dbc8687b50b86b147a74cf1342f6e42327385b8ecaf763f1f3",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2245,7 +2245,7 @@
       "reproduce": "uv run pytest -q tests/test_sandbox.py",
       "requirement": "A valid assessment creates at most one memory in `PENDING_REVIEW`, visibly excluded from recall.",
       "requirement_sha256": "876bb7e369e1c9840b880ea78196a04dde38ed5bed4d9715a1e321ec5270459b",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2283,7 +2283,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The operator can open or copy a short-lived reviewer link bound to only the current workflow.",
       "requirement_sha256": "9936ccc1c51d8539fb2ab04ad9338552e89e9a54b47256e23b67cbc560d4b84d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2321,7 +2321,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The reviewer page shows a persistent reviewer identity/role banner and no operator controls.",
       "requirement_sha256": "ae2842be33b4d21a2d71cd8ec6d3b6f801f463a183a0acfadf2b02d035f7cc5f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2359,7 +2359,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The reviewer subject differs from the operator and assessment submitter for that evidence.",
       "requirement_sha256": "40b54f2b8926ff1417b1825fea793ad7d047d80595f94a80b53254c24bcf5d86",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2397,7 +2397,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Expired or invalid reviewer links reveal no review data and offer a safe recovery path.",
       "requirement_sha256": "08758e9f5bbfdc5492a9408c1948630267fabbef7347f05dfe4533f3694375a2",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2435,7 +2435,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The product claims authenticated subject separation, not proof that two physical people used the sessions.",
       "requirement_sha256": "9ed413c803d4c8f10866d0066d90820de6a9f234e5bf2e2bbce3f0b382b05186",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2473,7 +2473,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The review view shows compatibility context, immutable measurements, agent assessment, policy verdict, agreement status, provenance, and exact memory digest.",
       "requirement_sha256": "8e17abb80d9569c904b3a36a7dee5490bc1e79d62349b5000657c57e76bdda44",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2511,7 +2511,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Observation, assessment, and policy fields are read-only.",
       "requirement_sha256": "9b09c2eb38efa20ddcbd229118b411ec633f3af49b384ac192285b3fbb8b7bf5",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2549,7 +2549,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "**Certify** makes the policy-defined positive or negative evidence admissible.",
       "requirement_sha256": "f81b9ad1ea07004845983af2d8e98e418a75265f4c094037e3f26dcb8a86accf",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2587,7 +2587,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "**Quarantine** retains the evidence for investigation while keeping it non-retrievable.",
       "requirement_sha256": "ede82f20ed5c2d6d7e2f4f1c635d4ba5201c18e581482116a5408b61a5fb2b37",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2625,7 +2625,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "**Reject** permanently excludes that evidence version while retaining its audit record.",
       "requirement_sha256": "189007a96d5f5b739e300836dad090c1f9affdd728c257b83bb1c281c75e3778",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2663,7 +2663,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Each decision requires a bounded reason code and concise reviewer note.",
       "requirement_sha256": "cc7fe800f0272f90731314cd68e0117c25eb73f69643e9e9d1bc0054f54fdd4f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2701,7 +2701,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The reviewer cannot relabel policy-classified failure as success or vice versa.",
       "requirement_sha256": "34dd89479a9a9bce455ab5515a8e0c9da4e75a630788c7edddbd2368b3af8312",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2739,7 +2739,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "An authorized reviewer can revoke certified evidence through a protected secondary flow.",
       "requirement_sha256": "f222dfca8899e2217322e82fe844ddbe3e0b53d557d3e20982a2f05ca4290a94",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2777,7 +2777,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Revocation immediately prevents future recall but does not alter earlier decisions or receipts.",
       "requirement_sha256": "b5ce37a151f4316745c885f82c9abe47b2a0120987b6845bdafe85dd5ccde51b",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2815,7 +2815,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Revocation appends a new attributable event with reason and effective status.",
       "requirement_sha256": "03a058895399af7df1498ce713fe8b87f795fdc46d54badaad9900435480df01",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2853,7 +2853,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "Expired or superseded evidence remains historically inspectable and is clearly non-retrievable.",
       "requirement_sha256": "451f3f15e54870a2d0dd4ee9acaf9cff7a8d5829cf9f4fc411b5f548c02f0ca1",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2891,7 +2891,7 @@
       "reproduce": "uv run pytest -q tests/test_service.py",
       "requirement": "The operator or assessment submitter cannot review or revoke their own evidence.",
       "requirement_sha256": "a7cc18c51f6ce35adfe753edf7a02fc59f94a5340288e211ede140d5f76047e6",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2929,7 +2929,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Before reviewer certification, the pending memory is absent from agent recall results and marked excluded in the page.",
       "requirement_sha256": "f63c516b6b99fe82ef49ef35a698cb47c84641bb139621cfed702014430fbc6a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -2967,7 +2967,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Refresh, duplicate tabs, stale tool references, or direct guessed requests cannot retrieve it.",
       "requirement_sha256": "734052c20b64510d23881a2f29481792c791a48a7c34ab9ff5b8d6e0cb4006f8",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3005,7 +3005,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Quarantined, rejected, revoked, expired, incompatible, and cross-tenant memories are also absent.",
       "requirement_sha256": "8b0d1e627ebadb17bd85b6c12f3b1d3412067fdec6ed077abd0048c9df3dfc5f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3043,7 +3043,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "The activity rail identifies review\u2014not agent assessment\u2014as the event that changes admissibility.",
       "requirement_sha256": "70c9d1247b0a18ab24e985e0f30b3e253f6f9b07402ba1466af855ff1b8d4177",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3081,7 +3081,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "`checkout-latency-43` is visibly a later compatible occurrence, not a reset of the first incident.",
       "requirement_sha256": "de52cff5ceb233351df6291e10b7cdca07e45b2e669d39aace54cc9bc0964c1a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3119,7 +3119,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "`recall_reviewed_memory` appears only after compatible reviewed evidence exists.",
       "requirement_sha256": "fb6de4adfd67404e4b7382329178dbd307e9407df451c44df5934cf180b58357",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3157,7 +3157,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "The newly certified successful memory becomes eligible and changes the recommendation relative to the pre-review state.",
       "requirement_sha256": "cafa9c9a089b216d9c81eed68e9d658c6dcfc6d0c727a3ed45eb2c7269758523",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3195,7 +3195,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "The recall result exposes why the evidence is compatible and reviewed.",
       "requirement_sha256": "3e37f4ac9e3be4e78349bece4344dc62a4e2ac337a56377f3f8ecacf76c0555f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3233,7 +3233,7 @@
       "reproduce": "uv run pytest -q tests/test_retrieval.py",
       "requirement": "Certified negative evidence appears only as a warning or ranking penalty and is never returned as a recommended remediation.",
       "requirement_sha256": "99ed06cfdeb16ad71c9b6efc69346eb4e026d8f6c78ac6f350967ed4faf86b23",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3271,7 +3271,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The inspector lists currently discoverable tools, withdrawn tools with reasons, and protected operations that are never agent tools.",
       "requirement_sha256": "ca451aa76c48e1563381f53b419a34e727b35703d2b7b411ab3f95cdc5fb4526",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3309,7 +3309,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "It identifies current workflow meaning, authority owner, and synchronization status.",
       "requirement_sha256": "ec56c029fa8e0e97c543edeeda8b8c10655ae24f420562c73e6c0b83e51b8311",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3347,7 +3347,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "It updates after agent, operator, system, and reviewer events without requiring a page reload.",
       "requirement_sha256": "9138f5dfcbb610440e7f3d08635f9a3a0b26e4d5db6269a94ac9661d78b59bb4",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3385,7 +3385,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Its display is consistent with the authoritative result after refresh or concurrent changes.",
       "requirement_sha256": "b3cbd51f0c0142831880aedf95aff8fb31f7214fbf93387cab9e3b199212017b",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3423,7 +3423,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The inspector never presents browser visibility alone as proof of server authorization.",
       "requirement_sha256": "2cef1095789c80d72a2056f60fbf17ff2a891fd56bb94eefe51e5a5362aaac90",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3461,7 +3461,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Events identify actor class, action, outcome, readable time, and exact UTC time on demand.",
       "requirement_sha256": "6523581df9572ca499e14e91d54e243e97fe344f1d4c23454e07936344e8004f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3499,7 +3499,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Agent, operator, reviewer, system, denial, and policy events have redundant text and visual labels.",
       "requirement_sha256": "b2661648dd0f5d19c35b31f04c00572e28edb6eabe0c0ef36c4c0cdfaeeae3e5",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3537,7 +3537,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Replayed or denied attempts are distinguishable from committed state transitions.",
       "requirement_sha256": "64dc32d98d12cc6b6544b097020b1d3f0e01e99963402e19071e33ef3c31f3cc",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3575,7 +3575,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Every material committed or denied event has an expandable **Verify evidence** action.",
       "requirement_sha256": "1532e141fab29bc1bcda9231197b4fa8e8a0ed5adce9aff8809f7e274976ea9f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3613,7 +3613,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The rail preserves chronology through refresh and does not fabricate missing historical events.",
       "requirement_sha256": "dcd1e9f0f8d10947d57ff62551996c88b3c129823a834f231a4e622c0bcd9467",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3651,7 +3651,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The room renders a compact chain from evidence through proposal, approval, execution, observation, assessment, policy, and review.",
       "requirement_sha256": "2731eccba2dfec491ea5aa06a91398f186c9d3a534396ca14ab4dacfe6ed4223",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3689,7 +3689,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Each chain node opens a human-readable binding before optional raw technical details.",
       "requirement_sha256": "7478ba08204423308e0ed61bce8b014bf62ff73cc38602ab33637a1592309243",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3727,7 +3727,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The proof bundle is downloadable without credentials and contains the signed manifest, complete ordered event chain, public key, checksums, evaluation material, and verifier instructions.",
       "requirement_sha256": "da837c77f00536f6c367c22dfd93c9764624b1e1610ddecadf6d5b294601c936",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3765,7 +3765,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The page states exactly what the receipt proves and what it does not prove.",
       "requirement_sha256": "2cfab7faee556a33eee151561e644cf05113984d62f7573920cce9296691006e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3803,7 +3803,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "A deterministic offline verification path accepts the valid bundle and rejects published tampered vectors.",
       "requirement_sha256": "70cd0caa02f5ad26632b36861286f141b3da399174f6dbed7fe1c8d69172ab80",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3841,7 +3841,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Refresh at every workflow stage restores authoritative state and the correct capability set.",
       "requirement_sha256": "b552221b7c2f4d4cbc9f5ce9a7544bea0d3cfba174c02d58e76e0d3c7c309665",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3879,7 +3879,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Simultaneous valid attempts result in one committed outcome and clear reconciliation elsewhere.",
       "requirement_sha256": "b0d46a83becc7522d73e680cbef47ec379b9c3fb430d5b09e06256f61f145264",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3917,7 +3917,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Repeated proposals, approvals, sandbox applications, assessments, reviews, revocations, and resets do not produce duplicate side effects.",
       "requirement_sha256": "e0b6e76066e67b6d584f5cb73b95f9e4ee5326df909d1f01e1bb026b4d8539bd",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3955,7 +3955,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Reset, expiry, proposal replacement, or state advancement invalidates prior action references.",
       "requirement_sha256": "43ddbf3ded2d1d8e219ec8c9a22d7ae88f2b265d25a44a076eafcf25ab5eb058",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -3993,7 +3993,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "The product never silently transfers approval intent from an expired or replaced object.",
       "requirement_sha256": "7591a20bcaaae782ebe1d4e2ddc6da3d5d0a14b7aa8125b0a7aad3cded41a90f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4031,7 +4031,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Before authoritative state loads, no authority-bearing control is enabled.",
       "requirement_sha256": "55d737dfcef308b99653e5a11b3b08c5cf1effe2b0e8fa7e8c75b7dbb18b76e3",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4069,7 +4069,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Synchronization failure produces a read-only degraded state with retry and stale-data labeling.",
       "requirement_sha256": "d2138769391612d8b287286f68b2240cb58fccc9aab05128947bb4cc8f861546",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4107,7 +4107,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Database, measurement, signing, or evaluation failure identifies the unavailable proof component and cannot mark the corresponding completion gate complete.",
       "requirement_sha256": "ca5fded5154d281d7ae306196f8d9d5b99807e02b7f7b0b5a4e8c90c177f1a4d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4145,7 +4145,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Error messages are actionable but do not reveal secrets, internal queries, stack traces, or sensitive policy details.",
       "requirement_sha256": "ccc15d3adbbc18d08df0a96eefff25df802cd6bd10707a9874b19665dd037ab7",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4183,7 +4183,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Recovery never substitutes a client-side or cached mutation for an unavailable server action.",
       "requirement_sha256": "d0f8d222da7e261a5c02d865951c107ea68408d9e49b679de2c954042693f141",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4221,7 +4221,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "The room remains inspectable and labels WebMCP support status clearly.",
       "requirement_sha256": "72d0ac75368131003a2386a5e566901eb9ba05269fe534c8e7b27cd57f025d69",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4259,7 +4259,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "No fake or simulated agent tool calls replace missing WebMCP capability.",
       "requirement_sha256": "7cbc6e9b6e21eb3d6128c1e4ae6945812a798e574ed54b9094306a0237a7a6d2",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4297,7 +4297,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Protected UI actions retain normal authorization and cannot be used as evidence of an agent call.",
       "requirement_sha256": "d85be1797ea4f618ec3703ba93c2179ac49125c737c49dc77f4a096e4cc82d92",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4335,7 +4335,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "The judge guide identifies the two tested clients and the supported recovery path.",
       "requirement_sha256": "4fbc4ee9c34d88fd81b4c235bec7a0e63b314ef1d9c2f174fbf0aba8ab159e44",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4373,7 +4373,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Every control, evidence drawer, role handoff, and recovery path is keyboard operable.",
       "requirement_sha256": "f6dc210afd91b9108258d1b0a50e2117e423d25f03b1ecbca6b329358ad472ec",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4411,7 +4411,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Focus order follows the visible workflow; focus moves automatically only when needed to prevent disorientation after a state transition.",
       "requirement_sha256": "74f8f6ca777617ced0354cf331c45c7ed39907b80d5812defd9cdc5f428eb0c5",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4449,7 +4449,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Important state changes announce concise summaries without flooding assistive technology.",
       "requirement_sha256": "a550c9e71e668443f7c98141e04e4f24750a7df757ddbb17ebf475a77f2be9cb",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4487,7 +4487,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Meaning never depends only on color, animation, position, or an unlabeled icon.",
       "requirement_sha256": "d9e12b955d87737505c1636e380548ab6135688e2649b081aafdf7a7ae691e07",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4525,7 +4525,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Reduced-motion preferences preserve every state change and proof cue without required animation.",
       "requirement_sha256": "8d87ee820ec70bf8039f52a0569105398467e4fc8f4d98e68ce539326dddf94e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4563,7 +4563,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Material incident, capability, activity, control, and evidence content fits the constrained in-app browser without horizontal scrolling.",
       "requirement_sha256": "810469286a0cc50a2629cc31c00cb3eee69d168bae8f5b744f00db66aa6f63f9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4601,7 +4601,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Panels stack predictably while preserving incident \u2192 capability \u2192 activity comprehension.",
       "requirement_sha256": "2a1f9d743fa2d6ef3f00f47db961d44dbff4f928c16a46d33082b5fa887b6192",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4639,7 +4639,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Tool names, schemas, availability, results, and state transitions are behaviorally consistent in both tested clients.",
       "requirement_sha256": "4fbb9b401cd1c17b5e41eed56fe27651f3ae6405b331b72479bb9fe4c0586171",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4677,7 +4677,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Client-specific limitations are disclosed precisely and do not change security claims.",
       "requirement_sha256": "7a752b6b7171d94b83f105f9500e074cfea9a9e2c132deff3d2bdd330a71e6b6",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4715,7 +4715,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The final deployed release is exercised end to end in both clients during acceptance.",
       "requirement_sha256": "a2a1efd73a283c42da06b27dff811c6cb7d34b3693d354bd9f963e2c44d6893a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4753,7 +4753,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Similarity-only and RecallOps evaluation use the same versioned query, candidate pool, similarity values, and deterministic tie-breaking.",
       "requirement_sha256": "dfb34590b8222811621ec52a2c73259bba7563f2dfbf7cc443869e7abe3c8772",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4791,7 +4791,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "The baseline algorithm and every synthetic case are published.",
       "requirement_sha256": "3e72f301361cc652d2fe4f991eecb44eed83782abb461d783be31099571bb77e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4829,7 +4829,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "The headline case shows similarity-only selecting the incompatible known failure while RecallOps rejects it before ranking.",
       "requirement_sha256": "2ebe3729d271b2e08c26aa76831841e58dc4a2d10f5c9c8a6680fff1f4aab057",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4867,7 +4867,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Results report counts with denominators for unsafe top selections, pending-memory leakage, abstention, incompatibility rejection, and recommendation changes after review.",
       "requirement_sha256": "863dd7d010c75eda6f413cb5a5edf88bd84493baead626c925db2db6801bee49",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4905,7 +4905,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Results are labeled synthetic and do not claim unmeasured production incidents prevented or time saved.",
       "requirement_sha256": "eea7230a49489f44a49cc366637f808717924836e162150ec011e62fab19ec5d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4943,7 +4943,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Every scored claim has a stable ID linked to its rubric category, live page/state, workflow event, automated test, raw evaluation case, and receipt field where applicable.",
       "requirement_sha256": "0b24f4c9ebfe22c4fb64d8e49a3cdf4aa0ee3ab86a216791afff3ecea286d050",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -4981,7 +4981,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "One evidence index offers **View live proof**, **View raw evidence**, and **Reproduce** paths.",
       "requirement_sha256": "decd981a6583ed77508d9b362531399c9de06564b74666675a4d918c5193a603",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5019,7 +5019,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "The live page and artifacts identify the same source revision, deployed build, policy version, evaluation version, and receipt-key thumbprint.",
       "requirement_sha256": "a4eb9cc6abfe17e5f0439bafb29049bcee907317d996f29d0fea861790d5c8de",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5057,7 +5057,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "All evaluation cases and failures are published; a failing invariant keeps readiness incomplete.",
       "requirement_sha256": "2a948963f5cb052ce5dd926b0707fd78787b672c166bfcee8d935706aee3c3b9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5095,7 +5095,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Any deployed-build change invalidates old completion status until both gates are regenerated.",
       "requirement_sha256": "856269c40fddd4231cea1ff01156443af4e87c5b499082656d2e61c1b21b8b64",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5133,7 +5133,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "The product displays distinct **Live proof** and **Assurance** readiness states.",
       "requirement_sha256": "724ed2841b537ed316f1a2b0599d4f4312ca684e23e7474dc9c4ad61db8430f7",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5171,7 +5171,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "**Live proof** completes only after the deployed two-occurrence journey and required client checks pass for the identified build.",
       "requirement_sha256": "6b851da0390ed533fd24ba70ccff1275af00c379d03973f754b9eb73f064b8e8",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5209,7 +5209,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "**Assurance** completes only after invariant evaluations, proof-bundle generation, and offline receipt verification pass for the same build.",
       "requirement_sha256": "c32cbc31d5c3575d1671aa001c86383a2efe58340b1a8a92d85e854425add6d5",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5247,7 +5247,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "Overall submission readiness is complete only when both independent gates are complete.",
       "requirement_sha256": "779b2324192e738fe983cbac7aa3e8b4609f4c56a5491345dc0990632d2d925c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5285,7 +5285,7 @@
       "reproduce": "uv run pytest -q tests/test_evaluation.py",
       "requirement": "The UI never hardcodes a green state or preserves one after its underlying evidence becomes stale.",
       "requirement_sha256": "61658f0cdd0d0609613cacecc553a7e3122909f3adc3293eae68a6d3ebd6fe77",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5323,7 +5323,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Every run receives a bounded isolated workflow and sandbox namespace.",
       "requirement_sha256": "c0b5b5a085764b79813dbff3e6b2dcbc0b288978650bfb1e5da725ac09a1112d",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5361,7 +5361,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Another visitor cannot view, advance, review, revoke, or reset that run.",
       "requirement_sha256": "35689758adda1d33e4eb8029ad377894268c3851ff03b2ba0121c76b7970e850",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5399,7 +5399,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Scenario quotas, expiry, and payload limits control public abuse without weakening role or state authorization.",
       "requirement_sha256": "19351949b479ef3561131c3b0b9429f3bf410b22e2857ae9ce16f3419fd3f46e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5437,7 +5437,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Expiration preserves no stale authority and provides a clear way to start a new scenario.",
       "requirement_sha256": "7c132ebb1933de755f0ab056fa39f488b2c13a5dd09f9fd3e57dcfd4f45c6588",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5475,7 +5475,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Public logs and proof bundles contain no bootstrap codes, session material, CSRF values, or sensitive headers.",
       "requirement_sha256": "60909953b774e236afd95dae40a6137402258bdab4542ab9432ed2458dc2d355",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5513,7 +5513,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Live deployment, final video, repository revision, proof bundle, benchmark results, public key, judge guide, and Devpost text identify the same release candidate.",
       "requirement_sha256": "711231671c75aa468daaba8c1e779b44cc46b665dfd13d96fc04d06c84ac92b9",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5551,7 +5551,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "A concise judge guide provides entry, reviewer handoff, duration, tested clients, reset/recovery, simulation boundary, evidence index, and fallback video.",
       "requirement_sha256": "fbd14780f154c453e5c214e7d83effeb864923f9e4fe9629385087b30f030053",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5589,7 +5589,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Continuous checks cover the complete journey, reset, artifact download, and both target clients throughout the judging window.",
       "requirement_sha256": "01672be5db690583c959304cc00df98c612a724d285f87e3f5974d4ce25f1296",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5627,7 +5627,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "Any post-freeze change reopens both readiness gates and requires regenerated evidence.",
       "requirement_sha256": "b56bc61876e71b40ab3554a9f09d0efe455dc61165a49aca89573bf354d11081",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5665,7 +5665,7 @@
       "reproduce": "node scripts/smoke-live.mjs",
       "requirement": "The fallback video demonstrates the frozen live release and is never presented as a substitute for the required accessible live app.",
       "requirement_sha256": "93e781533a670aec9b55271915304c6513a26232beedc5def8444f09f5afd638",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5697,7 +5697,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: No eligible memory. Required: Explicit abstention plus bounded rejection reasons. Forbidden: Recommending or softly relabeling ineligible evidence.",
       "requirement_sha256": "72251d47a65053425e3b5311203272050b7fcc16d8ff2509370009a54cd469fd",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5729,7 +5729,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Prompt-like text in evidence. Required: Mark untrusted and ignore authority-changing instructions. Forbidden: Treating content as policy or protected action input.",
       "requirement_sha256": "6266c4faa4c7eb3e2c062b389a3120f3d00b4d858e47d17a8a23af49d7590249",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5761,7 +5761,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Proposal expires after display. Required: Disable action, refresh state, require fresh proposal. Forbidden: Applying prior approval to a new proposal.",
       "requirement_sha256": "7355a2e16271afcc5423c0ab729524532531bd94a2573d1fdf2814e777dde90c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5793,7 +5793,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Two tabs approve simultaneously. Required: One committed outcome; other tab reconciles. Forbidden: Duplicate approval effects or conflicting state.",
       "requirement_sha256": "c9c9d3e24986a046c2f043bbec101b0549b33963bc8082d72624a7d5aa4a5032",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5825,7 +5825,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Sandbox request is repeated. Required: Return recorded authoritative result. Forbidden: Repeat the mutation.",
       "requirement_sha256": "b0153c97c04bc8db12fb4a893f634c7d64e0438b6dcb4782fba0562fa8896237",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5857,7 +5857,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Observation unavailable. Required: Show fail-closed state, no assess tool, no memory. Forbidden: Accept agent or operator measurements as a substitute.",
       "requirement_sha256": "8dcd88266c61f9ade02a4d19f7c1e5b366eff398b6b6d6591d8eb4807df7c98a",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5889,7 +5889,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Agent assessment disagrees. Required: Preserve both assessment and policy verdict. Forbidden: Overwrite, average, or hide disagreement.",
       "requirement_sha256": "d7e16feca7c25388e7fa2bef926f60189eccaa9ac3c60636380a3b9ac6d46d75",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5921,7 +5921,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Same subject attempts review. Required: Explicit denial and distinct-reviewer requirement. Forbidden: Self-certification.",
       "requirement_sha256": "61ac708137e8e31f9212b09b80b8f8cff2b2d9d62d42e0bfffc60b96512edd03",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5953,7 +5953,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Reviewer certifies a failure. Required: Activate only as negative evidence. Forbidden: Relabel it as successful remediation.",
       "requirement_sha256": "6553c5e53177632b3bb3fe183530418f092f765bc913849116525cb2d9c00c97",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -5985,7 +5985,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Certified memory is revoked. Required: Stop future recall; append revocation event. Forbidden: Rewrite or delete historical receipt.",
       "requirement_sha256": "79678d9ee2e6bf8183d8c6f3107aba720c26b65f6d6eb0695323f70a4668c4b8",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6017,7 +6017,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Workflow reset. Required: New workflow identity and invalidated old actions. Forbidden: Reusing old proposal, observation, or review authority.",
       "requirement_sha256": "2295454f49840ce5e047ff6768ca6b7c4b74d110bd4d8e21dbcd0f47700c0b89",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6049,7 +6049,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Unsupported browser. Required: Honest compatibility state. Forbidden: Simulated WebMCP success.",
       "requirement_sha256": "c76cacce79f558b37b64d01434676c7bec6493269f01d9027fd3e7b2e6fe82ba",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6081,7 +6081,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Authoritative service unavailable. Required: Read-only degraded state. Forbidden: Cached or optimistic mutation.",
       "requirement_sha256": "d88f5f009e067c828593bd2b3b8a1f45daa5223d53730a004b428ab6490ac7e3",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6113,7 +6113,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Judge session expires. Required: Stable-entry recovery to a fresh run. Forbidden: Restoring expired authority.",
       "requirement_sha256": "e00230a20a0c638fcfbd1e490c303d180e7c477de44e79c9cc547322575644b7",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6145,7 +6145,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Concurrent judges. Required: Isolated workflow and sandbox state. Forbidden: Shared mutable demo state.",
       "requirement_sha256": "e17c49782218e9e26bdaf46c341661c4f68649511403c050699ec7828cb09854",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6177,7 +6177,7 @@
       "reproduce": "uv run pytest -q tests/test_api.py",
       "requirement": "Situation: Build changes after evidence. Required: Reopen both completion gates. Forbidden: Reusing stale green readiness status.",
       "requirement_sha256": "a7ecff0892fb16492edd02fa2d93d19aba6bcb11737236f0f35abf329acb975f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6206,7 +6206,7 @@
       "reproduce": "uv run pytest -q tests/integration/test_database_boundaries.py",
       "requirement": "Protected operations are absent from the agent tool surface and denied when attempted through the agent channel.",
       "requirement_sha256": "bf0a307c634918bd8efc90b588752b72b1e9f87635cf6c0d2e78dc5184bf5ce0",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6235,7 +6235,7 @@
       "reproduce": "uv run pytest -q tests/integration/test_database_boundaries.py",
       "requirement": "Every authority-bearing action is bound to authenticated subject, role, workflow, tenant, current state, current version/epoch, exact target object, and replay protection.",
       "requirement_sha256": "413ffc703ec11c1a773e3cae7f15750ab19e3460e95ad4509cb31cc7f037eb3c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6264,7 +6264,7 @@
       "reproduce": "uv run pytest -q tests/integration/test_database_boundaries.py",
       "requirement": "Distinct reviewer-subject enforcement applies to certification, quarantine, rejection, and revocation.",
       "requirement_sha256": "c04d07401ce5b3aeee5c25ca1e1d20dbe39b1978e5c6e52bad502dd5974c89e1",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6293,7 +6293,7 @@
       "reproduce": "uv run pytest -q tests/integration/test_database_boundaries.py",
       "requirement": "Cross-tenant, cross-workflow, stale, mismatched, expired, replayed, or unauthorized requests fail closed without partial success.",
       "requirement_sha256": "be798e86954bb9fa4968f140b89650621a276f9ca65c333b0fe5fb980963ef78",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6322,7 +6322,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The judge can complete the primary journey without documentation while documentation remains available for verification and recovery.",
       "requirement_sha256": "1d6d3d9a7054f1113b663055936758468700567cd342042b01d2145548e3528e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6351,7 +6351,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Every displayed state has one clear authority owner and legitimate next step or terminal meaning.",
       "requirement_sha256": "495e5af6874b7f541ad4f51f344440ce202d19c9dbabdc2d087efaae192b9c0c",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6380,7 +6380,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Page, agent tool results, activity history, review surface, and proof artifacts agree on the authoritative workflow outcome.",
       "requirement_sha256": "bcf9561b63b1c7d8cada83fdb5c83b964bc9172bcbb049556b3f910d136fa99f",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6409,7 +6409,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Reset and refresh are safe at every stage.",
       "requirement_sha256": "8fff908eb49afae385be19a0a34cab03aabaa9e32ef3f4c4f8e93a88e32882d3",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6436,7 +6436,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Plain-language meaning precedes protocol, cryptographic, and database terminology.",
       "requirement_sha256": "e5908cc4f1538f3a9f0eed5ab8493d642076930c2cf5c186420a0cdb738f9902",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6463,7 +6463,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "Every state, role, outcome, and disabled action has a textual explanation.",
       "requirement_sha256": "f7b699c2af7a47eb317b3d2323207b0553021b623cd572a0022253a301a993d0",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6490,7 +6490,7 @@
       "reproduce": "npm run test:browser -- tests/browser/recallops.spec.ts",
       "requirement": "The complete journey satisfies keyboard, screen-reader, contrast, reduced-motion, responsive, and focus-management acceptance checks.",
       "requirement_sha256": "ca254e8d02f9ca200e491dd605a669827c88ae8ff79c1803d3d4732ed26af6fb",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6520,7 +6520,7 @@
       "reproduce": "uv run pytest -q tests/test_release_evidence.py",
       "requirement": "Published results are generated from committed cases and commands, not manually entered claims.",
       "requirement_sha256": "360435b4922fa54fce2973ae8184b1869a939cbef8bc171f4befb375c5230b6e",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6550,7 +6550,7 @@
       "reproduce": "uv run pytest -q tests/test_release_evidence.py",
       "requirement": "Raw results, failures, environment versions, browser versions, dates, data/policy versions, source revision, and generation instructions accompany summaries.",
       "requirement_sha256": "100973c1e180f1dcfa18885f4bbc8d3713dd117ab350a67dba8ca1548e05a044",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6580,7 +6580,7 @@
       "reproduce": "uv run pytest -q tests/test_release_evidence.py",
       "requirement": "The receipt verifier publishes positive and materially tampered cases.",
       "requirement_sha256": "22706892c827fa5bd25cb2afb9edceb93590be00d66c9ad2ca7da2a9213377ba",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     },
     {
@@ -6610,14 +6610,14 @@
       "reproduce": "uv run pytest -q tests/test_release_evidence.py",
       "requirement": "Proof wording states limitations as prominently as conclusions.",
       "requirement_sha256": "63061814f245e0930b6105d2ca6fef6ef7b2920cf0b45c1063c990e257329b80",
-      "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+      "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
       "status": "implemented"
     }
   ],
   "schema_version": "recallops-requirements-trace-v1",
   "source_prd": "docs/hackathon-build/prd.md",
   "source_prd_sha256": "ebe198c0cbb034d20dd7c6cc61eed6dafa30a4e7616a054c07777b0c58116b13",
-  "source_revision": "3a551ed7ab4201e52a5059f39009433181be5447",
+  "source_revision": "9122f3d71489b60739d4e8799d182712cc2e2cc3",
   "status_policy": {
     "allowed": [
       "planned",
