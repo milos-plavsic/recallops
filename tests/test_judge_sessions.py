@@ -872,6 +872,33 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
         },
     )
     assert disposition.status_code == 200
+    receipt = disposition.json()["receipt"]
+    assert receipt["status"] == "pending"
+    pending_receipt = app.state.ledger_repository.receipt_requests[
+        UUID(receipt["receipt_id"])
+    ]
+    assert pending_receipt["target_ledger_hash"] == app.state.ledger_repository.list_events(
+        run.run_id, run.tenant_id
+    )[-1].event_hash
+    assert pending_receipt["synthetic"] is True
+    assert pending_receipt["publish_public"] is True
+    receipt_view = operator.get("/v1/evidence/receipt")
+    assert receipt_view.status_code == 200
+    receipt_body = receipt_view.json()
+    assert receipt_body["receipt"]["receipt_id"] == receipt["receipt_id"]
+    assert receipt_body["receipt"]["status"] == "pending"
+    assert [node["authority_owner"] for node in receipt_body["chain"]] == [
+        "system",
+        "agent",
+        "operator",
+        "operator",
+        "system",
+        "agent",
+        "reviewer",
+    ]
+    assert receipt_body["chain"][-1]["label"] == "Independent reviewer governed reuse"
+    assert receipt_body["public_bundle_url"] is None
+    assert "does not prove external truth" in receipt_body["integrity_scope"]
     reviewed = operator.get("/v1/webmcp/capabilities").json()
     assert reviewed["available_tools"] == ["inspect_incident", "recall_reviewed_memory"]
     recurrence = operator.get("/v1/webmcp/recurrence")

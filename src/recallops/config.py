@@ -75,6 +75,12 @@ class Settings(BaseSettings):
     )
     authority_bundle_bucket: str | None = None
     authority_bundle_kms_key_id: str | None = None
+    release_image_digest: str = Field(
+        default=f"sha256:{'0' * 64}", pattern=r"^sha256:[a-f0-9]{64}$"
+    )
+    evaluation_version: str = Field(
+        default="governed-benchmark-v1", min_length=3, max_length=80
+    )
 
 
 @lru_cache

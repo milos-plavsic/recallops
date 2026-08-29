@@ -3,8 +3,10 @@ from uuid import UUID, uuid4
 
 import psycopg
 import pytest
+from psycopg.rows import dict_row
 
 from recallops.authority_archive import ArchivedBundle
+from recallops.ledger import AuthorityLedgerConflict, PostgresAuthorityLedgerRepository
 from recallops.receipt_outbox import (
     SignedReceiptResult,
     claim_receipt_request,
@@ -17,6 +19,7 @@ from recallops.receipts import (
     ReceiptSubjects,
     ReleaseBinding,
 )
+from recallops.workflow import RequestChannel, WorkflowSnapshot, WorkflowState
 
 
 def manifest(run_id: UUID, workflow_id: UUID, head: str) -> ReceiptManifest:
@@ -173,3 +176,95 @@ def test_receipt_claim_finalize_and_retry_are_atomic_and_idempotent() -> None:
         ).fetchone()
     assert terminal is not None and terminal[0:2] == ("failed", "dead_lettered")
     assert terminal[2] is not None
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required",
+)
+def test_receipt_enqueue_requires_the_exact_committed_review_event() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    incident_id, run_id = uuid4(), uuid4()
+    tenant = f"enqueue_{run_id.hex[:12]}"
+    with psycopg.connect(database_url, row_factory=dict_row) as connection:
+        connection.execute(
+            """INSERT INTO incidents
+            (id,tenant_id,service,service_version,symptom,idempotency_key,status,analysis)
+            VALUES (%s,%s,'checkout','1.0.0','latency',%s,'open','{}'::JSONB)""",
+            (incident_id, tenant, f"enqueue-{incident_id}"),
+        )
+        connection.execute(
+            """INSERT INTO webmcp_workflows (workflow_id,tenant_id,state,epoch)
+            VALUES (%s,%s,'PENDING_REVIEW',7)""",
+            (incident_id, tenant),
+        )
+        connection.execute(
+            """INSERT INTO judge_runs
+            (run_id,tenant_id,generation,scenario_version,source_incident_id,status,
+             operator_subject,build_sha,capability_policy_version,expires_at)
+            VALUES (%s,%s,1,'scenario-v1',%s,'completed','operator',%s,
+            'capability-v1',now() + interval '10 minutes')""",
+            (run_id, tenant, incident_id, "b" * 40),
+        )
+        before = WorkflowSnapshot(
+            workflow_id=incident_id,
+            tenant_id=tenant,
+            state=WorkflowState.PENDING_REVIEW,
+            epoch=7,
+        )
+        after = before.model_copy(update={"state": WorkflowState.REVIEWED, "epoch": 8})
+        repository = PostgresAuthorityLedgerRepository.from_connection(connection)
+        event = repository.append_transition(
+            before,
+            after,
+            actor_subject="reviewer-distinct",
+            actor_role="reviewer",
+            channel=RequestChannel.UI,
+            reason_code="MEMORY_CERTIFIED",
+            object_type="memory_review",
+            object_id=str(uuid4()),
+            object_digest="a" * 64,
+        )
+        assert event is not None
+        fabricated = event.model_copy(update={"object_id": str(uuid4())})
+        with pytest.raises(
+            AuthorityLedgerConflict,
+            match="differs from committed authority event",
+        ):
+            repository.request_receipt(
+                fabricated,
+                receipt_policy_version="receipt-v1",
+                image_digest=f"sha256:{'c' * 64}",
+                evaluation_version="evaluation-v1",
+                synthetic=True,
+                publish_public=True,
+            )
+        receipt_id = repository.request_receipt(
+            event,
+            receipt_policy_version="receipt-v1",
+            image_digest=f"sha256:{'c' * 64}",
+            evaluation_version="evaluation-v1",
+            synthetic=True,
+            publish_public=True,
+        )
+        receipt = connection.execute(
+            """SELECT ledger_head_hash,ledger_last_sequence,status FROM authority_receipts
+            WHERE receipt_id=%s""",
+            (receipt_id,),
+        ).fetchone()
+        request = connection.execute(
+            """SELECT target_ledger_hash,target_sequence,status,publish_public
+            FROM receipt_requests WHERE receipt_id=%s""",
+            (receipt_id,),
+        ).fetchone()
+    assert receipt == {
+        "ledger_head_hash": event.event_hash,
+        "ledger_last_sequence": event.sequence,
+        "status": "pending",
+    }
+    assert request == {
+        "target_ledger_hash": event.event_hash,
+        "target_sequence": event.sequence,
+        "status": "pending",
+        "publish_public": True,
+    }

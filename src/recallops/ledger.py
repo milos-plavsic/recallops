@@ -9,7 +9,7 @@ from collections.abc import Callable, Mapping
 from contextlib import nullcontext
 from datetime import UTC, datetime
 from typing import Any, Literal, Protocol, cast
-from uuid import UUID, uuid4
+from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from pydantic import BaseModel, Field
 
@@ -84,6 +84,18 @@ class TimelineEntry(BaseModel):
     event_hash: str | None = None
 
 
+class ReceiptStatus(BaseModel):
+    receipt_id: UUID
+    status: str
+    target_sequence: int
+    ledger_head_hash: str
+    bundle_digest: str | None = None
+    key_thumbprint: str | None = None
+    signing_algorithm: str | None = None
+    public: bool = False
+    failure_code: str | None = None
+
+
 def canonical_event_payload(event: AuthorityEvent) -> dict[str, object]:
     payload = event.model_dump(mode="json", exclude={"event_hash"})
     # Integers which could eventually exceed the I-JSON exact range are encoded
@@ -142,6 +154,19 @@ class AuthorityLedgerRepository(Protocol):
     def list_events(self, run_id: UUID, tenant_id: str) -> list[AuthorityEvent]: ...
     def add_activity(self, observation: ActivityObservation) -> None: ...
     def timeline(self, run_id: UUID, tenant_id: str) -> list[TimelineEntry]: ...
+
+    def request_receipt(
+        self,
+        event: AuthorityEvent,
+        *,
+        receipt_policy_version: str,
+        image_digest: str,
+        evaluation_version: str,
+        synthetic: bool,
+        publish_public: bool,
+    ) -> UUID: ...
+
+    def receipt_status(self, run_id: UUID, tenant_id: str) -> ReceiptStatus | None: ...
 
 
 def _event(
@@ -204,6 +229,7 @@ class InMemoryAuthorityLedgerRepository:
         self._runs: dict[tuple[str, UUID], tuple[UUID, str, str]] = {}
         self._events: dict[tuple[str, UUID], list[AuthorityEvent]] = {}
         self._activities: dict[tuple[str, UUID], list[ActivityObservation]] = {}
+        self.receipt_requests: dict[UUID, dict[str, object]] = {}
         self._lock = threading.RLock()
         self._fault_hook = fault_hook
 
@@ -333,6 +359,60 @@ class InMemoryAuthorityLedgerRepository:
             for item in observations
         ]
         return sorted(entries, key=lambda item: (item.recorded_at, str(item.entry_id)))
+
+    def request_receipt(
+        self,
+        event: AuthorityEvent,
+        *,
+        receipt_policy_version: str,
+        image_digest: str,
+        evaluation_version: str,
+        synthetic: bool,
+        publish_public: bool,
+    ) -> UUID:
+        with self._lock:
+            events = self._events.get((event.tenant_id, event.run_id), [])
+            if not events or events[-1] != event or event.state_after != "REVIEWED":
+                raise AuthorityLedgerConflict("receipt target is not the finalized ledger head")
+            receipt_id = uuid5(
+                NAMESPACE_URL,
+                f"urn:recallops:receipt:{event.run_id}:{event.event_hash}:{receipt_policy_version}",
+            )
+            self.receipt_requests.setdefault(
+                receipt_id,
+                {
+                    "receipt_id": receipt_id,
+                    "run_id": event.run_id,
+                    "tenant_id": event.tenant_id,
+                    "target_sequence": event.sequence,
+                    "target_ledger_hash": event.event_hash,
+                    "receipt_policy_version": receipt_policy_version,
+                    "source_sha": event.build_sha,
+                    "image_digest": image_digest,
+                    "evaluation_version": evaluation_version,
+                    "synthetic": synthetic,
+                    "publish_public": publish_public,
+                    "status": "pending",
+                },
+            )
+            return receipt_id
+
+    def receipt_status(self, run_id: UUID, tenant_id: str) -> ReceiptStatus | None:
+        with self._lock:
+            requests = [
+                item
+                for item in self.receipt_requests.values()
+                if item["run_id"] == run_id and item["tenant_id"] == tenant_id
+            ]
+            if not requests:
+                return None
+            item = requests[-1]
+            return ReceiptStatus(
+                receipt_id=cast(UUID, item["receipt_id"]),
+                status=str(item["status"]),
+                target_sequence=cast(int, item["target_sequence"]),
+                ledger_head_hash=str(item["target_ledger_hash"]),
+            )
 
 
 class _BoundLedgerPool:
@@ -500,6 +580,112 @@ class PostgresAuthorityLedgerRepository:
                 (run_id, tenant_id),
             )
             return [self._authority_event(row) for row in cursor.fetchall()]
+
+    def request_receipt(
+        self,
+        event: AuthorityEvent,
+        *,
+        receipt_policy_version: str,
+        image_digest: str,
+        evaluation_version: str,
+        synthetic: bool,
+        publish_public: bool,
+    ) -> UUID:
+        if not self._transaction_bound:
+            raise RuntimeError("receipt requests require an enclosing authority transaction")
+        if event.state_after != "REVIEWED":
+            raise AuthorityLedgerConflict("receipt target is not a reviewed workflow")
+        receipt_id = uuid5(
+            NAMESPACE_URL,
+            f"urn:recallops:receipt:{event.run_id}:{event.event_hash}:{receipt_policy_version}",
+        )
+        request_id = uuid5(NAMESPACE_URL, f"urn:recallops:receipt-request:{receipt_id}")
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT last_sequence,last_event_hash FROM authority_ledger_heads
+                WHERE run_id=%s AND tenant_id=%s FOR UPDATE""",
+                (event.run_id, event.tenant_id),
+            )
+            head_row = cursor.fetchone()
+            if head_row is None:
+                raise AuthorityLedgerConflict("receipt target differs from locked ledger head")
+            head = dict(cast(Mapping[str, Any], head_row))
+            if (
+                int(head["last_sequence"]) != event.sequence
+                or str(head["last_event_hash"]) != event.event_hash
+            ):
+                raise AuthorityLedgerConflict("receipt target differs from locked ledger head")
+            cursor.execute(
+                """SELECT * FROM authority_events
+                WHERE event_id=%s AND run_id=%s AND tenant_id=%s AND sequence=%s
+                FOR UPDATE""",
+                (event.event_id, event.run_id, event.tenant_id, event.sequence),
+            )
+            stored_row = cursor.fetchone()
+            if stored_row is None or self._authority_event(stored_row) != event:
+                raise AuthorityLedgerConflict(
+                    "receipt target differs from committed authority event"
+                )
+            cursor.execute(
+                """INSERT INTO authority_receipts
+                (receipt_id,run_id,tenant_id,ledger_head_hash,ledger_last_sequence,
+                 receipt_policy_version,source_sha,image_digest,evaluation_version,status,synthetic)
+                VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,'pending',%s)
+                ON CONFLICT (receipt_id) DO NOTHING""",
+                (
+                    receipt_id,
+                    event.run_id,
+                    event.tenant_id,
+                    event.event_hash,
+                    event.sequence,
+                    receipt_policy_version,
+                    event.build_sha,
+                    image_digest,
+                    evaluation_version,
+                    synthetic,
+                ),
+            )
+            cursor.execute(
+                """INSERT INTO receipt_requests
+                (request_id,receipt_id,run_id,tenant_id,target_sequence,target_ledger_hash,
+                 publish_public) VALUES (%s,%s,%s,%s,%s,%s,%s)
+                ON CONFLICT (receipt_id) DO NOTHING""",
+                (
+                    request_id,
+                    receipt_id,
+                    event.run_id,
+                    event.tenant_id,
+                    event.sequence,
+                    event.event_hash,
+                    publish_public,
+                ),
+            )
+        return receipt_id
+
+    def receipt_status(self, run_id: UUID, tenant_id: str) -> ReceiptStatus | None:
+        with self._pool.connection() as connection, connection.cursor() as cursor:
+            cursor.execute(
+                """SELECT receipt_id,status,ledger_last_sequence,ledger_head_hash,
+                bundle_digest,key_thumbprint,signing_algorithm,public_at,failure_code
+                FROM authority_receipts WHERE run_id=%s AND tenant_id=%s
+                ORDER BY created_at DESC,receipt_id DESC LIMIT 1""",
+                (run_id, tenant_id),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        item = dict(cast(Mapping[str, Any], row))
+        return ReceiptStatus(
+            receipt_id=item["receipt_id"],
+            status=item["status"],
+            target_sequence=int(item["ledger_last_sequence"]),
+            ledger_head_hash=item["ledger_head_hash"],
+            bundle_digest=item["bundle_digest"],
+            key_thumbprint=item["key_thumbprint"],
+            signing_algorithm=item["signing_algorithm"],
+            public=item["public_at"] is not None,
+            failure_code=item["failure_code"],
+        )
 
     def add_activity(self, observation: ActivityObservation) -> None:
         with self._pool.connection() as connection, connection.cursor() as cursor:

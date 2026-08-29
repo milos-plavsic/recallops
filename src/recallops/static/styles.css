@@ -17,6 +17,7 @@
 }
 
 * { box-sizing: border-box; }
+[hidden] { display: none !important; }
 html { scroll-behavior: smooth; }
 body { margin: 0; background: radial-gradient(circle at 70% 0, #122337 0, var(--bg) 36rem); line-height: 1.55; }
 a { color: inherit; }

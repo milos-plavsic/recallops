@@ -88,6 +88,11 @@ test("a first-time judge completes the visible governed recurrence without docum
     Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
       "inspect_incident", "recall_reviewed_memory",
     ]);
+  await expect(page.locator("#receipt-proof")).toBeVisible();
+  await expect(page.locator("#receipt-status")).toContainText("PROOF PENDING");
+  await expect(page.locator("#receipt-chain li")).toHaveCount(7);
+  await expect(page.locator("#receipt-limitations")).toContainText("does not prove external truth");
+  await expect(page.locator("#receipt-download")).toBeHidden();
   await page.evaluate(async () => {
     const tool = (window as any).__webmcpTools.get("recall_reviewed_memory").definition;
     await tool.execute({});

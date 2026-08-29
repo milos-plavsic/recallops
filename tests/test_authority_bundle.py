@@ -20,7 +20,6 @@ from recallops.authority_bundle import (
     parse_checksums,
     prepare_evidence,
     sha256_bytes,
-    transition_binding_digest,
     validate_bundle_files,
 )
 from recallops.canonical import canonical_bytes, content_digest
@@ -39,6 +38,8 @@ from recallops.receipts import (
     KmsReceiptSigner,
     ReceiptBuildContext,
     ReceiptDigestBindings,
+    ReceiptError,
+    ReceiptVerificationError,
     ReleaseBinding,
     TrustedKey,
     TrustedKeyDocument,
@@ -47,6 +48,7 @@ from recallops.receipts import (
     jwk_thumbprint,
     jws_signing_input,
     public_jwk_from_der,
+    transition_binding_digest,
 )
 from recallops.workflow import CAPABILITIES, RequestChannel, WorkflowState
 
@@ -481,7 +483,9 @@ def test_node_verifier_rejects_material_tampering_with_stable_codes(
     files = dict(bundle.files)
     digest = bundle.bundle_digest
     if mutation == "content":
-        files["claims.json"] += b" "
+        files["claims.json"] = files["claims.json"].replace(
+            b"verified-synthetic", b"tampered-synthetic"
+        )
     elif mutation == "missing":
         files.pop("claims.json")
     elif mutation == "signature":
@@ -534,7 +538,7 @@ def test_builder_rejects_release_claim_index_and_readme_mismatches() -> None:
     bundle, _ = make_bundle()
     with pytest.raises(BundleError, match="checksum mismatch"):
         validate_bundle_files({**bundle.files, "claims.json": b"{}"})
-    with pytest.raises(BundleError, match="unknown transition"):
+    with pytest.raises(ReceiptError, match="unknown transition"):
         transition_binding_digest("unknown", {"x": "1" * 64})
 
 
@@ -543,7 +547,6 @@ def test_builder_rejects_release_claim_index_and_readme_mismatches() -> None:
     [
         ("actor_authority", "E_ACTOR_AUTHORITY"),
         ("capability", "E_CAPABILITY_POLICY"),
-        ("causal_binding", "E_CAUSAL_BINDING"),
         ("policy", "E_POLICY_BINDING"),
         ("disposition", "E_DISPOSITION"),
     ],
@@ -564,8 +567,6 @@ def test_signed_but_policy_invalid_vectors_fail_semantically(
             bad = ("inspect_incident", "protected_override")
             events[0] = events[0].model_copy(update={"capabilities_after": bad})
             events[1] = events[1].model_copy(update={"capabilities_before": bad})
-        elif vector == "causal_binding":
-            events[-1] = events[-1].model_copy(update={"object_digest": "f" * 64})
         return events
 
     def mutate_policy(policy: dict[str, object]) -> None:
@@ -577,7 +578,7 @@ def test_signed_but_policy_invalid_vectors_fail_semantically(
     bundle, trusted = make_bundle(
         disposition="activate" if vector == "disposition" else "certify",
         mutate_events=mutate_events
-        if vector in {"actor_authority", "capability", "causal_binding"}
+        if vector in {"actor_authority", "capability"}
         else None,
         mutate_capability_policy=mutate_policy if vector == "policy" else None,
     )
@@ -588,6 +589,15 @@ def test_signed_but_policy_invalid_vectors_fail_semantically(
     result, report = run_verifier(root, registry_path, bundle.bundle_digest)
     assert result.returncode == 1
     assert report["code"] == expected_code
+
+
+def test_bundle_builder_refuses_to_sign_around_a_broken_causal_binding() -> None:
+    def break_review(events: list[AuthorityEvent]) -> list[AuthorityEvent]:
+        events[-1] = events[-1].model_copy(update={"object_digest": "f" * 64})
+        return events
+
+    with pytest.raises(ReceiptVerificationError, match="exact review_binding"):
+        make_bundle(mutate_events=break_review)
 
 
 def test_node_verifier_requires_and_accepts_predecessor_signed_key_rotation(

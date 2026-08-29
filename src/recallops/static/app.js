@@ -187,6 +187,35 @@ async function refreshTimeline() {
   $("#authority-events").replaceChildren(
     entries.length ? fragment : document.createTextNode("No persisted authority events yet.")
   );
+  await refreshReceipt();
+}
+
+async function refreshReceipt() {
+  const result = await request("/v1/evidence/receipt");
+  if (!result.receipt) return;
+  $("#receipt-proof").hidden = false;
+  const receipt = result.receipt;
+  const status = receipt.status === "signed"
+    ? `SIGNED · ${receipt.signing_algorithm} · ${shortId(receipt.key_thumbprint)}`
+    : receipt.status === "failed"
+      ? `PROOF FAILED CLOSED · ${receipt.failure_code || "bounded dependency failure"}`
+      : "PROOF PENDING · domain outcome is unchanged and no unsigned fallback exists";
+  setText("#receipt-status", status);
+  setText("#receipt-limitations", result.integrity_scope);
+  const nodes = document.createDocumentFragment();
+  for (const node of result.chain || []) {
+    const item = document.createElement("li");
+    const strong = document.createElement("strong");
+    strong.textContent = `${node.sequence} · ${node.label}`;
+    const detail = document.createElement("small");
+    detail.textContent = `${node.authority_owner} → ${node.state} · event ${shortId(node.event_hash)}`;
+    item.append(strong, detail);
+    nodes.append(item);
+  }
+  $("#receipt-chain").replaceChildren(nodes);
+  const download = $("#receipt-download");
+  download.hidden = !result.public_bundle_url;
+  if (result.public_bundle_url) download.href = result.public_bundle_url;
 }
 
 function enterReadOnlyDegraded() {

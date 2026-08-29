@@ -1,4 +1,5 @@
 import base64
+import hashlib
 import json
 from datetime import UTC, datetime
 from pathlib import Path
@@ -39,6 +40,7 @@ from recallops.receipts import (
     jws_signing_input,
     parse_canonical_json,
     public_jwk_from_der,
+    transition_binding_digest,
     verify_ledger_prefix,
     verify_receipt_jws,
 )
@@ -86,17 +88,95 @@ def root_registry(key: Ed25519PrivateKey, release_id: str = RELEASE_ID) -> Trust
 
 
 def ledger_events() -> list[AuthorityEvent]:
+    digests = ReceiptDigestBindings(
+        proposal="1" * 64,
+        execution="2" * 64,
+        observation="3" * 64,
+        assessment="4" * 64,
+        policy_verdict="5" * 64,
+        memory="6" * 64,
+        review="7" * 64,
+    )
     roles = (
-        ("system", "run-allocator", "ABSENT", "INVESTIGATING"),
-        ("agent", "agent-42", "INVESTIGATING", "AWAITING_OPERATOR_APPROVAL"),
-        ("operator", "operator-42", "AWAITING_OPERATOR_APPROVAL", "APPROVED_AWAITING_EXECUTION"),
-        ("system", "observer-42", "APPROVED_AWAITING_EXECUTION", "POSTCHECK_READY"),
-        ("agent", "agent-42", "POSTCHECK_READY", "PENDING_REVIEW"),
-        ("reviewer", "reviewer-42", "PENDING_REVIEW", "REVIEWED"),
+        ("system", "run-allocator", "ABSENT", "INVESTIGATING", None, None),
+        (
+            "agent",
+            "agent-42",
+            "INVESTIGATING",
+            "AWAITING_OPERATOR_APPROVAL",
+            "proposal",
+            digests.proposal,
+        ),
+        (
+            "operator",
+            "operator-42",
+            "AWAITING_OPERATOR_APPROVAL",
+            "APPROVED_AWAITING_EXECUTION",
+            "proposal",
+            digests.proposal,
+        ),
+        (
+            "operator",
+            "operator-42",
+            "APPROVED_AWAITING_EXECUTION",
+            "OBSERVING_POSTCHECK",
+            "execution_binding",
+            transition_binding_digest(
+                "execution", {"execution": digests.execution, "proposal": digests.proposal}
+            ),
+        ),
+        (
+            "system",
+            "observer-42",
+            "OBSERVING_POSTCHECK",
+            "POSTCHECK_READY",
+            "observation_binding",
+            transition_binding_digest(
+                "observation",
+                {
+                    "execution": digests.execution,
+                    "observation": digests.observation,
+                    "policy_verdict": digests.policy_verdict,
+                },
+            ),
+        ),
+        (
+            "agent",
+            "agent-42",
+            "POSTCHECK_READY",
+            "PENDING_REVIEW",
+            "outcome_binding",
+            transition_binding_digest(
+                "outcome",
+                {
+                    "assessment": digests.assessment,
+                    "memory": digests.memory,
+                    "observation": digests.observation,
+                    "policy_verdict": digests.policy_verdict,
+                },
+            ),
+        ),
+        (
+            "reviewer",
+            "reviewer-42",
+            "PENDING_REVIEW",
+            "REVIEWED",
+            "review_binding",
+            transition_binding_digest(
+                "review",
+                {
+                    "disposition": hashlib.sha256(b"certify").hexdigest(),
+                    "memory": digests.memory,
+                    "review": digests.review,
+                },
+            ),
+        ),
     )
     previous = ZERO_EVENT_HASH
     events: list[AuthorityEvent] = []
-    for index, (role, subject, before, after) in enumerate(roles, start=1):
+    for index, (role, subject, before, after, object_type, object_digest) in enumerate(
+        roles, start=1
+    ):
         event = AuthorityEvent(
             event_id=UUID(f"00000000-0000-0000-0000-{index:012d}"),
             run_id=RUN_ID,
@@ -116,6 +196,9 @@ def ledger_events() -> list[AuthorityEvent]:
             state_after=after,
             capabilities_before=(),
             capabilities_after=(),
+            object_type=object_type,
+            object_id=str(WORKFLOW_ID) if object_type else None,
+            object_digest=object_digest,
             reason_code="ACCEPTED",
             display_summary=f"Authority committed: {before} to {after}",
             policy_version="webmcp-capability-v1",
@@ -222,7 +305,7 @@ def test_ledger_prefix_and_manifest_are_complete_bounded_and_pseudonymous() -> N
     kid = jwk_thumbprint(public_jwk_from_der(public_der(key)))
     manifest = manifest_for(kid)
     prefix = verify_ledger_prefix(ledger_events())
-    assert prefix.event_count == 6 and prefix.head_hash == manifest.ledger_head_hash
+    assert prefix.event_count == 7 and prefix.head_hash == manifest.ledger_head_hash
     assert len(manifest.canonical()) == 2030
     assert len(jws_signing_input(manifest.canonical(), kid)) == 2862
     encoded = manifest.canonical().decode()

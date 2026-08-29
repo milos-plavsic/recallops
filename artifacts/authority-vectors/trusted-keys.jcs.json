@@ -1,0 +1,1 @@
+{"keys":[{"jwk":{"crv":"Ed25519","kty":"OKP","x":"A6EHv_POEL4dcN0Y50vAmWfk1jCbpQ1fHdyGZBJVMbg"},"kid":"1IG2tMH7J2wbJZnOf8LJzQitKf7LMvoAElsuDMVM54Y","release_ids":["release-bundle-vector-v1"],"status":"active","trust":"repository_root"}],"registry_version":"trusted-receipt-keys-v1","transitions":[]}

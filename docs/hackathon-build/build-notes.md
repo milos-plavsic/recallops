@@ -482,7 +482,40 @@
   real-database test proves lease claim, failure retry, failed-to-pending reset, atomic signed+
   delivered finalization, idempotent replay, bounded backoff, explicit publication, and terminal
   dead-letter behavior.
-- The Independent-proof gate remains open. Fixed published vector directories, complete receipt
-  enqueue wiring at reviewer disposition, live KMS signing, live versioned-S3 persistence/download,
-  and the human-readable signed authority-chain projection are not yet complete. Item 8 is not
-  marked passed, and storage/signing mocks are not represented as live external evidence.
+- At this checkpoint the Independent-proof gate remained open. Fixed published vector directories,
+  complete receipt enqueue wiring at reviewer disposition, and the human-readable signed authority-
+  chain projection were subsequently completed below. The remaining open boundary is the complete
+  production material loader/finalizer exercised against live KMS and versioned S3. Item 8 remains
+  unmarked, and storage/signing mocks are not represented as live external evidence.
+
+### Item 8 — independent bundle continuation
+
+- Reviewer disposition now commits the governed memory, completed workflow, final composite-bound
+  authority event, deterministic pending receipt, and immutable `receipt_requested` row in the same
+  transaction. In-memory and browser journeys assert the same behavior; no receipt is requested
+  before independent review.
+- Moved causal verification ahead of manifest construction and therefore ahead of KMS signing. A
+  valid signature can no longer be requested over unrelated proposal/execution/observation/verdict/
+  assessment/memory/review digests. Both Python construction and the independent Node verifier
+  enforce the exact same transition-specific bindings.
+- Added an authenticated human-readable receipt projection and visible control-room panel. Pending,
+  failed, and signed states use distinct language; the download remains hidden until the database
+  identifies a signed, synthetic, explicitly public, exact-version bundle. The UI repeats the
+  receipt's proof limitations rather than presenting cryptographic integrity as external truth.
+- Published one deterministic valid vector and 14 deterministic tampered vectors under
+  `artifacts/authority-vectors/`. Generation is byte-identical across two runs (tree digest
+  `361ff279f85bd81622ac1a2dcc77f4cc42d3499d5865c984f54a319f1dca3ab9` over canonical relative-path
+  and content-digest pairs), and the committed verifier
+  reports all 15 exact expected codes. The vector signer is test-only and explicitly not a
+  production trust root; production retains no local signing fallback.
+- Hardened the Cockroach receipt-request boundary so it locks the ledger head and independently
+  reloads the exact committed review event before enqueue. A fabricated in-process event object
+  with the real head hash but altered content is rejected; the exact event creates the receipt and
+  request atomically in the same authority transaction.
+- Corrected the native WebMCP assessment test to evolve its mocked capability manifest through the
+  same authoritative states as the mocked operator actions. This removes a test-only withdrawal
+  race without retrying or weakening real lifecycle semantics; the complete native suite passed
+  twice consecutively.
+- Checkpoint verification passed: Ruff, strict mypy over 31 source files, the full Python suite
+  against CockroachDB, 10/10 browser tests, 2/2 judge-mode journeys, 4/4 native Chromium lifecycle
+  tests, and all 15 fixed offline-verifier vectors with their exact expected result codes.

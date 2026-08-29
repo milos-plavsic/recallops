@@ -94,6 +94,11 @@ test("Chromium discovers, invokes, and observes withdrawal of native tools", asy
 test("native Chromium exposes assessment only after server-issued evidence", async ({ page }) => {
   const observationId = "00000000-0000-0000-0000-000000000040";
   let assessmentRequest: { headers: Record<string, string>; body: any } | null = null;
+  let workflowManifest = {
+    workflow_id: analysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
+    active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"],
+    protected_tools: [],
+  };
   await page.route("**/v1/config", (route) => route.fulfill({ json: { auth_required: false } }));
   await page.route("**/ready", (route) => route.fulfill({ json: { status: "ready" } }));
   await page.route("**/v1/system/status", (route) => route.fulfill({ json: {
@@ -106,33 +111,40 @@ test("native Chromium exposes assessment only after server-issued evidence", asy
     similarity_only: { top1_safe_accuracy: 0, unsafe_selection_rate: 1, isolation_violations: 0, mean_reciprocal_rank: 0 },
   } }));
   await page.route("**/v1/incidents", (route) => route.fulfill({ status: 201, json: analysis }));
-  await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: {
-    workflow_id: analysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
-    active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"], protected_tools: [],
-  } }));
-  await page.route("**/v1/incidents/*/approval", (route) => route.fulfill({ json: {
+  await page.route("**/v1/incidents/*/capabilities", (route) =>
+    route.fulfill({ json: workflowManifest }));
+  await page.route("**/v1/incidents/*/approval", (route) => {
+    workflowManifest = { workflow_id: analysis.incident_id, state: "APPROVED_AWAITING_EXECUTION", epoch: 2,
+      active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"],
+      protected_tools: [] };
+    return route.fulfill({ json: {
     recorded: true,
-    workflow: { workflow_id: analysis.incident_id, state: "APPROVED_AWAITING_EXECUTION", epoch: 2,
-      active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"], protected_tools: [] },
-  } }));
-  await page.route("**/v1/incidents/*/sandbox-execution", (route) => route.fulfill({ status: 201, json: {
+    workflow: workflowManifest,
+  } });
+  });
+  await page.route("**/v1/incidents/*/sandbox-execution", (route) => {
+    workflowManifest = { workflow_id: analysis.incident_id, state: "POSTCHECK_READY", epoch: 4,
+      active: true, authority_owner: "AGENT",
+      available_tools: ["inspect_incident", "record_postcheck_assessment"], protected_tools: [] };
+    return route.fulfill({ status: 201, json: {
     execution: { id: "00000000-0000-0000-0000-000000000030" },
     observation: { id: observationId,
       before: { latency_p95_ms: 1420, error_rate: 0.031 },
       after: { latency_p95_ms: 210, error_rate: 0.004 } },
     policy_verdict: { classification: "recovered", policy_version: "checkout-recovery-policy-v1" },
-    workflow: { workflow_id: analysis.incident_id, state: "POSTCHECK_READY", epoch: 4,
-      active: true, authority_owner: "AGENT",
-      available_tools: ["inspect_incident", "record_postcheck_assessment"], protected_tools: [] },
-  } }));
+    workflow: workflowManifest,
+  } });
+  });
   await page.route("**/v1/incidents/*/postcheck-assessment", async (route) => {
     assessmentRequest = { headers: route.request().headers(), body: route.request().postDataJSON() };
+    workflowManifest = { workflow_id: analysis.incident_id, state: "PENDING_REVIEW", epoch: 5,
+      active: true, authority_owner: "HUMAN_REVIEWER", available_tools: ["inspect_incident"],
+      protected_tools: [] };
     await route.fulfill({ status: 201, json: {
       assessment: { observation_id: observationId, classification: "recovered", rationale: "verified" },
       policy_verdict: { classification: "recovered" },
       memory: { id: "00000000-0000-0000-0000-000000000050", state: "pending_review", valid: false },
-      workflow: { workflow_id: analysis.incident_id, state: "PENDING_REVIEW", epoch: 5,
-        active: true, authority_owner: "HUMAN_REVIEWER", available_tools: ["inspect_incident"], protected_tools: [] },
+      workflow: workflowManifest,
     } });
   });
 

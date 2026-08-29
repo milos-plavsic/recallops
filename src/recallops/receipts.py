@@ -76,6 +76,81 @@ class ReceiptDigestBindings(_StrictModel):
     review: str = Field(pattern=HEX_DIGEST)
 
 
+def transition_binding_digest(domain: str, bindings: Mapping[str, str]) -> str:
+    if domain not in {"execution", "observation", "outcome", "review"}:
+        raise ReceiptError("unknown transition binding domain")
+    if not bindings or any(re.fullmatch(HEX_DIGEST, value) is None for value in bindings.values()):
+        raise ReceiptError("transition bindings require lowercase SHA-256 digests")
+    return hashlib.sha256(
+        f"recallops-{domain}-binding-v1".encode("ascii")
+        + b"\x00"
+        + canonical_bytes(dict(bindings))
+    ).hexdigest()
+
+
+def verify_causal_bindings(
+    events: Sequence[AuthorityEvent],
+    digests: ReceiptDigestBindings,
+    final_disposition: str,
+) -> None:
+    required = {
+        "AWAITING_OPERATOR_APPROVAL": ("proposal", digests.proposal),
+        "APPROVED_AWAITING_EXECUTION": ("proposal", digests.proposal),
+        "OBSERVING_POSTCHECK": (
+            "execution_binding",
+            transition_binding_digest(
+                "execution", {"execution": digests.execution, "proposal": digests.proposal}
+            ),
+        ),
+        "POSTCHECK_READY": (
+            "observation_binding",
+            transition_binding_digest(
+                "observation",
+                {
+                    "execution": digests.execution,
+                    "observation": digests.observation,
+                    "policy_verdict": digests.policy_verdict,
+                },
+            ),
+        ),
+        "PENDING_REVIEW": (
+            "outcome_binding",
+            transition_binding_digest(
+                "outcome",
+                {
+                    "assessment": digests.assessment,
+                    "memory": digests.memory,
+                    "observation": digests.observation,
+                    "policy_verdict": digests.policy_verdict,
+                },
+            ),
+        ),
+        "REVIEWED": (
+            "review_binding",
+            transition_binding_digest(
+                "review",
+                {
+                    "disposition": hashlib.sha256(
+                        final_disposition.encode("ascii")
+                    ).hexdigest(),
+                    "memory": digests.memory,
+                    "review": digests.review,
+                },
+            ),
+        ),
+    }
+    for state, (object_type, object_digest) in required.items():
+        event = next((candidate for candidate in events if candidate.state_after == state), None)
+        if (
+            event is None
+            or event.object_type != object_type
+            or event.object_digest != object_digest
+        ):
+            raise ReceiptVerificationError(
+                f"authority ledger lacks exact {object_type} causal binding"
+            )
+
+
 class ReceiptSubjects(_StrictModel):
     operator: str = Field(pattern=HEX_DIGEST)
     reviewer: str = Field(pattern=HEX_DIGEST)
@@ -263,6 +338,7 @@ def build_manifest(
 ) -> ReceiptManifest:
     if len(subject_pseudonym_key) < 32:
         raise ReceiptError("subject pseudonymization key must contain at least 256 bits")
+    verify_causal_bindings(events, digests, context.final_disposition)
     prefix = verify_ledger_prefix(events)
     if prefix.build_sha != context.release.source_sha:
         raise ReceiptVerificationError("ledger build SHA does not match release binding")

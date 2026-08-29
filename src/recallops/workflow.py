@@ -15,7 +15,7 @@ from pydantic import BaseModel, Field
 from recallops.db_retry import run_serializable
 
 if TYPE_CHECKING:
-    from recallops.ledger import AuthorityLedgerRepository
+    from recallops.ledger import AuthorityLedgerRepository, ReceiptStatus
 
 
 class WorkflowState(StrEnum):
@@ -442,6 +442,34 @@ class WorkflowCoordinator:
                 object_digest=object_digest,
             )
         return after
+
+    def request_receipt(
+        self,
+        run_id: UUID,
+        tenant_id: str,
+        *,
+        receipt_policy_version: str,
+        image_digest: str,
+        evaluation_version: str,
+        synthetic: bool,
+        publish_public: bool,
+    ) -> UUID:
+        if self._ledger is None:
+            raise WorkflowConflict("authority ledger is unavailable")
+        events = self._ledger.list_events(run_id, tenant_id)
+        if not events:
+            raise WorkflowConflict("receipt target event is unavailable")
+        return self._ledger.request_receipt(
+            events[-1],
+            receipt_policy_version=receipt_policy_version,
+            image_digest=image_digest,
+            evaluation_version=evaluation_version,
+            synthetic=synthetic,
+            publish_public=publish_public,
+        )
+
+    def receipt_status(self, run_id: UUID, tenant_id: str) -> ReceiptStatus | None:
+        return self._ledger.receipt_status(run_id, tenant_id) if self._ledger is not None else None
 
     def validate_transition(
         self,

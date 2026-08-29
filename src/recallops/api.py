@@ -843,6 +843,57 @@ def create_app(
             "entries": entries,
         }
 
+    @app.get("/v1/evidence/receipt")
+    def evidence_receipt(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        run = current_run(identity)
+        receipt = workflows.receipt_status(run.run_id, run.tenant_id)
+        events = ledger_repository.list_events(run.run_id, run.tenant_id)
+        target = receipt.target_sequence if receipt is not None else len(events)
+        labels = {
+            "RUN_GENESIS": "Evidence boundary created",
+            "INVESTIGATING_TO_AWAITING_OPERATOR_APPROVAL": "Agent staged exact proposal",
+            "AWAITING_OPERATOR_APPROVAL_TO_APPROVED_AWAITING_EXECUTION": (
+                "Operator approved exact proposal"
+            ),
+            "APPROVED_AWAITING_EXECUTION_TO_OBSERVING_POSTCHECK": (
+                "Operator applied allowlisted simulation"
+            ),
+            "OBSERVING_POSTCHECK_TO_POSTCHECK_READY": (
+                "System recorded observation and policy verdict"
+            ),
+            "POSTCHECK_READY_TO_PENDING_REVIEW": (
+                "Agent assessed evidence; memory quarantined"
+            ),
+            "PENDING_REVIEW_TO_REVIEWED": "Independent reviewer governed reuse",
+        }
+        chain = [
+            {
+                "sequence": event.sequence,
+                "label": labels.get(event.event_type, event.display_summary),
+                "authority_owner": event.actor_role,
+                "state": event.state_after,
+                "object_type": event.object_type,
+                "object_digest": event.object_digest,
+                "event_hash": event.event_hash,
+            }
+            for event in events
+            if event.sequence <= target
+        ]
+        return {
+            "receipt": receipt,
+            "chain": chain,
+            "integrity_scope": (
+                "A signed receipt proves integrity of the supplied accepted authority prefix. "
+                "It does not prove external truth, physical identity, trusted time, denied-attempt "
+                "completeness, or production-remediation safety."
+            ),
+            "public_bundle_url": (
+                f"/public/evidence/{receipt.receipt_id}/authority-bundle.zip"
+                if receipt is not None and receipt.public
+                else None
+            ),
+        }
+
     @app.post("/v1/operator/run/reset", status_code=status.HTTP_201_CREATED)
     def reset_operator_run(
         request: Request,
@@ -1198,7 +1249,20 @@ def create_app(
                     },
                 ),
             )
-            return {"memory": governed, "workflow": completed}
+            receipt_id = tx_workflows.request_receipt(
+                run.run_id,
+                run.tenant_id,
+                receipt_policy_version=settings.receipt_policy_version,
+                image_digest=settings.release_image_digest,
+                evaluation_version=settings.evaluation_version,
+                synthetic=True,
+                publish_public=True,
+            )
+            return {
+                "memory": governed,
+                "workflow": completed,
+                "receipt": {"receipt_id": receipt_id, "status": "pending"},
+            }
 
         try:
             return cast(dict[str, object], authority_transaction(disposition_atomically))

@@ -30,6 +30,7 @@ from recallops.receipts import (
     TrustedKeyRegistry,
     jwk_thumbprint,
     parse_canonical_json,
+    verify_causal_bindings,
     verify_receipt_jws,
 )
 
@@ -143,24 +144,6 @@ def sha256_bytes(value: bytes) -> str:
 
 def bundle_digest(checksum_bytes: bytes) -> str:
     return hashlib.sha256(BUNDLE_DIGEST_DOMAIN + checksum_bytes).hexdigest()
-
-
-def transition_binding_digest(domain: str, bindings: Mapping[str, str]) -> str:
-    """Bind multiple signed object digests to one authority transition."""
-    if domain not in {
-        "execution",
-        "observation",
-        "outcome",
-        "review",
-    }:
-        raise BundleError("unknown transition binding domain")
-    if not bindings or any(re.fullmatch(HEX_DIGEST, value) is None for value in bindings.values()):
-        raise BundleError("transition bindings require lowercase SHA-256 digests")
-    return hashlib.sha256(
-        f"recallops-{domain}-binding-v1".encode("ascii")
-        + b"\x00"
-        + canonical_bytes(dict(bindings))
-    ).hexdigest()
 
 
 def canonical_event_lines(events: Sequence[AuthorityEvent]) -> bytes:
@@ -288,6 +271,7 @@ def build_authority_bundle(
     """Build a byte-stable bundle after verifying every pre-existing trust binding."""
     if not readme.startswith(b"# RecallOps authority bundle\n"):
         raise BundleError("bundle README must begin with the frozen explanatory heading")
+    verify_causal_bindings(events, manifest.digests, manifest.final_disposition)
     prepared = prepare_evidence(
         public_jwk=public_jwk,
         events=events,
