@@ -297,6 +297,18 @@ def test_release_bootstraps_fail_closed_before_any_service_runs() -> None:
     assert resources["MigrationTaskDefinition"]["Properties"]["ContainerDefinitions"][
         0
     ]["Command"] == ["recallops-migrate"]
+    migration_environment = environment(
+        resources["MigrationTaskDefinition"]["Properties"]["ContainerDefinitions"][0]
+    )
+    assert migration_environment == {
+        "RECALLOPS_BUILD_SHA": {"!Ref": "BuildSha"},
+        "RECALLOPS_RELEASE_IMAGE_DIGEST": {"!Ref": "ImageDigest"},
+        "RECALLOPS_RECEIPT_RELEASE_ID": {"!Ref": "ReleaseId"},
+        "RECALLOPS_RECEIPT_KEY_THUMBPRINT": {"!Ref": "ReceiptKeyThumbprint"},
+        "RECALLOPS_EVALUATION_VERSION": "governed-benchmark-v1",
+        "RECALLOPS_CAPABILITY_POLICY_VERSION": "webmcp-capability-v1",
+        "RECALLOPS_RECEIPT_POLICY_VERSION": "authority-receipt-policy-v1",
+    }
     assert resources["ReceiptService"]["Properties"]["DesiredCount"] == {
         "!Ref": "DesiredReceiptCount"
     }

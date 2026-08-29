@@ -760,6 +760,12 @@ Resources:
               ValueFrom: !Ref MigrationDatabaseUrlSecretArn
           Environment:
             - { Name: RECALLOPS_BUILD_SHA, Value: !Ref BuildSha }
+            - { Name: RECALLOPS_RELEASE_IMAGE_DIGEST, Value: !Ref ImageDigest }
+            - { Name: RECALLOPS_RECEIPT_RELEASE_ID, Value: !Ref ReleaseId }
+            - { Name: RECALLOPS_RECEIPT_KEY_THUMBPRINT, Value: !Ref ReceiptKeyThumbprint }
+            - { Name: RECALLOPS_EVALUATION_VERSION, Value: governed-benchmark-v1 }
+            - { Name: RECALLOPS_CAPABILITY_POLICY_VERSION, Value: webmcp-capability-v1 }
+            - { Name: RECALLOPS_RECEIPT_POLICY_VERSION, Value: authority-receipt-policy-v1 }
           LogConfiguration:
             LogDriver: awslogs
             Options:

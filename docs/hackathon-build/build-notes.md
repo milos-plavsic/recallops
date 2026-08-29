@@ -833,3 +833,19 @@
   `recall_reviewed_memory`. The submission copy now describes the deployed AWS candidate and exact
   assurance counts without converting missing ChatGPT, monitoring, or video proof into a green
   claim.
+- The `webmcp-rc5` public journey then exercised a deliberately fail-closed release boundary: its
+  receipt request became `RECEIPT_MATERIAL_INVALID` because the exact rc5 identity had not been
+  registered in `release_evidence_records`. The failed request and immutable earlier rc1–rc3
+  records were preserved; no record was deleted, rebound, or manually edited to manufacture a
+  pass.
+- Replaced that manual deployment assumption with an atomic release bootstrap in the one-shot
+  migration task. Seven identity values are all-or-none and schema-validated before migrations;
+  the task creates only a `pending`/`pending` record, exact retries are idempotent, conflicting
+  release-ID reuse fails closed, and Cockroach serialization retries are bounded and use fresh
+  connections. The module has 100.00% statement and branch coverage. A real CockroachDB concurrency
+  test proved that two simultaneous registrations produce exactly one insert plus one verified
+  retry, and that a different source SHA cannot rebind the identity.
+- The final deployment protocol is now two phase: first update the digest-pinned stack with all
+  public/worker services at zero; run migrations and independently query the exact immutable
+  record; only then enable the API and receipt worker under the same release identity. This removes
+  the request-before-bootstrap race without granting the migrator proof-gate or signing authority.

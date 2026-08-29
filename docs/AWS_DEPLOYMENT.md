@@ -137,18 +137,45 @@ to an internal ALB. ECS tasks use public-subnet egress but accept traffic only f
 the ALB security group. This avoids a purchased domain, ACM certificate, and NAT
 gateway without exposing the origin.
 
-The demo stack defaults to the same deterministic providers and idempotently seeds its three
-governed memories in that embedding space before the API starts. ECS, S3, API Gateway, Cognito,
-and CloudWatch remain meaningful AWS integrations. The stack also creates an administrator-only Cognito user pool, browser client
-using authorization code plus PKCE, server-side tenant claim injection, and separate
-operator and reviewer identities. Passwords are `NoEcho` parameters and are set by
-a least-privilege custom resource; they are never committed. API payload identity is
-derived from the verified access token, not from browser-controlled actor headers.
+The demo stack defaults to the same deterministic providers and idempotently seeds its governed
+memories in that embedding space. ECS, KMS, S3, API Gateway, WAF, Secrets Manager, and CloudWatch
+remain meaningful AWS integrations. It deliberately has no signup or reusable demo passwords.
+The server issues an opaque, short-lived operator session for a fresh isolated run; a one-use,
+purpose-bound handoff creates a cryptographically separate reviewer session. Only hashes of session
+and handoff tokens are stored. Role, tenant, run, workflow, memory digest, purpose, expiry, and
+operator/reviewer separation are revalidated server-side on every protected transition; request
+payloads and browser-controlled actor headers never grant authority.
 
 CloudFormation runs under `recallops-cloudformation-execution`, whose trust policy
 admits only CloudFormation. `infra/aws/public-demo-execution-policy.json` contains
 the bounded permissions required by this stack. The deploying principal needs only
 stack lifecycle access and `iam:PassRole` for that service role.
+
+### Fail-closed two-phase release activation
+
+Every new release uses one immutable `ReleaseId` and exact source SHA, image digest, receipt-key
+thumbprint, capability-policy version, receipt-policy version, and evaluation version. Deployment
+must follow this sequence:
+
+1. Pass the zero-spend preflight and update the stack with API, outbox, and receipt desired counts
+   all set to zero. Wait for `UPDATE_COMPLETE`.
+2. Run the new one-shot migration task. Before applying anything, it requires the release identity
+   environment to be either wholly absent (local development) or complete and schema-valid. After
+   migrations, it inserts a `pending`/`pending` release-evidence record. An exact retry is
+   idempotent; reuse of the release ID with any different identity fails closed.
+3. Query `release_evidence_records` with the migration-owner connection and compare all seven
+   immutable identity fields to the intended deployment. Do not start a service on an inferred or
+   partial match.
+4. Re-run the zero-spend preflight, update the same stack identity with API and receipt desired
+   counts enabled, and wait for both ECS services to stabilize. The legacy outbox stays at zero.
+
+This ordering removes the request-before-evidence race: no public API or signing worker for a new
+identity can run until its immutable record exists. The migration binary creates only the pending
+identity and exits; no runtime service retains its schema-owner credential. Because schema migration
+is inherently part of the deployment trusted-computing base, its short-lived owner principal could
+alter database policy and must be protected as release authority. Proof-gate finalization and the
+signed release statement are separately derived, artifact-bound operations and are never performed
+by this migration path.
 
 The CockroachDB secret must retain `sslmode=verify-full` and point `sslrootcert` to
 the runtime CA bundle (`/etc/ssl/certs/ca-certificates.crt` in the supplied image).
