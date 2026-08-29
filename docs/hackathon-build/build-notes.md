@@ -783,3 +783,7 @@
   `UPDATE` before calling the function. The preliminary read is now non-locking; the definer
   acquires the authoritative `FOR UPDATE` lock and revalidates every policy condition itself.
   A regression assertion prevents `FOR UPDATE` from returning to the API-side query.
+- The subsequent receipt request exposed the same pattern on immutable `authority_events`.
+  Receipt creation still locks the mutable ledger head, but reads the append-only terminal event
+  under the same serializable transaction without requesting forbidden event-update authority.
+  Direct event mutation remains denied and a query-shape regression test preserves both facts.

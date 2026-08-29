@@ -616,9 +616,11 @@ class PostgresAuthorityLedgerRepository:
             ):
                 raise AuthorityLedgerConflict("receipt target differs from locked ledger head")
             cursor.execute(
+                # Authority events are append-only and the mutable head above is
+                # already locked. A second locking read would require forbidden
+                # UPDATE authority without strengthening this serializable check.
                 """SELECT * FROM authority_events
-                WHERE event_id=%s AND run_id=%s AND tenant_id=%s AND sequence=%s
-                FOR UPDATE""",
+                WHERE event_id=%s AND run_id=%s AND tenant_id=%s AND sequence=%s""",
                 (event.event_id, event.run_id, event.tenant_id, event.sequence),
             )
             stored_row = cursor.fetchone()

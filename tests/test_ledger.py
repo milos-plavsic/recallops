@@ -168,6 +168,7 @@ def test_in_memory_receipt_guards_and_status_absence() -> None:
 class _ScriptedCursor:
     def __init__(self, rows: list[object | None]) -> None:
         self.rows = rows
+        self.executions: list[str] = []
 
     def __enter__(self):
         return self
@@ -176,7 +177,7 @@ class _ScriptedCursor:
         return None
 
     def execute(self, query: str, parameters: object) -> None:
-        return None
+        self.executions.append(query)
 
     def fetchone(self) -> object | None:
         return self.rows.pop(0) if self.rows else None
@@ -288,6 +289,19 @@ def test_postgres_receipt_request_guards_and_status_projection() -> None:
         bound._transaction_bound = True
         with pytest.raises(AuthorityLedgerConflict, match="locked ledger head"):
             bound.request_receipt(event, **arguments)
+
+    successful_pool = _ScriptedPool(
+        [
+            {"last_sequence": event.sequence, "last_event_hash": event.event_hash},
+            event.model_dump(),
+        ]
+    )
+    bound = PostgresAuthorityLedgerRepository(successful_pool)
+    bound._transaction_bound = True
+    assert isinstance(bound.request_receipt(event, **arguments), UUID)
+    assert "FOR UPDATE" in successful_pool.cursor.executions[0]
+    assert "authority_events" in successful_pool.cursor.executions[1]
+    assert "FOR UPDATE" not in successful_pool.cursor.executions[1]
 
     assert (
         PostgresAuthorityLedgerRepository(_ScriptedPool([None])).receipt_status(
