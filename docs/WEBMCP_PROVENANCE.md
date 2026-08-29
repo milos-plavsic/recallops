@@ -13,7 +13,8 @@ is presented for WebMCP judging.
 - Baseline commit date: `2026-08-18T18:48:20+02:00`
 - Challenge start: `2026-08-25T19:00:00Z`
 - Tested local release source: `74d7cff203cfc69ecd3e956f792eefaf6e686b19`
-- Generated evidence wrapper: `325e66908dd89ad6fefe7287f106cd83e518a625`
+- Generated evidence wrappers: later commits contain only derived evidence or judge documentation and
+  intentionally do not self-identify by Git SHA; use the public default-branch tip for those files.
 
 The baseline remains in public history. The final entry must link the comparison from the baseline to
 the deployed release commit; generated evidence commits are kept separate to avoid a self-referential
