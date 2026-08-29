@@ -62,7 +62,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   `uv run pytest --cov=recallops --cov-branch --cov-report=term-missing`,
   `npm run test:browser`, and `npm run test:webmcp:native`.
 
-- [ ] **2. Make judge runs and role sessions independently isolated**
+- [x] **2. Make judge runs and role sessions independently isolated**
   Spec ref: `spec.md > Data Model And Database Boundaries > Migration 027 — judge runs and role handoff`; `spec.md > Judge Run Isolation And Session Security`
   What to build: Add migration 027, unique run/tenant fixture allocation, run-bound operator
   sessions, purpose-bound single-use reviewer handoffs, distinct reviewer sessions, quota/TTL,

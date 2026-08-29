@@ -96,9 +96,27 @@ def test_health() -> None:
 def test_judge_session_routes_are_absent_outside_judge_mode() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
     assert client.post("/v1/judge/session/exchange", json={"code": "x" * 20}).status_code == 404
-    assert client.post(
-        "/v1/judge/session/logout", headers={"X-Tenant-ID": "demo"}
-    ).status_code == 404
+    assert (
+        client.post(
+            "/v1/judge/runs",
+            headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+            json={},
+        ).status_code
+        == 404
+    )
+    assert client.post("/v1/judge/reviewer-exchange", json={"code": "x" * 43}).status_code == 404
+    assert (
+        client.post(
+            "/v1/operator/reviewer-handoff",
+            headers={"X-Tenant-ID": "demo"},
+            json={"purpose": "initial_review"},
+        ).status_code
+        == 404
+    )
+    assert client.get("/v1/operator/run", headers={"X-Tenant-ID": "demo"}).status_code == 404
+    assert (
+        client.post("/v1/judge/session/logout", headers={"X-Tenant-ID": "demo"}).status_code == 404
+    )
 
 
 def test_system_status_distinguishes_configuration_from_runtime_verification() -> None:

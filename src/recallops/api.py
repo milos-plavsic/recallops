@@ -1,10 +1,14 @@
+import hashlib
+import json
 import os
+import secrets
 import threading
 from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Annotated, cast
 from urllib.parse import urlsplit
-from uuid import UUID
+from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.responses import FileResponse
@@ -14,9 +18,7 @@ from recallops.archive import NullEvidenceArchive, S3EvidenceArchive
 from recallops.auth import (
     AuthenticationError,
     AuthorizationError,
-    JudgeRateLimitError,
     JudgeSessionAuthenticator,
-    JudgeSessionError,
     Principal,
     create_authenticator,
 )
@@ -35,6 +37,7 @@ from recallops.domain import (
     IncidentCreate,
     Memory,
     MemoryGovernanceRequest,
+    MemoryState,
     OutcomeObservation,
     PostcheckAssessment,
     PostcheckAssessmentRequest,
@@ -59,7 +62,13 @@ from recallops.service import (
     IncidentService,
     IncidentWorkflowError,
 )
-from recallops.sessions import InMemoryJudgeSessionRepository, PostgresJudgeSessionRepository
+from recallops.sessions import (
+    InMemoryJudgeSessionRepository,
+    JudgeRun,
+    JudgeRunCapacityError,
+    PostgresJudgeSessionRepository,
+    ReviewHandoff,
+)
 from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
 from recallops.workflow import (
     InMemoryWorkflowRepository,
@@ -203,6 +212,7 @@ def create_app(
     app.state.workflows = workflows
     app.state.checkout_sandbox = checkout_sandbox
     app.state.observation_provider = observation_provider
+    app.state.judge_repository = judge_repository
 
     def authority_transaction(
         operation: Callable[[IncidentService, WorkflowCoordinator], object],
@@ -247,6 +257,21 @@ def create_app(
             response.headers["Cache-Control"] = "no-store"
         return response
 
+    def role_cookie_name(role: str) -> str:
+        prefix = "__Host-" if settings.judge_cookie_secure else ""
+        return f"{prefix}recallops_{role}"
+
+    def set_role_cookie(response: Response, role: str, token: str) -> None:
+        response.set_cookie(
+            key=role_cookie_name(role),
+            value=token,
+            max_age=settings.judge_session_ttl_seconds,
+            secure=settings.judge_cookie_secure,
+            httponly=True,
+            samesite="strict",
+            path="/",
+        )
+
     def principal(
         request: Request,
         authorization: str | None = Header(default=None),
@@ -254,10 +279,18 @@ def create_app(
         x_actor_id: str | None = Header(default=None, max_length=200),
         x_roles: str | None = Header(default=None, max_length=500),
     ) -> Principal:
-        cookie_name = (
-            "__Host-recallops_session" if settings.judge_cookie_secure else "recallops_session"
-        )
-        session_cookie = request.cookies.get(cookie_name)
+        role_cookies = [
+            request.cookies[name]
+            for name in (role_cookie_name("operator"), role_cookie_name("reviewer"))
+            if name in request.cookies
+        ]
+        if settings.auth_mode == "judge" and len(role_cookies) > 1:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED,
+                "ambiguous judge role session",
+                headers={"WWW-Authenticate": "Session"},
+            )
+        session_cookie = role_cookies[0] if role_cookies else None
         try:
             return authenticator.authenticate(
                 authorization, x_tenant_id, x_actor_id, x_roles, session_cookie
@@ -293,46 +326,6 @@ def create_app(
         except AuthorizationError as error:
             raise HTTPException(status.HTTP_403_FORBIDDEN, str(error)) from error
 
-    @app.post("/v1/judge/session/exchange")
-    async def exchange_judge_session(request: Request, response: Response) -> dict[str, object]:
-        if not isinstance(authenticator, JudgeSessionAuthenticator):
-            raise HTTPException(status.HTTP_404_NOT_FOUND, "judge sessions are not enabled")
-        if request.headers.get("origin") != settings.public_origin:
-            raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
-        body = await request.json()
-        code = body.get("code") if isinstance(body, dict) else None
-        if not isinstance(code, str) or not 16 <= len(code) <= 512:
-            raise HTTPException(status.HTTP_400_BAD_REQUEST, "valid bootstrap code required")
-        address = request.client.host if request.client is not None else "unknown"
-        try:
-            token, csrf, identity = authenticator.exchange(code, address)
-        except JudgeRateLimitError as error:
-            raise HTTPException(
-                status.HTTP_429_TOO_MANY_REQUESTS, str(error), headers={"Retry-After": "300"}
-            ) from error
-        except JudgeSessionError as error:
-            raise HTTPException(status.HTTP_401_UNAUTHORIZED, str(error)) from error
-        response.set_cookie(
-            key=(
-                "__Host-recallops_session" if settings.judge_cookie_secure else "recallops_session"
-            ),
-            value=token,
-            max_age=settings.judge_session_ttl_seconds,
-            secure=settings.judge_cookie_secure,
-            httponly=True,
-            samesite="strict",
-            path="/",
-        )
-        return {
-            "csrf_token": csrf,
-            "identity": {
-                "subject": identity.subject,
-                "tenant_id": identity.tenant_id,
-                "roles": sorted(identity.roles),
-                "auth_method": identity.auth_method,
-            },
-        }
-
     @app.post("/v1/judge/session/logout")
     def logout_judge_session(
         request: Request,
@@ -344,16 +337,290 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "judge sessions are not enabled")
         require_protected_request(request, identity, x_csrf_token)
         authenticator.revoke(identity)
+        role = next(iter(identity.roles & {"operator", "reviewer"}))
         response.delete_cookie(
-            key=(
-                "__Host-recallops_session" if settings.judge_cookie_secure else "recallops_session"
-            ),
+            key=role_cookie_name(role),
             secure=settings.judge_cookie_secure,
             httponly=True,
             samesite="strict",
             path="/",
         )
         return {"revoked": True}
+
+    def run_payload(run: JudgeRun) -> dict[str, object]:
+        return {
+            "run_id": str(run.run_id),
+            "generation": run.generation,
+            "scenario_version": run.scenario_version,
+            "incident_id": str(run.source_incident_id),
+            "status": run.status,
+            "expires_at": run.expires_at,
+            "build_sha": run.build_sha,
+            "capability_policy_version": run.capability_policy_version,
+            "simulation": True,
+        }
+
+    def allocate_run(generation: int = 1) -> tuple[JudgeRun, str, str, Principal]:
+        run_id = uuid4()
+        tenant_id = f"judge_{run_id.hex[:24]}"
+        operator_subject = f"operator_{secrets.token_hex(12)}"
+        incident = IncidentCreate(
+            tenant_id=tenant_id,
+            service="checkout",
+            service_version="v2.4.1",
+            symptom="checkout-latency-42: p95 latency and error rate exceed the sandbox SLO",
+            idempotency_key=f"scenario-{run_id.hex}",
+        )
+        prepared = service.prepare_analysis(incident)
+        now = datetime.now(UTC)
+        run = JudgeRun(
+            run_id=run_id,
+            tenant_id=tenant_id,
+            generation=generation,
+            scenario_version=settings.scenario_version,
+            source_incident_id=prepared.incident_id,
+            operator_subject=operator_subject,
+            build_sha=settings.build_sha,
+            capability_policy_version=settings.capability_policy_version,
+            created_at=now,
+            expires_at=now + timedelta(seconds=settings.judge_run_ttl_seconds),
+        )
+
+        if isinstance(store, PostgresStore):
+
+            def persist(connection_store: PostgresStore, connection: object) -> object:
+                bound_service = service.using_store(connection_store)
+                saved = bound_service.persist_analysis(incident, prepared)
+                WorkflowCoordinator(
+                    PostgresWorkflowRepository.from_connection(connection)
+                ).ensure_for_analysis(
+                    tenant_id, saved.incident_id, saved.proposed_action.action_hash, False
+                )
+                PostgresJudgeSessionRepository.from_connection(connection).save_run(
+                    run, settings.judge_active_run_limit
+                )
+                return saved
+
+            store.atomic(persist)
+        else:
+            with authority_lock:
+                if judge_repository.active_run_count() >= settings.judge_active_run_limit:
+                    raise JudgeRunCapacityError("judge scenario capacity reached")
+                saved = service.persist_analysis(incident, prepared)
+                workflows.ensure_for_analysis(
+                    tenant_id, saved.incident_id, saved.proposed_action.action_hash, False
+                )
+                judge_repository.save_run(run, settings.judge_active_run_limit)
+
+        if not isinstance(authenticator, JudgeSessionAuthenticator):  # pragma: no cover
+            raise RuntimeError("judge authenticator unavailable")
+        token, csrf, identity = authenticator.create_session(
+            "operator",
+            run_id=run.run_id,
+            tenant_id=run.tenant_id,
+            generation=run.generation,
+            subject=run.operator_subject,
+        )
+        return run, token, csrf, identity
+
+    @app.post("/v1/judge/runs", status_code=status.HTTP_201_CREATED)
+    async def create_judge_run(request: Request, response: Response) -> dict[str, object]:
+        if not isinstance(authenticator, JudgeSessionAuthenticator):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
+        if request.headers.get("origin") != settings.public_origin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
+        if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "JSON required")
+        body = await request.json()
+        if body not in ({}, None):
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "judge run input must be empty")
+        address = request.client.host if request.client is not None else "unknown"
+        if not authenticator.consume_launch(address, settings.judge_run_launch_limit):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "judge run launch rate limit exceeded",
+                headers={"Retry-After": str(settings.judge_exchange_window_seconds)},
+            )
+        try:
+            run, token, csrf, identity = allocate_run()
+        except JudgeRunCapacityError as error:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "judge scenario capacity reached; retry after an active run expires",
+                headers={"Retry-After": "60"},
+            ) from error
+        set_role_cookie(response, "operator", token)
+        return {
+            "run": run_payload(run),
+            "csrf_token": csrf,
+            "identity": {
+                "subject": identity.subject,
+                "roles": sorted(identity.roles),
+                "auth_method": identity.auth_method,
+            },
+        }
+
+    def current_run(identity: Principal) -> JudgeRun:
+        if not isinstance(authenticator, JudgeSessionAuthenticator):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
+        if identity.run_id is None:  # pragma: no cover - judge sessions are schema-bound to runs
+            raise HTTPException(status.HTTP_409_CONFLICT, "session is not bound to a judge run")
+        run = judge_repository.get_run(identity.run_id)
+        if (  # pragma: no cover - authenticator already enforces the same run binding
+            run is None
+            or run.tenant_id != identity.tenant_id
+            or run.generation != identity.session_generation
+            or run.status != "active"
+        ):
+            raise HTTPException(status.HTTP_409_CONFLICT, "judge run is no longer active")
+        return run
+
+    @app.get("/v1/operator/run")
+    def get_operator_run(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        require_role(identity, "operator")
+        return run_payload(current_run(identity))
+
+    @app.post("/v1/operator/run/reset", status_code=status.HTTP_201_CREATED)
+    def reset_operator_run(
+        request: Request,
+        response: Response,
+        identity: AuthenticatedPrincipal,
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        require_protected_request(request, identity, x_csrf_token)
+        require_role(identity, "operator")
+        old_run = current_run(identity)
+        if not judge_repository.reset_run(old_run.run_id):
+            raise HTTPException(status.HTTP_409_CONFLICT, "judge run reset already resolved")
+        run, token, csrf, _ = allocate_run(old_run.generation + 1)
+        set_role_cookie(response, "operator", token)
+        return {"run": run_payload(run), "csrf_token": csrf}
+
+    def review_target(run: JudgeRun, purpose: str) -> Memory:
+        snapshot = workflows.get(run.source_incident_id, run.tenant_id)
+        expected_state = (
+            WorkflowState.PENDING_REVIEW if purpose == "initial_review" else WorkflowState.REVIEWED
+        )
+        if snapshot is None or not snapshot.active or snapshot.state is not expected_state:
+            raise HTTPException(status.HTTP_409_CONFLICT, "no reviewable evidence is ready")
+        if isinstance(store, InMemoryStore):
+            memory = store.outcome_memories.get((run.tenant_id, run.source_incident_id))
+        elif isinstance(store, PostgresStore):
+            with store.pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """SELECT id FROM memories WHERE tenant_id=%s AND source_incident_id=%s
+                    ORDER BY created_at DESC LIMIT 1""",
+                    (run.tenant_id, run.source_incident_id),
+                )
+                row = cursor.fetchone()
+            memory = (
+                store.get_memory(UUID(str(dict(row)["id"])), run.tenant_id)
+                if row is not None
+                else None
+            )
+        else:  # pragma: no cover - create_app constructs one of the supported stores
+            memory = None
+        if memory is None:
+            raise HTTPException(status.HTTP_409_CONFLICT, "no reviewable evidence is ready")
+        expected_memory_state = (
+            MemoryState.PENDING_REVIEW if purpose == "initial_review" else MemoryState.ACTIVE
+        )
+        if memory.state is not expected_memory_state:
+            raise HTTPException(status.HTTP_409_CONFLICT, "no reviewable evidence is ready")
+        return memory
+
+    @app.post("/v1/operator/reviewer-handoff", status_code=status.HTTP_201_CREATED)
+    async def create_reviewer_handoff(
+        request: Request,
+        identity: AuthenticatedPrincipal,
+        x_csrf_token: str | None = Header(default=None, max_length=200),
+    ) -> dict[str, object]:
+        if not isinstance(authenticator, JudgeSessionAuthenticator):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
+        require_protected_request(request, identity, x_csrf_token)
+        require_role(identity, "operator")
+        body = await request.json()
+        purpose = body.get("purpose") if isinstance(body, dict) else None
+        if purpose not in {"initial_review", "revocation"}:
+            raise HTTPException(status.HTTP_400_BAD_REQUEST, "valid handoff purpose required")
+        run = current_run(identity)
+        memory = review_target(run, purpose)
+        code = secrets.token_urlsafe(32)
+        memory_bytes = json.dumps(
+            memory.model_dump(mode="json"), sort_keys=True, separators=(",", ":")
+        ).encode()
+        handoff = ReviewHandoff(
+            code_hash=authenticator.digest(code),
+            run_id=run.run_id,
+            tenant_id=run.tenant_id,
+            workflow_id=run.source_incident_id,
+            memory_id=memory.id,
+            memory_digest=hashlib.sha256(memory_bytes).hexdigest(),
+            purpose=purpose,
+            issued_by_subject=identity.subject,
+            expires_at=datetime.now(UTC) + timedelta(seconds=settings.judge_handoff_ttl_seconds),
+        )
+        judge_repository.save_handoff(handoff)
+        return {
+            "reviewer_url": f"{settings.public_origin}/#review={code}",
+            "expires_at": handoff.expires_at,
+            "purpose": handoff.purpose,
+        }
+
+    @app.post("/v1/judge/reviewer-exchange")
+    async def exchange_reviewer_handoff(request: Request, response: Response) -> dict[str, object]:
+        if not isinstance(authenticator, JudgeSessionAuthenticator):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
+        if request.headers.get("origin") != settings.public_origin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
+        body = await request.json()
+        code = body.get("code") if isinstance(body, dict) else None
+        if not isinstance(code, str) or not 32 <= len(code) <= 128:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "review handoff is invalid or expired"
+            )
+        address = request.client.host if request.client is not None else "unknown"
+        if not authenticator.consume_handoff_attempt(address):
+            raise HTTPException(
+                status.HTTP_429_TOO_MANY_REQUESTS,
+                "review handoff exchange rate limit exceeded",
+                headers={"Retry-After": str(settings.judge_exchange_window_seconds)},
+            )
+        handoff = judge_repository.consume_handoff(authenticator.digest(code))
+        if handoff is None:
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "review handoff is invalid or expired"
+            )
+        run = judge_repository.get_run(handoff.run_id)
+        if run is None or run.status != "active":  # pragma: no cover - atomic consume guards this
+            raise HTTPException(
+                status.HTTP_401_UNAUTHORIZED, "review handoff is invalid or expired"
+            )
+        reviewer_subject = f"reviewer_{secrets.token_hex(12)}"
+        if reviewer_subject in {  # pragma: no cover
+            run.operator_subject,
+            handoff.issued_by_subject,
+        }:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, "review identity unavailable")
+        token, csrf, identity = authenticator.create_session(
+            "reviewer",
+            run_id=run.run_id,
+            tenant_id=run.tenant_id,
+            generation=run.generation,
+            subject=reviewer_subject,
+            review_handoff_hash=handoff.code_hash,
+        )
+        set_role_cookie(response, "reviewer", token)
+        return {
+            "csrf_token": csrf,
+            "identity": {"subject": identity.subject, "roles": sorted(identity.roles)},
+            "review": {
+                "workflow_id": str(handoff.workflow_id),
+                "memory_id": str(handoff.memory_id),
+                "memory_digest": handoff.memory_digest,
+                "purpose": handoff.purpose,
+            },
+        }
 
     def channel(value: str | None) -> RequestChannel:
         try:
@@ -494,6 +761,7 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident or workflow not found")
         if x_workflow_epoch is None:
             raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "X-Workflow-Epoch required")
+
         def approve_atomically(
             tx_service: IncidentService, tx_workflows: WorkflowCoordinator
         ) -> object:
@@ -603,6 +871,7 @@ def create_app(
         try:
             observation = observation_provider.collect(execution)
         except DependencyUnavailable as error:
+
             def mark_unavailable(
                 tx_service: IncidentService, tx_workflows: WorkflowCoordinator
             ) -> object:
@@ -729,6 +998,7 @@ def create_app(
         try:
             observation = observation_provider.collect(execution)
         except DependencyUnavailable as error:
+
             def retry_unavailable(
                 tx_service: IncidentService, tx_workflows: WorkflowCoordinator
             ) -> object:
@@ -833,9 +1103,7 @@ def create_app(
             observation_digest=observation.observation_digest,
         )
         try:
-            memory = service.prepare_verified_outcome(
-                incident_id, observation, verdict, assessment
-            )
+            memory = service.prepare_verified_outcome(incident_id, observation, verdict, assessment)
         except DependencyUnavailable as error:
             raise HTTPException(
                 status.HTTP_503_SERVICE_UNAVAILABLE,

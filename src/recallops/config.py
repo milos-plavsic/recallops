@@ -51,14 +51,20 @@ class Settings(BaseSettings):
     oidc_logout_url: str | None = None
     oidc_redirect_url: str | None = None
     public_origin: str = "http://127.0.0.1:8000"
-    judge_tenant_id: str = "judge"
-    judge_operator_bootstrap_sha256: str | None = None
-    judge_reviewer_bootstrap_sha256: str | None = None
     judge_session_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
     judge_exchange_attempt_limit: int = Field(default=8, ge=1, le=100)
     judge_exchange_window_seconds: int = Field(default=300, ge=60, le=3600)
     judge_rate_limit_key: SecretStr | None = None
     judge_cookie_secure: bool = True
+    judge_run_ttl_seconds: int = Field(default=3600, ge=300, le=86400)
+    judge_active_run_limit: int = Field(default=100, ge=1, le=10000)
+    judge_run_launch_limit: int = Field(default=8, ge=1, le=100)
+    judge_handoff_ttl_seconds: int = Field(default=300, ge=60, le=900)
+    scenario_version: str = Field(default="checkout-latency-v1", min_length=3, max_length=80)
+    build_sha: str = Field(default="development", min_length=3, max_length=80)
+    capability_policy_version: str = Field(
+        default="webmcp-capability-v1", min_length=3, max_length=80
+    )
 
 
 @lru_cache

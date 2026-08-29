@@ -148,8 +148,6 @@ def test_authenticator_factory_selects_mode() -> None:
 def test_judge_authenticator_requires_rate_key_and_ignores_non_session_revoke() -> None:
     settings = Settings(
         auth_mode="judge",
-        judge_operator_bootstrap_sha256="0" * 64,
-        judge_reviewer_bootstrap_sha256="1" * 64,
     )
     with pytest.raises(ValueError, match="rate-limit HMAC key"):
         JudgeSessionAuthenticator(settings, object())  # type: ignore[arg-type]

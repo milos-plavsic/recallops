@@ -1,5 +1,32 @@
 # Guided Build Notes
 
+## 2026-08-29 — Checklist item 2: isolated judge authority
+
+- Added migration 027 with run/tenant/source-incident composite integrity, run-bound role sessions,
+  purpose-bound single-use reviewer handoffs, least-privilege grants, and explicit invalidation of
+  every legacy unbound session during migration.
+- Removed reusable operator/reviewer bootstrap exchange from the public design. Operator authority
+  now originates only from an isolated anonymous judge-run allocation; reviewer authority originates
+  only from a 256-bit, fragment-delivered, short-lived, single-consumption handoff.
+- Bound operator and reviewer cookies to different `__Host-` names and exact run generation. Only
+  hashes persist; exact Origin and distinct per-session CSRF remain mandatory. Mixed role cookies
+  fail closed instead of allowing implicit role selection.
+- Reset closes the old run, revokes its sessions and outstanding handoffs, and allocates a new run,
+  tenant, incident, operator subject, generation, CSRF secret, and cookie. Old credentials remain
+  invalid even when replayed after the new run exists.
+- Added a reviewer-session-to-handoff foreign-key binding so purpose and object scope remain
+  independently recoverable for later governance authorization; operator sessions cannot carry a
+  reviewer grant.
+- Verified two-run isolation, cross-run guessing, launch quota, exact request shape, CSRF/Origin,
+  mixed cookies, handoff expiry/replay, same-subject denial, reset races, stale-cookie replay, and
+  purpose/state prerequisites in memory-backed API tests.
+- Applied all 27 migrations to a fresh CockroachDB database and verified composite relationship
+  failures, exact grants/denials, hashed credential persistence, PostgreSQL-path handoff exchange,
+  expiry, and atomic reset. The complete Python source touched by this item reaches 100% statement
+  and branch coverage when run through the repository's CI-equivalent coverage sequence.
+- Re-ran the browser regression suites after retiring bootstrap exchange: all 8 Playwright product
+  tests and all 3 native Chromium WebMCP tests pass.
+
 ## 2026-08-29 — Onboarding
 
 - Calibrated the participant as an experienced builder from the existing repository rather than
