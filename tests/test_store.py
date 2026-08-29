@@ -114,6 +114,7 @@ class Cursor:
     def __init__(self, rows: list[object | None]) -> None:
         self.rows = rows
         self.rowcount = 1
+        self.executions: list[str] = []
 
     def __enter__(self) -> "Cursor":
         return self
@@ -122,7 +123,7 @@ class Cursor:
         return None
 
     def execute(self, query: str, parameters: object = None) -> None:
-        pass
+        self.executions.append(query)
 
     def fetchone(self) -> object | None:
         return self.rows.pop(0)
@@ -209,7 +210,11 @@ def test_postgres_write_paths_reject_missing_returned_rows() -> None:
         reason="verified unsafe",
     )
     with pytest.raises(RuntimeError, match="governance function"):
-        postgres_with_rows([database_row(memory), None]).govern_memory(memory.id, request)
+        runtime_store = postgres_with_rows([database_row(memory), None])
+        runtime_store.govern_memory(memory.id, request)
+    runtime_queries = runtime_store._pool.connection_object._cursor.executions
+    assert "FOR UPDATE" not in runtime_queries[0]
+    assert "recallops_govern_memory" in runtime_queries[1]
     with pytest.raises(RuntimeError, match="governance update"):
         postgres_with_rows(
             [database_row(memory), {"memory_id": memory.id}, None]

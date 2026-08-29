@@ -1031,8 +1031,10 @@ class PostgresStore:
             embedding_space,
             embedding::STRING AS embedding, created_at"""
         with self._pool.connection() as connection, connection.cursor() as cursor:
+            # The definer routine acquires the authoritative row lock. A locking
+            # read here would itself require UPDATE and defeat the split role.
             cursor.execute(  # nosec B608  # nosemgrep
-                f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s FOR UPDATE",  # nosec B608
+                f"SELECT {columns} FROM memories WHERE id=%s AND tenant_id=%s",  # nosec B608
                 (memory_id, request.tenant_id),
             )
             raw_memory = cursor.fetchone()

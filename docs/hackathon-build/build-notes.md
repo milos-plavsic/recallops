@@ -779,3 +779,7 @@
   execute and no-PUBLIC-execute are verified from live database metadata. A fresh database applied
   migrations 001–031, all 29 integration tests passed, and the combined suite passed 479 tests with
   5,392/5,392 statements and 1,206/1,206 branches (100.00%).
+- The first deployed definer run then exposed a client-side locking read that still requested
+  `UPDATE` before calling the function. The preliminary read is now non-locking; the definer
+  acquires the authoritative `FOR UPDATE` lock and revalidates every policy condition itself.
+  A regression assertion prevents `FOR UPDATE` from returning to the API-side query.
