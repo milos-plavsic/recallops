@@ -84,10 +84,16 @@ only_mutate = [
   "src/recallops/service.py",
   "src/recallops/store.py",
 ]
+also_copy = ["artifacts/release", "evaluation", "evidence", "src/recallops/static"]
 pytest_add_cli_args_test_selection = [
+  "tests/test_api.py",
+  "tests/test_api_boundaries.py",
   "tests/test_evidence.py",
+  "tests/test_judge_sessions.py",
+  "tests/test_memory_lifecycle.py",
   "tests/test_retrieval.py",
   "tests/test_resilience.py",
+  "tests/test_sandbox.py",
   "tests/test_service.py",
   "tests/test_store.py",
 ]

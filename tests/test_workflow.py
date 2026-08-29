@@ -279,6 +279,67 @@ def test_channel_role_separation_and_reset_fail_closed() -> None:
             channel=RequestChannel.WEBMCP,
             role="operator",
         )
+    with pytest.raises(WorkflowConflict, match="proposal transition requires"):
+        coordinator.validate_transition(
+            current.workflow_id,
+            current.tenant_id,
+            1,
+            WorkflowState.INVESTIGATING,
+            channel=RequestChannel.UI,
+            actor_subject="operator",
+            role="agent",
+        )
+    legacy = repository.ensure(
+        snapshot(WorkflowState.INVESTIGATING).model_copy(update={"workflow_id": uuid4()})
+    )
+    assert (
+        coordinator.validate_transition(
+            legacy.workflow_id,
+            legacy.tenant_id,
+            1,
+            WorkflowState.INVESTIGATING,
+            channel=RequestChannel.UI,
+            actor_subject="operator",
+            role="operator",
+            allow_legacy_ui=True,
+        )
+        == legacy
+    )
+    with pytest.raises(WorkflowConflict, match="workflow not found"):
+        coordinator.invalidate(
+            uuid4(),
+            "demo",
+            1,
+            channel=RequestChannel.UI,
+            role="operator",
+        )
+
+
+def test_receipt_request_requires_ledger_and_target_event() -> None:
+    coordinator = WorkflowCoordinator(InMemoryWorkflowRepository())
+    with pytest.raises(WorkflowConflict, match="ledger is unavailable"):
+        coordinator.request_receipt(
+            uuid4(),
+            "demo",
+            receipt_policy_version="receipt-v1",
+            image_digest=f"sha256:{'a' * 64}",
+            evaluation_version="evaluation-v1",
+            synthetic=True,
+            publish_public=True,
+        )
+    ledger = MagicMock()
+    ledger.list_events.return_value = []
+    coordinator = WorkflowCoordinator(InMemoryWorkflowRepository(), ledger)
+    with pytest.raises(WorkflowConflict, match="target event"):
+        coordinator.request_receipt(
+            uuid4(),
+            "demo",
+            receipt_policy_version="receipt-v1",
+            image_digest=f"sha256:{'a' * 64}",
+            evaluation_version="evaluation-v1",
+            synthetic=True,
+            publish_public=True,
+        )
 
 
 def test_in_memory_repository_missing_and_inactive_paths() -> None:

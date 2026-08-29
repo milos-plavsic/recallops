@@ -708,30 +708,6 @@ def create_app(
 
     webmcp_memory_results: dict[tuple[UUID, str, str], tuple[str, dict[str, object]]] = {}
 
-    def existing_webmcp_result(
-        run: JudgeRun, route: str, key: str, request_digest: str
-    ) -> dict[str, object] | None:
-        if isinstance(store, PostgresStore):
-            with store.pool.connection() as connection, connection.cursor() as cursor:
-                cursor.execute(
-                    """SELECT request_digest,response_payload FROM webmcp_idempotency
-                    WHERE run_id=%s AND route=%s AND idempotency_key=%s""",
-                    (run.run_id, route, key),
-                )
-                row = cursor.fetchone()
-            if row is None:
-                return None
-            existing = dict(row)
-            if not hmac.compare_digest(str(existing["request_digest"]), request_digest):
-                raise WorkflowConflict("idempotency key is bound to different input")
-            return cast(dict[str, object] | None, existing["response_payload"])
-        memory_existing = webmcp_memory_results.get((run.run_id, route, key))
-        if memory_existing is None:
-            return None
-        if not hmac.compare_digest(memory_existing[0], request_digest):
-            raise WorkflowConflict("idempotency key is bound to different input")
-        return memory_existing[1]
-
     def idempotent_webmcp_mutation(
         run: JudgeRun,
         route: str,
@@ -1448,13 +1424,6 @@ def create_app(
                 **payload.model_dump(mode="json"),
             },
         )
-        try:
-            replay = existing_webmcp_result(run, "proposal", key, digest)
-        except WorkflowConflict as error:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
-        if replay is not None:
-            return replay
-        require_if_match(request, run, workflow)
         if (payload.service, payload.service_version, payload.symptom) != (
             incident.service,
             incident.service_version,
@@ -1472,6 +1441,7 @@ def create_app(
             tx_service: IncidentService, tx_workflows: WorkflowCoordinator
         ) -> dict[str, object]:
             del tx_service
+            require_if_match(request, run, workflow)
             staged = tx_workflows.transition(
                 run.source_incident_id,
                 run.tenant_id,
@@ -1537,13 +1507,6 @@ def create_app(
                 **payload.model_dump(mode="json"),
             },
         )
-        try:
-            replay = existing_webmcp_result(run, "assessment", key, digest)
-        except WorkflowConflict as error:
-            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
-        if replay is not None:
-            return replay
-        require_if_match(request, run, workflow)
         assessment = PostcheckAssessment(
             observation_id=observation.id,
             incident_id=run.source_incident_id,
@@ -1565,6 +1528,7 @@ def create_app(
         def persist(
             tx_service: IncidentService, tx_workflows: WorkflowCoordinator
         ) -> dict[str, object]:
+            require_if_match(request, run, workflow)
             recorded_assessment, recorded_memory = tx_service.persist_verified_outcome(
                 assessment, memory
             )

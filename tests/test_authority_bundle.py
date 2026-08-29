@@ -1,6 +1,8 @@
 import base64
+import io
 import json
 import subprocess
+import zipfile
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -10,6 +12,7 @@ import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
 
+import recallops.authority_bundle as authority_bundle
 from recallops.authority_bundle import (
     ALLOWED_PATHS,
     AUXILIARY_PATHS,
@@ -273,9 +276,7 @@ def rechain(events: list[AuthorityEvent]) -> list[AuthorityEvent]:
         )
         candidate = candidate.model_copy(
             update={
-                "event_hash": authority_event_hash(
-                    previous, canonical_event_payload(candidate)
-                )
+                "event_hash": authority_event_hash(previous, canonical_event_payload(candidate))
             }
         )
         result.append(candidate)
@@ -372,9 +373,7 @@ def make_bundle(
         ),
         subject_pseudonym_key=PSEUDONYM_KEY,
     )
-    signer = KmsReceiptSigner(
-        FakeKms(key), "alias/recallops-bundle-vector", RELEASE_ID, trusted
-    )
+    signer = KmsReceiptSigner(FakeKms(key), "alias/recallops-bundle-vector", RELEASE_ID, trusted)
     signer.preflight()
     jws = signer.sign_manifest(manifest)
     bundle = build_authority_bundle(
@@ -440,9 +439,7 @@ def test_bundle_digest_graph_is_acyclic_and_zip_is_deterministic() -> None:
 def prepare_index(bundle):
     from recallops.authority_bundle import EvidenceIndex
 
-    return EvidenceIndex.model_validate(
-        json.loads(bundle.files["evidence-index.jcs.json"])
-    )
+    return EvidenceIndex.model_validate(json.loads(bundle.files["evidence-index.jcs.json"]))
 
 
 def test_network_free_node_verifier_accepts_valid_bundle(tmp_path: Path) -> None:
@@ -510,9 +507,7 @@ def test_node_verifier_rejects_material_tampering_with_stable_codes(
         digest = sha256_bytes(BUNDLE_DIGEST_DOMAIN + files["checksums.sha256"])
     elif mutation in {"duplicate_json", "unpaired_surrogate"}:
         files["manifest.jcs.json"] = (
-            b'{"x":1,"x":2}'
-            if mutation == "duplicate_json"
-            else b'{"x":"\\ud800"}'
+            b'{"x":1,"x":2}' if mutation == "duplicate_json" else b'{"x":"\\ud800"}'
         )
         rewrite_checksums(files)
         digest = sha256_bytes(BUNDLE_DIGEST_DOMAIN + files["checksums.sha256"])
@@ -577,9 +572,7 @@ def test_signed_but_policy_invalid_vectors_fail_semantically(
 
     bundle, trusted = make_bundle(
         disposition="activate" if vector == "disposition" else "certify",
-        mutate_events=mutate_events
-        if vector in {"actor_authority", "capability"}
-        else None,
+        mutate_events=mutate_events if vector in {"actor_authority", "capability"} else None,
         mutate_capability_policy=mutate_policy if vector == "policy" else None,
     )
     root = tmp_path / vector
@@ -668,3 +661,218 @@ def test_node_verifier_requires_and_accepts_predecessor_signed_key_rotation(
     )
     result, report = run_verifier(root, rotated, bundle.bundle_digest)
     assert result.returncode == 0 and report["code"] == "VERIFIED"
+
+
+def test_bundle_models_and_file_guards_reject_nonfrozen_inputs(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValueError, match="allowlisted"):
+        authority_bundle.EvidenceIndexEntry(path="other.json", sha256="a" * 64, size=1)
+    entries = tuple(
+        authority_bundle.EvidenceIndexEntry(path=path, sha256="a" * 64, size=1)
+        for path in reversed(AUXILIARY_PATHS)
+    )
+    with pytest.raises(ValueError, match="frozen order"):
+        authority_bundle.EvidenceIndex(entries=entries)
+    with pytest.raises(BundleError, match="event prefix"):
+        authority_bundle.canonical_event_lines([])
+    monkeypatch.setattr(authority_bundle, "canonical_bytes", lambda value: b"bad\nline")
+    with pytest.raises(BundleError, match="line separator"):
+        authority_bundle.canonical_event_lines(events_for(receipt_digests())[:1])
+    for path, value in (("unknown", b"x"), ("README.md", b"")):
+        with pytest.raises(BundleError, match="bundle (path|file)"):
+            authority_bundle._safe_file(path, value)
+    with pytest.raises(BundleError, match="invalid size"):
+        authority_bundle._safe_file("README.md", b"x" * (authority_bundle.MAX_FILE_BYTES + 1))
+    with pytest.raises(BundleError, match="cover itself"):
+        authority_bundle._checksum_file({"checksums.sha256": b"x"})
+
+
+def test_bundle_builder_rejects_each_outer_binding(monkeypatch: pytest.MonkeyPatch) -> None:
+    bundle, trusted = make_bundle()
+    manifest = authority_bundle.ReceiptManifest.model_validate(
+        json.loads(bundle.files["manifest.jcs.json"])
+    )
+    release = FrozenRelease.model_validate(json.loads(bundle.files["release.json"]))
+    public_jwk = json.loads(bundle.files["public.jwk.json"])
+    jws = bundle.files["receipt.jws"].decode()
+
+    with pytest.raises(BundleError, match="public key"):
+        authority_bundle._validate_receipt_and_release(
+            manifest,
+            jws,
+            {**public_jwk, "x": base64.urlsafe_b64encode(b"x" * 32).rstrip(b"=").decode()},
+            release,
+            trusted,
+        )
+    monkeypatch.setattr(
+        authority_bundle,
+        "verify_receipt_jws",
+        lambda *args, **kwargs: manifest.model_copy(update={"final_disposition": "reject"}),
+    )
+    with pytest.raises(BundleError, match="payload differs"):
+        authority_bundle._validate_receipt_and_release(manifest, jws, public_jwk, release, trusted)
+    monkeypatch.setattr(authority_bundle, "verify_receipt_jws", lambda *a, **k: manifest)
+    with pytest.raises(BundleError, match="frozen release"):
+        authority_bundle._validate_receipt_and_release(
+            manifest,
+            jws,
+            public_jwk,
+            release.model_copy(update={"evaluation_version": "different-v1"}),
+            trusted,
+        )
+
+
+def test_prepare_and_build_reject_claim_readme_index_and_layout(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    bundle, trusted = make_bundle()
+    manifest = authority_bundle.ReceiptManifest.model_validate(
+        json.loads(bundle.files["manifest.jcs.json"])
+    )
+    release = FrozenRelease.model_validate(json.loads(bundle.files["release.json"]))
+    public_jwk = json.loads(bundle.files["public.jwk.json"])
+    events = [
+        AuthorityEvent.model_validate(json.loads(line))
+        for line in bundle.files["events.ndjson"].splitlines()
+    ]
+    common = {
+        "public_jwk": public_jwk,
+        "events": events,
+        "capability_policy": json.loads(bundle.files["policy/capability-policy.json"]),
+        "receipt_policy": json.loads(bundle.files["policy/receipt-policy.json"]),
+        "evaluation_case": json.loads(bundle.files["evaluation/case.json"]),
+        "evaluation_result": json.loads(bundle.files["evaluation/result.json"]),
+        "release": release,
+        "claims": json.loads(bundle.files["claims.json"]),
+    }
+    with pytest.raises(BundleError, match="claim registry"):
+        prepare_evidence(**{**common, "claims": {"claims": []}})
+    with pytest.raises(BundleError, match="README"):
+        build_authority_bundle(
+            manifest=manifest,
+            receipt_jws=bundle.files["receipt.jws"].decode(),
+            trusted_keys=trusted,
+            readme=b"wrong",
+            **common,
+        )
+    with pytest.raises(BundleError, match="evidence index"):
+        build_authority_bundle(
+            manifest=manifest.model_copy(update={"evidence_index_digest": "f" * 64}),
+            receipt_jws=bundle.files["receipt.jws"].decode(),
+            trusted_keys=trusted,
+            readme=README,
+            **common,
+        )
+    original_checksum = authority_bundle._checksum_file
+
+    def add_extra(files: dict[str, bytes]) -> bytes:
+        result = original_checksum(files)
+        files["unexpected"] = b"x"
+        return result
+
+    monkeypatch.setattr(authority_bundle, "_checksum_file", add_extra)
+    with pytest.raises(BundleError, match="file set"):
+        build_authority_bundle(
+            manifest=manifest,
+            receipt_jws=bundle.files["receipt.jws"].decode(),
+            trusted_keys=trusted,
+            readme=README,
+            **common,
+        )
+
+
+@pytest.mark.parametrize(
+    "value,match",
+    [
+        (b"\xff", "not ASCII"),
+        (b"bad\n", "invalid syntax"),
+        ((f"{'a' * 64}  checksums.sha256\n").encode(), "forbidden path"),
+        ((f"{'a' * 64}  README.md\n" * 2).encode(), "duplicate"),
+        ((f"{'a' * 64}  README.md\n").encode(), "path set or ordering"),
+    ],
+)
+def test_checksum_parser_rejects_every_malformed_class(value: bytes, match: str) -> None:
+    with pytest.raises(BundleError, match=match):
+        parse_checksums(value)
+
+
+def test_outer_validation_rejects_file_set_and_noncanonical_index() -> None:
+    bundle, _ = make_bundle()
+    missing = dict(bundle.files)
+    missing.pop("README.md")
+    with pytest.raises(BundleError, match="file set"):
+        validate_bundle_files(missing)
+    malformed = dict(bundle.files)
+    malformed["evidence-index.jcs.json"] = b"{}"
+    rewrite_checksums(malformed)
+    with pytest.raises(BundleError, match="strict canonical"):
+        validate_bundle_files(malformed)
+
+
+def test_zip_reader_rejects_size_count_members_and_parser_failures(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(BundleError, match="invalid size"):
+        authority_bundle.read_bundle_zip(b"")
+    with pytest.raises(BundleError, match="valid ZIP"):
+        authority_bundle.read_bundle_zip(b"not-a-zip")
+    output = io.BytesIO()
+    with zipfile.ZipFile(output, "w") as archive:
+        archive.writestr("README.md", b"x")
+    with pytest.raises(BundleError, match="member count"):
+        authority_bundle.read_bundle_zip(output.getvalue())
+
+    bundle, _ = make_bundle()
+    original_limit = authority_bundle.MAX_BUNDLE_BYTES
+    monkeypatch.setattr(authority_bundle, "MAX_BUNDLE_BYTES", 1)
+    with pytest.raises(BundleError, match="exceeds size"):
+        bundle.deterministic_zip()
+    with pytest.raises(BundleError, match="invalid size"):
+        authority_bundle.read_bundle_zip(b"xx")
+    monkeypatch.setattr(authority_bundle, "MAX_BUNDLE_BYTES", original_limit)
+
+
+@pytest.mark.parametrize("fault", ["forbidden", "size", "compressed", "mode"])
+def test_zip_reader_rejects_each_member_metadata_class(
+    fault: str, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    class Member:
+        def __init__(self, name: str) -> None:
+            self.filename = name
+            self.file_size = 1
+            self.compress_size = 1
+            self.external_attr = 0o100644 << 16
+
+        def is_dir(self) -> bool:
+            return False
+
+    members = [Member(path) for path in sorted(ALLOWED_PATHS)]
+    if fault == "forbidden":
+        members[0].filename = "forbidden"
+    elif fault == "size":
+        members[0].file_size = 0
+    elif fault == "compressed":
+        members[0].compress_size = authority_bundle.MAX_FILE_BYTES + 1
+    else:
+        members[0].external_attr = 0o120777 << 16
+
+    class Archive:
+        def __init__(self, *args: object, **kwargs: object) -> None:
+            pass
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def infolist(self):
+            return members
+
+        def read(self, member: Member) -> bytes:
+            return b"x"
+
+    monkeypatch.setattr(authority_bundle.zipfile, "ZipFile", Archive)
+    with pytest.raises(BundleError, match="archive (contains|member|compressed)"):
+        authority_bundle.read_bundle_zip(b"zip")

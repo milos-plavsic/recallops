@@ -32,6 +32,7 @@ from recallops.ledger import (
     PostgresAuthorityLedgerRepository,
     verify_event,
 )
+from recallops.public_bundles import PublicBundleService
 from recallops.sandbox import SANDBOX_ACTION_COMMAND
 from recallops.service import DeterministicReasoner, IncidentService
 from recallops.sessions import PostgresJudgeSessionRepository
@@ -70,6 +71,34 @@ def _seed_authority_fixture(database_url: str, suffix: str) -> tuple[str, UUID, 
             (run_id, tenant_id, incident_id),
         )
     return tenant_id, incident_id, run_id
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_postgres_public_bundle_service_is_built_from_release_configuration(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    sentinel = object()
+    monkeypatch.setattr(
+        PublicBundleService,
+        "aws",
+        classmethod(lambda cls, url, region, bucket: sentinel),
+    )
+    store = PostgresStore(database_url)
+    app = create_app(
+        Settings(
+            store="postgres",
+            database_url=database_url,
+            authority_bundle_bucket="public-bundles",
+        ),
+        store,
+    )
+    assert app.state.public_bundle_service is sentinel
+    app.state.workflows._repository.close()
+    store.close()
 
 
 @pytest.mark.skipif(
@@ -1224,6 +1253,12 @@ def test_webmcp_proposal_idempotency_and_authority_commit_are_one_transaction() 
         assert proposal.status_code == 201
         replay = client.post("/v1/webmcp/proposal", headers=headers, json=payload)
         assert replay.status_code == 201 and replay.json() == proposal.json()
+        conflicting = client.post(
+            "/v1/webmcp/proposal",
+            headers=headers,
+            json={**payload, "rationale": "A different request cannot reuse this key."},
+        )
+        assert conflicting.status_code == 409
         run_id = UUID(started.json()["run"]["run_id"])
         with psycopg.connect(database_url) as connection:
             row = connection.execute(
@@ -1370,7 +1405,9 @@ def test_judge_run_persists_only_hashed_credentials_and_bound_authority() -> Non
     not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
     reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
 )
-def test_postgres_reset_route_commits_domain_workflow_event_and_head_together() -> None:
+def test_postgres_reset_route_commits_domain_workflow_event_and_head_together(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
@@ -1403,6 +1440,25 @@ def test_postgres_reset_route_commits_domain_workflow_event_and_head_together() 
     )
     assert launch.status_code == 201
     old = launch.json()["run"]
+
+    class UnchangedRun:
+        def reset_run(self, run_id: UUID) -> bool:
+            return False
+
+    with monkeypatch.context() as patch:
+        patch.setattr(
+            PostgresJudgeSessionRepository,
+            "from_connection",
+            classmethod(lambda cls, connection: UnchangedRun()),
+        )
+        unchanged = client.post(
+            "/v1/operator/run/reset",
+            headers={
+                "Origin": "http://testserver",
+                "X-CSRF-Token": launch.json()["csrf_token"],
+            },
+        )
+    assert unchanged.status_code == 409
     reset = client.post(
         "/v1/operator/run/reset",
         headers={

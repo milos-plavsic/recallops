@@ -8,7 +8,9 @@ from uuid import UUID
 import pytest
 from cryptography.hazmat.primitives import serialization
 from cryptography.hazmat.primitives.asymmetric.ed25519 import Ed25519PrivateKey
+from cryptography.hazmat.primitives.asymmetric.rsa import generate_private_key
 
+import recallops.receipts as receipts
 from recallops.canonical import canonical_bytes, content_digest
 from recallops.ledger import (
     ZERO_EVENT_HASH,
@@ -249,9 +251,7 @@ def manifest_for(kid: str):
         expires_at="2026-09-05T01:03:00Z",
         key_thumbprint=kid,
     )
-    return build_manifest(
-        ledger_events(), digests, context, subject_pseudonym_key=PSEUDONYM_KEY
-    )
+    return build_manifest(ledger_events(), digests, context, subject_pseudonym_key=PSEUDONYM_KEY)
 
 
 class FakeKms:
@@ -461,9 +461,7 @@ def test_kms_signing_uses_exact_profile_and_verifies_returned_signature_locally(
 def test_kms_signs_and_verifies_acyclic_dual_gate_release_statement() -> None:
     key = private_key()
     registry = root_registry(key)
-    signer = KmsReceiptSigner(
-        FakeKms(key), "alias/recallops-receipt", RELEASE_ID, registry
-    )
+    signer = KmsReceiptSigner(FakeKms(key), "alias/recallops-receipt", RELEASE_ID, registry)
     kid = signer.preflight()
     identity = ReleaseIdentity(
         release_id=RELEASE_ID,
@@ -497,10 +495,7 @@ def test_kms_signs_and_verifies_acyclic_dual_gate_release_statement() -> None:
         )
     )
     compact = signer.sign_release_statement(statement)
-    assert (
-        verify_release_statement_jws(compact, registry, release_id=RELEASE_ID)
-        == statement
-    )
+    assert verify_release_statement_jws(compact, registry, release_id=RELEASE_ID) == statement
     with pytest.raises(ReceiptPreflightError, match="release statement"):
         signer.sign_release_statement(
             statement.model_copy(
@@ -652,3 +647,507 @@ def test_unpinned_kms_key_fails_preflight() -> None:
     )
     with pytest.raises(ReceiptVerificationError, match="not repository-pinned"):
         signer.preflight()
+
+
+def test_receipt_schema_and_encoding_guards_cover_all_fail_closed_bounds(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    with pytest.raises(ValueError, match="RFC 3339"):
+        receipts._require_utc_string("2026-08-29T01:00:00+00:00")
+    with pytest.raises(ReceiptError, match="lowercase"):
+        transition_binding_digest("execution", {})
+    with pytest.raises(ReceiptError, match="lowercase"):
+        transition_binding_digest("execution", {"x": "A" * 64})
+    manifest = manifest_for(jwk_thumbprint(public_jwk_from_der(public_der(private_key()))))
+    with pytest.raises(ValueError, match="last_epoch"):
+        ReceiptManifest.model_validate(
+            manifest.model_dump(mode="json") | {"first_epoch": "9", "last_epoch": "8"}
+        )
+    with pytest.raises(ValueError, match="separation"):
+        ReceiptManifest.model_validate(
+            manifest.model_dump(mode="json")
+            | {
+                "subjects": {
+                    "operator": "a" * 64,
+                    "reviewer": "a" * 64,
+                    "separated": True,
+                }
+            }
+        )
+    monkeypatch.setattr(receipts, "RECEIPT_MANIFEST_MAX_BYTES", 1)
+    with pytest.raises(ReceiptError, match="2048"):
+        manifest.canonical()
+    for value in ("", "*", "A"):
+        with pytest.raises(ReceiptVerificationError, match="base64url"):
+            receipts._decode_b64url(value)
+    monkeypatch.setattr(
+        receipts.base64, "b64decode", lambda *a, **k: (_ for _ in ()).throw(ValueError())
+    )
+    with pytest.raises(ReceiptVerificationError, match="invalid base64url"):
+        receipts._decode_b64url("AA")
+    monkeypatch.undo()
+    with pytest.raises(ReceiptVerificationError, match="non-canonical base64url"):
+        receipts._decode_b64url("AB")
+
+
+def test_canonical_parser_rejects_decoding_schema_and_noncanonical_classes() -> None:
+    for value, match in (
+        (b"\xff", "invalid canonical JSON"),
+        (b"{", "invalid canonical JSON"),
+    ):
+        with pytest.raises(ReceiptVerificationError, match=match):
+            parse_canonical_json(value)
+
+
+def test_public_key_profiles_reject_invalid_der_algorithm_and_jwk() -> None:
+    with pytest.raises(ReceiptPreflightError, match="DER SPKI"):
+        public_jwk_from_der(b"not-der")
+    rsa = generate_private_key(public_exponent=65537, key_size=2048)
+    rsa_der = rsa.public_key().public_bytes(
+        serialization.Encoding.DER,
+        serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    with pytest.raises(ReceiptPreflightError, match="not Ed25519"):
+        public_jwk_from_der(rsa_der)
+    with pytest.raises(ReceiptVerificationError, match="exact Ed25519"):
+        receipts.public_key_from_jwk({"kty": "OKP", "crv": "X25519", "x": "x"})
+    with pytest.raises(ReceiptVerificationError, match="32 bytes"):
+        receipts.public_key_from_jwk({"kty": "OKP", "crv": "Ed25519", "x": b64url(b"x")})
+
+
+def test_trusted_key_model_and_registry_reject_every_ambiguous_topology(
+    tmp_path: Path,
+) -> None:
+    key = private_key()
+    jwk = public_jwk_from_der(public_der(key))
+    kid = jwk_thumbprint(jwk)
+    with pytest.raises(ValueError, match="thumbprint"):
+        TrustedKey(
+            kid="x" * 43,
+            jwk=jwk,
+            trust="repository_root",
+            status="active",
+            release_ids=(RELEASE_ID,),
+        )
+    with pytest.raises(ValueError, match="unique"):
+        TrustedKey(
+            kid=kid,
+            jwk=jwk,
+            trust="repository_root",
+            status="active",
+            release_ids=(RELEASE_ID, RELEASE_ID),
+        )
+    root = TrustedKey(
+        kid=kid,
+        jwk=jwk,
+        trust="repository_root",
+        status="active",
+        release_ids=(RELEASE_ID,),
+    )
+    with pytest.raises(ReceiptVerificationError, match="duplicate keys"):
+        TrustedKeyRegistry(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1",
+                keys=(root, root),
+                transitions=(),
+            )
+        )
+    other_jwk = public_jwk_from_der(public_der(private_key(1)))
+    other_root = root.model_copy(update={"kid": jwk_thumbprint(other_jwk), "jwk": other_jwk})
+    with pytest.raises(ReceiptVerificationError, match="exactly one"):
+        TrustedKeyRegistry(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1",
+                keys=(root, other_root),
+                transitions=(),
+            )
+        )
+    missing = tmp_path / "missing.json"
+    with pytest.raises(ReceiptPreflightError, match="unavailable"):
+        TrustedKeyRegistry.load(missing)
+    invalid = tmp_path / "invalid.json"
+    invalid.write_bytes(canonical_bytes({"registry_version": "trusted-receipt-keys-v1"}))
+    with pytest.raises(ReceiptVerificationError, match="schema"):
+        TrustedKeyRegistry.load(invalid)
+    retired = root.model_copy(update={"status": "retired"})
+    retired_registry = TrustedKeyRegistry(
+        TrustedKeyDocument(
+            registry_version="trusted-receipt-keys-v1", keys=(retired,), transitions=()
+        )
+    )
+    with pytest.raises(ReceiptVerificationError, match="not authorized"):
+        retired_registry.resolve(kid, RELEASE_ID)
+
+
+def test_kms_signer_rejects_uninitialized_configuration_and_all_response_faults() -> None:
+    key = private_key()
+    registry = root_registry(key)
+    with pytest.raises(ReceiptPreflightError, match="required"):
+        KmsReceiptSigner(FakeKms(key), "", RELEASE_ID, registry)
+    signer = KmsReceiptSigner(FakeKms(key), "alias/recallops-receipt", RELEASE_ID, registry)
+    for operation in (
+        lambda: signer.kid,
+        lambda: signer.public_jwk,
+        lambda: signer.sign_manifest(manifest_for("k" * 43)),
+        lambda: signer._sign_payload(b"{}", RECEIPT_TYP),
+    ):
+        with pytest.raises(ReceiptPreflightError, match="preflight"):
+            operation()
+
+    class FaultKms(FakeKms):
+        response_update: dict[str, object] = {}
+        get_error = False
+        sign_error = False
+
+        def get_public_key(self, **kwargs: object) -> dict[str, object]:
+            if self.get_error:
+                raise RuntimeError("kms unavailable")
+            return super().get_public_key(**kwargs) | self.response_update
+
+        def sign(self, **kwargs: object) -> dict[str, object]:
+            if self.sign_error:
+                raise RuntimeError("kms unavailable")
+            return super().sign(**kwargs) | self.response_update
+
+    for update, match in (
+        ({"SigningAlgorithms": "ED25519_SHA_512"}, "does not support"),
+        ({"SigningAlgorithms": b"ED25519_SHA_512"}, "does not support"),
+        ({"PublicKey": "not-bytes"}, "DER bytes"),
+        ({"KeyId": ""}, "key ARN"),
+    ):
+        client = FaultKms(key)
+        client.response_update = update
+        with pytest.raises(ReceiptPreflightError, match=match):
+            KmsReceiptSigner(client, "alias/recallops-receipt", RELEASE_ID, registry).preflight()
+    client = FaultKms(key)
+    client.get_error = True
+    with pytest.raises(ReceiptPreflightError, match="GetPublicKey"):
+        KmsReceiptSigner(client, "alias/recallops-receipt", RELEASE_ID, registry).preflight()
+
+    client = FaultKms(key)
+    signer = KmsReceiptSigner(client, "alias/recallops-receipt", RELEASE_ID, registry)
+    kid = signer.preflight()
+    with pytest.raises(ReceiptPreflightError, match="manifest key"):
+        signer.sign_manifest(manifest_for("x" * 43))
+    for update, match in (
+        ({"SigningAlgorithm": "wrong"}, "algorithm"),
+        ({"KeyId": "wrong"}, "signing key"),
+        ({"Signature": "not-bytes"}, "invalid Ed25519"),
+        ({"Signature": b"short"}, "invalid Ed25519"),
+    ):
+        client.response_update = update
+        with pytest.raises(ReceiptPreflightError, match=match):
+            signer.sign_manifest(manifest_for(kid))
+    client.response_update = {}
+    client.sign_error = True
+    with pytest.raises(ReceiptPreflightError, match="KMS Sign"):
+        signer.sign_manifest(manifest_for(kid))
+
+
+def test_causal_and_ledger_verification_rejects_each_structural_class(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    digests = manifest_for(jwk_thumbprint(public_jwk_from_der(public_der(private_key())))).digests
+    events = ledger_events()
+    for update in (
+        {"state_after": "OTHER"},
+        {"object_type": "wrong"},
+        {"object_digest": "f" * 64},
+    ):
+        changed = [
+            event.model_copy(update=update) if index == 1 else event
+            for index, event in enumerate(events)
+        ]
+        with pytest.raises(ReceiptVerificationError, match="causal binding"):
+            receipts.verify_causal_bindings(changed, digests, "certify")
+    with pytest.raises(ReceiptVerificationError, match="empty"):
+        verify_ledger_prefix([])
+    monkeypatch.setattr(receipts, "verify_event", lambda *args: True)
+    mutations = (
+        (1, {"outcome": "denied"}, "non-authority"),
+        (1, {"epoch_after": 9}, "epoch is not contiguous"),
+        (2, {"epoch_before": 8, "epoch_after": 9}, "epochs contain a gap"),
+    )
+    for index, update, match in mutations:
+        changed = list(events)
+        changed[index] = changed[index].model_copy(update=update)
+        with pytest.raises(ReceiptVerificationError, match=match):
+            verify_ledger_prefix(changed)
+    no_reviewer = [
+        event.model_copy(update={"actor_role": "system", "channel": RequestChannel.SYSTEM})
+        if event.actor_role == "reviewer"
+        else event
+        for event in events
+    ]
+    with pytest.raises(ReceiptVerificationError, match="stable operator and reviewer"):
+        verify_ledger_prefix(no_reviewer)
+    same_subject = list(events)
+    same_subject[-1] = same_subject[-1].model_copy(update={"actor_subject": "operator-42"})
+    with pytest.raises(ReceiptVerificationError, match="independent operator"):
+        verify_ledger_prefix(same_subject)
+
+
+def direct_jws(key: Ed25519PrivateKey, kid: str, payload: object, typ: str = RECEIPT_TYP) -> str:
+    payload_bytes = canonical_bytes(payload)
+    signing_input = jws_signing_input(payload_bytes, kid, typ)
+    return f"{signing_input.decode()}.{b64url(key.sign(signing_input))}"
+
+
+def test_compact_and_receipt_verifiers_reject_every_schema_and_binding_class() -> None:
+    key = private_key()
+    registry = root_registry(key)
+    kid = jwk_thumbprint(public_jwk_from_der(public_der(key)))
+    manifest = manifest_for(kid)
+    with pytest.raises(ReceiptVerificationError, match="three segments"):
+        receipts._verify_compact(
+            "two.parts",
+            registry.resolve(kid, RELEASE_ID).jwk,
+            expected_kid=kid,
+            expected_typ=RECEIPT_TYP,
+        )
+    for compact, match in (
+        (direct_jws(key, kid, manifest.model_dump(mode="json"), "wrong-type"), "protected header"),
+        (
+            f"{b64url(canonical_bytes(receipts._protected_header(kid, RECEIPT_TYP)))}."
+            f"{b64url(canonical_bytes(manifest.model_dump(mode='json')))}.{b64url(b'x')}",
+            "64 bytes",
+        ),
+        (direct_jws(key, kid, ["not-object"]), "canonical JSON object"),
+    ):
+        with pytest.raises(ReceiptVerificationError, match=match):
+            receipts._verify_compact(
+                compact,
+                registry.resolve(kid, RELEASE_ID).jwk,
+                expected_kid=kid,
+                expected_typ=RECEIPT_TYP,
+            )
+    with pytest.raises(ReceiptVerificationError, match="three segments"):
+        verify_receipt_jws("bad", registry, release_id=RELEASE_ID)
+    protected_list = direct_jws(key, kid, manifest.model_dump(mode="json")).split(".")
+    protected_list[0] = b64url(canonical_bytes(["not-object"]))
+    with pytest.raises(ReceiptVerificationError, match="protected header"):
+        verify_receipt_jws(".".join(protected_list), registry, release_id=RELEASE_ID)
+    no_kid = canonical_bytes({"alg": "Ed25519", "typ": RECEIPT_TYP, "v": 1})
+    parts = direct_jws(key, kid, manifest.model_dump(mode="json")).split(".")
+    parts[0] = b64url(no_kid)
+    with pytest.raises(ReceiptVerificationError, match="no valid kid"):
+        verify_receipt_jws(".".join(parts), registry, release_id=RELEASE_ID)
+    with pytest.raises(ReceiptVerificationError, match="schema"):
+        verify_receipt_jws(direct_jws(key, kid, {"x": 1}), registry, release_id=RELEASE_ID)
+    uppercase = manifest.model_dump(mode="json")
+    uppercase["run_id"] = "AAAAAAAA-AAAA-4AAA-8AAA-AAAAAAAAAAAA"
+    with pytest.raises(ReceiptVerificationError, match="canonical manifest"):
+        verify_receipt_jws(direct_jws(key, kid, uppercase), registry, release_id=RELEASE_ID)
+    wrong_binding = manifest.model_copy(update={"key_thumbprint": "x" * 43})
+    with pytest.raises(ReceiptVerificationError, match="trust binding"):
+        verify_receipt_jws(
+            direct_jws(key, kid, wrong_binding.model_dump(mode="json")),
+            registry,
+            release_id=RELEASE_ID,
+        )
+
+
+def test_release_statement_verifier_rejects_profile_schema_and_binding() -> None:
+    key = private_key()
+    registry = root_registry(key)
+    kid = jwk_thumbprint(public_jwk_from_der(public_der(key)))
+    identity = ReleaseIdentity(
+        release_id=RELEASE_ID,
+        source_sha=SOURCE_SHA,
+        image_digest=f"sha256:{'b' * 64}",
+        capability_policy_version="webmcp-capability-v1",
+        receipt_policy_version="authority-receipt-policy-v1",
+        evaluation_version="governed-benchmark-v1",
+        receipt_key_thumbprint=kid,
+    )
+    statement = receipts.ReleaseStatement(
+        identity=identity,
+        live_proof_complete=False,
+        live_proof_artifact_digest="a" * 64,
+        assurance_complete=False,
+        assurance_artifact_digest="b" * 64,
+        release_ready=False,
+    )
+    with pytest.raises(ReceiptVerificationError, match="three segments"):
+        verify_release_statement_jws("bad", registry, release_id=RELEASE_ID)
+    payload = canonical_bytes(statement.model_dump(mode="json"))
+    protected = canonical_bytes(
+        {"alg": "EdDSA", "kid": kid, "typ": receipts.RELEASE_STATEMENT_TYP, "v": 1}
+    )
+    signing_input = f"{b64url(protected)}.{b64url(payload)}".encode()
+    wrong = f"{signing_input.decode()}.{b64url(key.sign(signing_input))}"
+    with pytest.raises(ReceiptVerificationError, match="Ed25519 profile"):
+        verify_release_statement_jws(wrong, registry, release_id=RELEASE_ID)
+    with pytest.raises(ReceiptVerificationError, match="schema"):
+        verify_release_statement_jws(
+            direct_jws(key, kid, {"x": 1}, receipts.RELEASE_STATEMENT_TYP),
+            registry,
+            release_id=RELEASE_ID,
+        )
+    wrong_binding = statement.model_copy(
+        update={"identity": identity.model_copy(update={"release_id": "other-release"})}
+    )
+    with pytest.raises(ReceiptVerificationError, match="trust binding"):
+        verify_release_statement_jws(
+            direct_jws(
+                key,
+                kid,
+                wrong_binding.model_dump(mode="json"),
+                receipts.RELEASE_STATEMENT_TYP,
+            ),
+            registry,
+            release_id=RELEASE_ID,
+        )
+
+
+def test_registry_transition_and_file_guards_cover_ambiguous_edges(tmp_path: Path) -> None:
+    old_key, new_key = private_key(), private_key(1)
+    old_jwk, new_jwk = (
+        public_jwk_from_der(public_der(old_key)),
+        public_jwk_from_der(public_der(new_key)),
+    )
+    old_kid, new_kid = jwk_thumbprint(old_jwk), jwk_thumbprint(new_jwk)
+    root = TrustedKey(
+        kid=old_kid,
+        jwk=old_jwk,
+        trust="repository_root",
+        status="retired",
+        release_ids=("old-release",),
+    )
+    successor = TrustedKey(
+        kid=new_kid,
+        jwk=new_jwk,
+        trust="transition",
+        status="active",
+        release_ids=(RELEASE_ID,),
+    )
+    payload = canonical_bytes(
+        {
+            "from_kid": old_kid,
+            "to_jwk_digest": "f" * 64,
+            "to_kid": new_kid,
+            "transition_version": "receipt-key-transition-v1",
+        }
+    )
+    signing_input = jws_signing_input(payload, old_kid, TRANSITION_TYP)
+    transition = KeyTransition(
+        from_kid=old_kid,
+        to_kid=new_kid,
+        transition_jws=f"{signing_input.decode()}.{b64url(old_key.sign(signing_input))}",
+    )
+    with pytest.raises(ReceiptVerificationError, match="multiple predecessor"):
+        TrustedKeyRegistry(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1",
+                keys=(root, successor),
+                transitions=(transition, transition),
+            )
+        )
+    with pytest.raises(ReceiptVerificationError, match="does not bind"):
+        TrustedKeyRegistry(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1",
+                keys=(root, successor),
+                transitions=(transition,),
+            )
+        )
+    unused = KeyTransition(
+        from_kid=old_kid,
+        to_kid=old_kid,
+        transition_jws="x" * 64,
+    )
+    with pytest.raises(ReceiptVerificationError, match="unused transition"):
+        TrustedKeyRegistry(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1",
+                keys=(root,),
+                transitions=(unused,),
+            )
+        )
+    path = tmp_path / "valid-keys.json"
+    path.write_bytes(
+        canonical_bytes(
+            TrustedKeyDocument(
+                registry_version="trusted-receipt-keys-v1", keys=(), transitions=()
+            ).model_dump(mode="json")
+        )
+    )
+    assert TrustedKeyRegistry.load(path).document.keys == ()
+
+
+def test_kms_preflight_rejects_registry_key_material_mismatch() -> None:
+    key = private_key()
+    other_jwk = public_jwk_from_der(public_der(private_key(1)))
+
+    class MismatchedRegistry:
+        def resolve(self, kid: str, release_id: str):
+            return type("Pinned", (), {"jwk": other_jwk})()
+
+    signer = KmsReceiptSigner(
+        FakeKms(key),
+        "alias/recallops-receipt",
+        RELEASE_ID,
+        MismatchedRegistry(),  # type: ignore[arg-type]
+    )
+    with pytest.raises(ReceiptPreflightError, match="differs"):
+        signer.preflight()
+
+
+def test_release_statement_requires_string_kid() -> None:
+    key = private_key()
+    registry = root_registry(key)
+    header = canonical_bytes(
+        {"alg": "Ed25519", "kid": 1, "typ": receipts.RELEASE_STATEMENT_TYP, "v": 1}
+    )
+    payload = canonical_bytes({"x": 1})
+    signing_input = f"{b64url(header)}.{b64url(payload)}".encode()
+    compact = f"{signing_input.decode()}.{b64url(key.sign(signing_input))}"
+    with pytest.raises(ReceiptVerificationError, match="no valid kid"):
+        verify_release_statement_jws(compact, registry, release_id=RELEASE_ID)
+
+
+def test_production_preflight_and_cli_are_fail_closed_and_report_success(
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    from types import SimpleNamespace
+
+    import recallops.config as config
+
+    monkeypatch.setattr(
+        config,
+        "Settings",
+        lambda: SimpleNamespace(receipt_kms_key_id=None, receipt_release_id=None),
+    )
+    with pytest.raises(ReceiptPreflightError, match="required"):
+        receipts.production_preflight()
+
+    settings = SimpleNamespace(
+        receipt_kms_key_id="alias/key",
+        receipt_release_id=RELEASE_ID,
+        receipt_trusted_keys_path=Path("keys.json"),
+        aws_region="eu-west-1",
+    )
+    monkeypatch.setattr(config, "Settings", lambda: settings)
+    sentinel_registry = root_registry(private_key())
+    monkeypatch.setattr(receipts.TrustedKeyRegistry, "load", lambda path: sentinel_registry)
+    monkeypatch.setattr("boto3.client", lambda name, region_name: object())
+
+    class Signer:
+        def __init__(self, client: object, key: str, release: str, registry: object) -> None:
+            assert key == "alias/key" and release == RELEASE_ID
+
+        def preflight(self) -> str:
+            return "K" * 43
+
+    monkeypatch.setattr(receipts, "KmsReceiptSigner", Signer)
+    assert receipts.production_preflight() == "K" * 43
+    monkeypatch.setattr(receipts, "production_preflight", lambda: "K" * 43)
+    receipts.main()
+    assert "preflight passed" in capsys.readouterr().out
+    monkeypatch.setattr(
+        receipts,
+        "production_preflight",
+        lambda: (_ for _ in ()).throw(ReceiptPreflightError("closed")),
+    )
+    with pytest.raises(SystemExit, match="preflight failed"):
+        receipts.main()

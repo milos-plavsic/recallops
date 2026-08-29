@@ -6,7 +6,9 @@ import pytest
 from recallops.ledger import (
     ZERO_EVENT_HASH,
     ActivityObservation,
+    AuthorityLedgerConflict,
     InMemoryAuthorityLedgerRepository,
+    PostgresAuthorityLedgerRepository,
     authority_event_hash,
     canonical_event_payload,
     verify_event,
@@ -58,13 +60,9 @@ def test_authority_hash_chain_is_independently_recomputable() -> None:
     )
     assert first is not None
     assert verify_event(first, ZERO_EVENT_HASH)
-    assert first.event_hash == authority_event_hash(
-        ZERO_EVENT_HASH, canonical_event_payload(first)
-    )
+    assert first.event_hash == authority_event_hash(ZERO_EVENT_HASH, canonical_event_payload(first))
 
-    second_after = after.model_copy(
-        update={"state": WorkflowState.INVESTIGATING, "epoch": 3}
-    )
+    second_after = after.model_copy(update={"state": WorkflowState.INVESTIGATING, "epoch": 3})
     second = repository.append_transition(
         after,
         second_after,
@@ -142,3 +140,173 @@ def test_activity_is_visibly_supporting_and_deterministically_merged() -> None:
 def test_hash_predecessor_is_strict_lowercase_32_byte_hex(bad_hash: str) -> None:
     with pytest.raises(ValueError, match="32 bytes of lowercase hex"):
         authority_event_hash(bad_hash, {})
+
+
+def test_in_memory_receipt_guards_and_status_absence() -> None:
+    before, after = snapshots()
+    repository = bound_repository()
+    event = repository.append_transition(
+        before,
+        after,
+        actor_subject="agent",
+        actor_role="agent",
+        channel=RequestChannel.WEBMCP,
+    )
+    assert event is not None
+    with pytest.raises(AuthorityLedgerConflict, match="finalized ledger head"):
+        repository.request_receipt(
+            event,
+            receipt_policy_version="receipt-v1",
+            image_digest=f"sha256:{'a' * 64}",
+            evaluation_version="evaluation-v1",
+            synthetic=True,
+            publish_public=True,
+        )
+    assert repository.receipt_status(RUN_ID, "judge_fixture") is None
+
+
+class _ScriptedCursor:
+    def __init__(self, rows: list[object | None]) -> None:
+        self.rows = rows
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def execute(self, query: str, parameters: object) -> None:
+        return None
+
+    def fetchone(self) -> object | None:
+        return self.rows.pop(0) if self.rows else None
+
+    def fetchall(self) -> list[object]:
+        return []
+
+
+class _ScriptedConnection:
+    def __init__(self, cursor: _ScriptedCursor) -> None:
+        self._cursor = cursor
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *args: object) -> None:
+        return None
+
+    def cursor(self) -> _ScriptedCursor:
+        return self._cursor
+
+
+class _ScriptedPool:
+    def __init__(self, rows: list[object | None]) -> None:
+        self.cursor = _ScriptedCursor(rows)
+
+    def connection(self) -> _ScriptedConnection:
+        return _ScriptedConnection(self.cursor)
+
+
+def _reviewed_event():
+    before, _ = snapshots()
+    reviewed = before.model_copy(update={"state": WorkflowState.REVIEWED, "epoch": 2})
+    repository = bound_repository()
+    event = repository.append_transition(
+        before,
+        reviewed,
+        actor_subject="reviewer",
+        actor_role="reviewer",
+        channel=RequestChannel.UI,
+    )
+    assert event is not None
+    return event
+
+
+@pytest.mark.parametrize(
+    ("rows", "message"),
+    [
+        (
+            [{"run_id": RUN_ID, "build_sha": "build", "capability_policy_version": "v1"}],
+            "enclosing serializable",
+        ),
+        (
+            [{"run_id": RUN_ID, "build_sha": "build", "capability_policy_version": "v1"}, None],
+            "ledger head unavailable",
+        ),
+        (
+            [
+                {"run_id": RUN_ID, "build_sha": "build", "capability_policy_version": "v1"},
+                {"closed": True, "last_sequence": 0, "last_event_hash": ZERO_EVENT_HASH},
+            ],
+            "ledger is closed",
+        ),
+        (
+            [
+                {"run_id": RUN_ID, "build_sha": "build", "capability_policy_version": "v1"},
+                {"closed": False, "last_sequence": 0, "last_event_hash": ZERO_EVENT_HASH},
+                None,
+            ],
+            "ledger predecessor changed",
+        ),
+    ],
+)
+def test_postgres_append_fails_closed_at_each_ledger_boundary(
+    rows: list[object | None], message: str
+) -> None:
+    before, after = snapshots()
+    repository = PostgresAuthorityLedgerRepository(_ScriptedPool(rows))
+    if message != "enclosing serializable":
+        repository._transaction_bound = True
+    with pytest.raises((AuthorityLedgerConflict, RuntimeError), match=message):
+        repository.append_transition(
+            before,
+            after,
+            actor_subject="agent",
+            actor_role="agent",
+            channel=RequestChannel.WEBMCP,
+        )
+
+
+def test_postgres_receipt_request_guards_and_status_projection() -> None:
+    event = _reviewed_event()
+    arguments = {
+        "receipt_policy_version": "receipt-v1",
+        "image_digest": f"sha256:{'a' * 64}",
+        "evaluation_version": "evaluation-v1",
+        "synthetic": True,
+        "publish_public": True,
+    }
+    with pytest.raises(RuntimeError, match="enclosing authority transaction"):
+        PostgresAuthorityLedgerRepository(_ScriptedPool([])).request_receipt(event, **arguments)
+    unreviewed = event.model_copy(update={"state_after": "INVESTIGATING"})
+    bound = PostgresAuthorityLedgerRepository(_ScriptedPool([]))
+    bound._transaction_bound = True
+    with pytest.raises(AuthorityLedgerConflict, match="reviewed workflow"):
+        bound.request_receipt(unreviewed, **arguments)
+    for head in (None, {"last_sequence": event.sequence + 1, "last_event_hash": event.event_hash}):
+        bound = PostgresAuthorityLedgerRepository(_ScriptedPool([head]))
+        bound._transaction_bound = True
+        with pytest.raises(AuthorityLedgerConflict, match="locked ledger head"):
+            bound.request_receipt(event, **arguments)
+
+    assert (
+        PostgresAuthorityLedgerRepository(_ScriptedPool([None])).receipt_status(
+            RUN_ID, "judge_fixture"
+        )
+        is None
+    )
+    row = {
+        "receipt_id": UUID(int=9),
+        "status": "signed",
+        "ledger_last_sequence": 7,
+        "ledger_head_hash": "b" * 64,
+        "bundle_digest": "c" * 64,
+        "key_thumbprint": "k" * 43,
+        "signing_algorithm": "Ed25519",
+        "public_at": datetime.now(UTC),
+        "failure_code": None,
+    }
+    status = PostgresAuthorityLedgerRepository(_ScriptedPool([row])).receipt_status(
+        RUN_ID, "judge_fixture"
+    )
+    assert status is not None and status.public and status.target_sequence == 7

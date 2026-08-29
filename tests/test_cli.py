@@ -1,3 +1,4 @@
+import runpy
 import sys
 from types import SimpleNamespace
 from typing import Any
@@ -5,14 +6,14 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from recallops import demo, main, migrate, outbox, reembed
+from recallops import db_verify, demo, main, migrate, outbox, reembed
 
 
 def test_main_runs_uvicorn(monkeypatch: pytest.MonkeyPatch) -> None:
     calls: list[tuple[tuple[Any, ...], dict[str, Any]]] = []
     monkeypatch.setattr(main.uvicorn, "run", lambda *args, **kwargs: calls.append((args, kwargs)))
     main.run()
-    assert calls == [(('recallops.main:app',), {"host": "0.0.0.0", "port": 8080})]
+    assert calls == [(("recallops.main:app",), {"host": "0.0.0.0", "port": 8080})]
 
 
 @pytest.mark.parametrize("provider", ["deterministic", "bedrock"])
@@ -164,3 +165,48 @@ def test_outbox_watch_sleeps_when_idle(monkeypatch: pytest.MonkeyPatch) -> None:
     with pytest.raises(RuntimeError, match="idle polling"):
         outbox.main()
     outbox.time.sleep.assert_called_once_with(1.0)
+
+
+@pytest.mark.parametrize(
+    ("module", "arguments"),
+    [
+        (db_verify, ["recallops-db-verify"]),
+        (outbox, ["recallops-outbox", "--limit", "0"]),
+        (reembed, ["recallops-reembed", "--batch-size", "0"]),
+    ],
+)
+def test_cli_module_guards_reach_main_validation(
+    monkeypatch: pytest.MonkeyPatch, module: Any, arguments: list[str]
+) -> None:
+    monkeypatch.delenv("RECALLOPS_DATABASE_URL", raising=False)
+    monkeypatch.setattr(sys, "argv", arguments)
+    with pytest.raises(SystemExit):
+        runpy.run_path(module.__file__, run_name="__main__")
+
+
+def test_migrate_module_guard_reaches_required_environment(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("RECALLOPS_DATABASE_URL", raising=False)
+    with pytest.raises(KeyError, match="RECALLOPS_DATABASE_URL"):
+        runpy.run_path(migrate.__file__, run_name="__main__")
+
+
+def test_demo_module_guard_seeds_and_closes(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    import recallops.config as config_module
+    import recallops.store as store_module
+
+    fake_store = MagicMock()
+    settings = SimpleNamespace(
+        embedding_provider="deterministic",
+        aws_region="us-east-1",
+        bedrock_embedding_model_id="unused",
+        database_url="postgresql://unused",
+    )
+    monkeypatch.setattr(config_module, "get_settings", lambda: settings)
+    monkeypatch.setattr(store_module, "PostgresStore", lambda url: fake_store)
+    runpy.run_path(demo.__file__, run_name="__main__")
+    assert fake_store.add_memory.call_count == 3
+    fake_store.close.assert_called_once_with()

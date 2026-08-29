@@ -393,9 +393,7 @@ class ReceiptSigner(Protocol):
 
 
 class BundleArchive(Protocol):
-    def persist(
-        self, receipt_id: UUID, archive: bytes, bundle_digest: str
-    ) -> ArchivedBundle: ...
+    def persist(self, receipt_id: UUID, archive: bytes, bundle_digest: str) -> ArchivedBundle: ...
 
 
 @dataclass(frozen=True)
@@ -434,9 +432,7 @@ class ReceiptFinalizationWorker:
         self._lease_seconds = lease_seconds
 
     def run_once(self) -> ReceiptWorkerResult:
-        request = claim_receipt_request(
-            self._database_url, self._worker_id, self._lease_seconds
-        )
+        request = claim_receipt_request(self._database_url, self._worker_id, self._lease_seconds)
         if request is None:
             return ReceiptWorkerResult(status="idle")
         try:
@@ -513,14 +509,14 @@ class ReceiptFinalizationWorker:
             return ReceiptWorkerResult(status="signed", receipt_id=str(request.receipt_id))
         except DependencyUnavailable as error:
             return self._failed(request, f"DEPENDENCY_{error.dependency.upper()}", retry=True)
-        except (ReceiptVerificationError, BundleError, ReceiptMaterialError, ValueError):
+        except (ReceiptVerificationError, BundleError, ReceiptMaterialError):
             return self._failed(request, "RECEIPT_MATERIAL_INVALID", retry=False)
         except ReceiptError:
             return self._failed(request, "RECEIPT_SIGNING_FAILED", retry=True)
+        except ValueError:
+            return self._failed(request, "RECEIPT_MATERIAL_INVALID", retry=False)
 
-    def _failed(
-        self, request: ReceiptRequest, code: str, *, retry: bool
-    ) -> ReceiptWorkerResult:
+    def _failed(self, request: ReceiptRequest, code: str, *, retry: bool) -> ReceiptWorkerResult:
         bounded = re.sub(r"[^A-Z0-9_]", "_", code)[:100]
         terminal = release_receipt_failure(
             self._database_url,
@@ -557,9 +553,7 @@ def _subject_pseudonym_key(value: str) -> bytes:
     if not value or re.fullmatch(r"[A-Za-z0-9_-]+", value) is None:
         raise ReceiptMaterialError("receipt pseudonym key is not canonical base64url")
     try:
-        decoded = base64.b64decode(
-            value + "=" * (-len(value) % 4), altchars=b"-_", validate=True
-        )
+        decoded = base64.b64decode(value + "=" * (-len(value) % 4), altchars=b"-_", validate=True)
     except ValueError as error:
         raise ReceiptMaterialError("receipt pseudonym key is invalid base64url") from error
     encoded = base64.urlsafe_b64encode(decoded).rstrip(b"=").decode("ascii")

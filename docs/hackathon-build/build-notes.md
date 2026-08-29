@@ -572,3 +572,43 @@
   placeholder key thumbprint, so both gates and release readiness are false. The final KMS-signed
   statement can only be produced after the immutable image and AWS key exist; this external proof
   is not claimed or replaced with a local signer.
+
+### Item 10 — complete local automated assurance (manual/external gates remain open)
+
+- Closed every reachable production line and branch without coverage exclusions or threshold
+  reduction. The exact CI sequence on a freshly migrated CockroachDB database reports 5,288 of
+  5,288 statements and 1,172 of 1,172 branches covered, with zero missed lines and zero partial
+  branches. The enforced `fail_under = 100` gate and `coverage report --fail-under=100` both pass;
+  a Cobertura XML report is generated for CI retention.
+- Added focused boundary suites for API exception translation and transactional WebMCP
+  idempotency, receipt finalization classification and retry behavior, receipt-outbox faults,
+  canonical receipt/key-transition validation, archive and public-download corruption, release
+  status, CLI failures, session expiry, ledger faults, workflow conflicts, and direct Cockroach
+  relationship/grant boundaries. The exact CI test sequence passes 415 unit/API tests plus 28 real
+  CockroachDB integration tests and the covered CLI paths.
+- Removed a WebMCP idempotency time-of-check/time-of-use gap by making the authoritative locked
+  transaction the sole replay/conflict decision point. Exact replay remains permitted after state
+  advancement, while first execution still requires the matching authoritative workflow epoch and
+  a reused key with different input fails closed.
+- Corrected receipt-worker exception classification so dependency unavailability retries,
+  malformed immutable material terminates, and signing failures remain retryable. This matters
+  because the receipt error hierarchy also derives from `ValueError`; the more specific classes
+  are now handled before the generic material-validation case.
+- Expanded safety-critical mutation testing to every test family that exercises `evidence.py`,
+  `service.py`, and `store.py`, including API, sessions, lifecycle, sandbox, resilience, and
+  retrieval. The unmodified 70% CI gate passes at 73.95%: 1,493 of 2,019 mutants killed, 526
+  survived, zero untested, skipped, suspicious, timeout, or interrupted mutations. This is stated
+  separately from 100.00% structural coverage and is not rounded or presented as 100% mutation
+  coverage.
+- Final local assurance passed: Ruff on all repository-owned Python, strict mypy over 35 source
+  files, 10/10 browser tests, 2/2 first-time-judge journeys, 4/4 native Chromium WebMCP lifecycle
+  tests, zero serious/critical axe findings in the exercised journeys, 15/15 independent authority
+  vectors with exact expected codes, the 149/149 + 16/16 + 15/15 trace validator, the synthetic
+  policy evaluation, npm and Python dependency audits with zero known vulnerabilities, both AWS
+  CloudFormation templates under `cfn-lint`, and Docker Compose validation.
+- Item 10 remains deliberately unmarked because its acceptance also requires dated manual
+  screen-reader/keyboard evidence and the supported ChatGPT site-tool client, plus release-bound
+  artifacts with no `implemented`/stale requirements. Those observations cannot be manufactured
+  from this local workspace. Items 7–9 likewise remain open only at their declared external
+  KMS/S3/frozen-release boundaries; their local cryptographic and deterministic cores are covered
+  by the results above.

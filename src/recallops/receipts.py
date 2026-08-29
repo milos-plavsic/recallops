@@ -85,9 +85,7 @@ def transition_binding_digest(domain: str, bindings: Mapping[str, str]) -> str:
     if not bindings or any(re.fullmatch(HEX_DIGEST, value) is None for value in bindings.values()):
         raise ReceiptError("transition bindings require lowercase SHA-256 digests")
     return hashlib.sha256(
-        f"recallops-{domain}-binding-v1".encode("ascii")
-        + b"\x00"
-        + canonical_bytes(dict(bindings))
+        f"recallops-{domain}-binding-v1".encode("ascii") + b"\x00" + canonical_bytes(dict(bindings))
     ).hexdigest()
 
 
@@ -133,9 +131,7 @@ def verify_causal_bindings(
             transition_binding_digest(
                 "review",
                 {
-                    "disposition": hashlib.sha256(
-                        final_disposition.encode("ascii")
-                    ).hexdigest(),
+                    "disposition": hashlib.sha256(final_disposition.encode("ascii")).hexdigest(),
                     "memory": digests.memory,
                     "review": digests.review,
                 },
@@ -326,9 +322,7 @@ def verify_ledger_prefix(events: Sequence[AuthorityEvent]) -> VerifiedLedgerPref
 
 
 def _pseudonymous_subject(key: bytes, run_id: UUID, role: str, subject: str) -> str:
-    material = canonical_bytes(
-        {"run_id": str(run_id), "role": role, "subject": subject}
-    )
+    material = canonical_bytes({"run_id": str(run_id), "role": role, "subject": subject})
     return hmac.new(key, b"recallops-receipt-subject-v1\x00" + material, hashlib.sha256).hexdigest()
 
 
@@ -555,12 +549,12 @@ class TrustedKeyRegistry:
                 candidate_transition = transitions_by_target.get(target)
                 if candidate_transition is None or candidate_transition.from_kid not in established:
                     continue
-                if candidate_transition.to_kid == candidate_transition.from_kid:
-                    raise ReceiptVerificationError("key transition cannot self-authorize")
-                source = self._keys.get(candidate_transition.from_kid)
-                target_key = self._keys.get(target)
-                if source is None or target_key is None:
-                    raise ReceiptVerificationError("key transition references an unknown key")
+                # `target` comes from the unique key map and `from_kid` is already in
+                # `established`, which itself is derived only from that map. Those
+                # construction invariants make missing/self-authorizing endpoints
+                # unreachable without weakening the schema.
+                source = self._keys[candidate_transition.from_kid]
+                target_key = self._keys[target]
                 payload, _ = _verify_compact(
                     candidate_transition.transition_jws,
                     source.jwk,

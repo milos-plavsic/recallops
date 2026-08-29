@@ -17,6 +17,7 @@ from recallops.sessions import (
     InMemoryJudgeSessionRepository,
     JudgeRun,
     JudgeRunCapacityError,
+    PostgresJudgeSessionRepository,
     ReviewHandoff,
 )
 from recallops.store import InMemoryStore
@@ -645,9 +646,7 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
         "Idempotency-Key": "proposal-contract-key-0001",
     }
     assert client.post("/v1/webmcp/proposal", json=proposal_payload).status_code == 403
-    staged = client.post(
-        "/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload
-    )
+    staged = client.post("/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload)
     assert staged.status_code == 201
     staged_body = staged.json()
     assert staged_body["requires_human_approval"] is True
@@ -655,9 +654,7 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
     assert "command" not in staged.text
     assert len(staged_body["proposal_digest"]) == 64
 
-    replay = client.post(
-        "/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload
-    )
+    replay = client.post("/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload)
     assert replay.status_code == 201 and replay.json() == staged_body
     changed = {**proposal_payload, "rationale": "Different input must conflict."}
     assert (
@@ -667,9 +664,12 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
 
     after = client.get("/v1/webmcp/capabilities").json()
     assert after["available_tools"] == ["inspect_incident"]
-    assert next(
-        item for item in after["withheld_tools"] if item["name"] == "propose_mitigation"
-    )["reason_code"] == "PROPOSAL_NOT_AVAILABLE_IN_CURRENT_STATE"
+    assert (
+        next(item for item in after["withheld_tools"] if item["name"] == "propose_mitigation")[
+            "reason_code"
+        ]
+        == "PROPOSAL_NOT_AVAILABLE_IN_CURRENT_STATE"
+    )
     for protected in manifest["protected_operations"]:
         assert client.post(f"/v1/webmcp/{protected}", json={}).status_code == 404
 
@@ -819,9 +819,10 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     operator_evidence = operator.get("/v1/operator/evidence")
     assert operator_evidence.status_code == 200
     assert operator_evidence.json()["proposal_digest"] == proposal_digest
-    assert operator_evidence.json()["immutable_observation"]["observation_digest"] == observation[
-        "observation_digest"
-    ]
+    assert (
+        operator_evidence.json()["immutable_observation"]["observation_digest"]
+        == observation["observation_digest"]
+    )
     assert "embedding" not in operator_evidence.text
     assert operator.get("/v1/webmcp/recurrence").status_code == 409
 
@@ -847,9 +848,9 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     assert exchange.status_code == 200
     assert exchange.json()["identity"]["subject"] != operator_identity["subject"]
     evidence = reviewer.get("/v1/reviewer/evidence").json()
-    assert evidence["immutable_observation"]["observation_digest"] == observation[
-        "observation_digest"
-    ]
+    assert (
+        evidence["immutable_observation"]["observation_digest"] == observation["observation_digest"]
+    )
     assert evidence["agent_assessment"]["classification"] == "not_recovered"
     assert evidence["policy_verdict"]["classification"] == "recovered"
     assert evidence["assessment_policy_agree"] is False
@@ -860,8 +861,7 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
             "Content-Type": "application/json",
             "X-CSRF-Token": exchange.json()["csrf_token"],
             "If-Match": (
-                f'"{evidence["precondition"]["generation"]}:'
-                f'{evidence["precondition"]["epoch"]}"'
+                f'"{evidence["precondition"]["generation"]}:{evidence["precondition"]["epoch"]}"'
             ),
         },
         json={
@@ -874,12 +874,11 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     assert disposition.status_code == 200
     receipt = disposition.json()["receipt"]
     assert receipt["status"] == "pending"
-    pending_receipt = app.state.ledger_repository.receipt_requests[
-        UUID(receipt["receipt_id"])
-    ]
-    assert pending_receipt["target_ledger_hash"] == app.state.ledger_repository.list_events(
-        run.run_id, run.tenant_id
-    )[-1].event_hash
+    pending_receipt = app.state.ledger_repository.receipt_requests[UUID(receipt["receipt_id"])]
+    assert (
+        pending_receipt["target_ledger_hash"]
+        == app.state.ledger_repository.list_events(run.run_id, run.tenant_id)[-1].event_hash
+    )
     assert pending_receipt["synthetic"] is True
     assert pending_receipt["publish_public"] is True
     receipt_view = operator.get("/v1/evidence/receipt")
@@ -961,3 +960,51 @@ def test_authenticator_configuration_and_invalid_session_are_rejected() -> None:
         assert "invalid or expired" in str(error)
     else:
         raise AssertionError("invalid judge session was accepted")
+
+
+def test_postgres_handoff_lookup_maps_row_and_absence() -> None:
+    handoff = ReviewHandoff(
+        code_hash="a" * 64,
+        run_id=UUID(int=1),
+        tenant_id="tenant",
+        workflow_id=UUID(int=2),
+        memory_id=UUID(int=3),
+        memory_digest="b" * 64,
+        purpose="initial_review",
+        issued_by_subject="operator",
+        expires_at=datetime.now(UTC) + timedelta(minutes=5),
+    )
+
+    class Cursor:
+        rows = [handoff.model_dump(mode="python"), None]
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def execute(self, query: str, parameters: object) -> None:
+            assert "review_handoffs" in query
+
+        def fetchone(self):
+            return self.rows.pop(0)
+
+    class Connection:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *args: object) -> None:
+            return None
+
+        def cursor(self) -> Cursor:
+            return cursor
+
+    class Pool:
+        def connection(self) -> Connection:
+            return Connection()
+
+    cursor = Cursor()
+    repository = PostgresJudgeSessionRepository(Pool())  # type: ignore[arg-type]
+    assert repository.get_handoff(handoff.code_hash) == handoff
+    assert repository.get_handoff(handoff.code_hash) is None
