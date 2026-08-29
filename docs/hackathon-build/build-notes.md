@@ -592,6 +592,12 @@
   The public `/v1/release` projection compares database evidence to the running source, image,
   policies, and evaluation version, then verifies the exact signed gate digests. Completing the
   demo no longer changes a readiness badge; local evidence remains visibly pending.
+- Hardened the external evidence boundary so an attestation manifest cannot make either gate green
+  unless every referenced artifact is a present regular file beneath an explicit trusted root and
+  its bytes match the declared SHA-256 digest. Absolute paths, traversal, duplicate paths, missing
+  files, and tampered bytes fail generation. Added a one-shot release-statement command that checks
+  canonical payload bytes, preflights the repository-pinned Ed25519 KMS key, signs the acyclic gate
+  statement, verifies the compact JWS locally, and refuses to overwrite an existing result.
 - Fixed a real concurrent registration weakness found by repeated native-client testing: a tool
   lifecycle controller is reserved before awaiting browser registration, preventing duplicate
   registrations during simultaneous authoritative refreshes. Native assessment readiness now waits

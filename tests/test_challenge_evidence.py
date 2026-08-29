@@ -13,7 +13,11 @@ IMAGE = f"sha256:{'b' * 64}"
 THUMBPRINT = "C" * 43
 
 
-def run_generator(output: Path, attestations: Path | None = None) -> dict[str, object]:
+def run_generator(
+    output: Path,
+    attestations: Path | None = None,
+    artifact_root: Path | None = None,
+) -> dict[str, object]:
     command = [
         sys.executable,
         str(SCRIPT),
@@ -30,6 +34,8 @@ def run_generator(output: Path, attestations: Path | None = None) -> dict[str, o
     ]
     if attestations is not None:
         command.extend(["--attestations", str(attestations)])
+    if artifact_root is not None:
+        command.extend(["--artifact-root", str(artifact_root)])
     completed = subprocess.run(
         command,
         cwd=ROOT,
@@ -49,15 +55,20 @@ def tree_digest(root: Path) -> str:
     return digest.hexdigest()
 
 
-def attestation(kind: str) -> dict[str, object]:
+def attestation(kind: str, artifact_root: Path) -> dict[str, object]:
+    relative = Path("raw") / f"{kind}.json"
+    value = (json.dumps({"artifact_kind": kind, "passed": True}, sort_keys=True) + "\n").encode()
+    target = artifact_root / relative
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_bytes(value)
     return {
         "artifact_kind": kind,
-        "artifact_digest": hashlib.sha256(kind.encode()).hexdigest(),
+        "artifact_digest": hashlib.sha256(value).hexdigest(),
         "release_id": "release-v1",
         "source_sha": SHA,
         "image_digest": IMAGE,
         "passed": True,
-        "path": f"evidence/{kind}.json",
+        "path": relative.as_posix(),
     }
 
 
@@ -106,12 +117,14 @@ def test_generator_completes_both_gates_only_from_exact_attestations(
     attestations.write_text(
         json.dumps(
             {
-                "live": [attestation(kind) for kind in sorted(LIVE_REQUIREMENTS)],
-                "assurance": [attestation(kind) for kind in sorted(ASSURANCE_REQUIREMENTS)],
+                "live": [attestation(kind, tmp_path) for kind in sorted(LIVE_REQUIREMENTS)],
+                "assurance": [
+                    attestation(kind, tmp_path) for kind in sorted(ASSURANCE_REQUIREMENTS)
+                ],
             }
         )
     )
-    complete = run_generator(tmp_path / "complete", attestations)
+    complete = run_generator(tmp_path / "complete", attestations, tmp_path)
     assert complete["live_proof_complete"]
     assert complete["assurance_complete"]
     assert complete["release_ready"]
@@ -119,7 +132,68 @@ def test_generator_completes_both_gates_only_from_exact_attestations(
     payload = json.loads(attestations.read_text())
     payload["assurance"][0]["source_sha"] = "f" * 40
     attestations.write_text(json.dumps(payload))
-    stale = run_generator(tmp_path / "stale", attestations)
+    stale = run_generator(tmp_path / "stale", attestations, tmp_path)
     assert stale["live_proof_complete"]
     assert not stale["assurance_complete"]
     assert not stale["release_ready"]
+
+
+def test_generator_rejects_missing_tampered_or_escaping_attestation_artifacts(
+    tmp_path: Path,
+) -> None:
+    attestations = tmp_path / "attestations.json"
+    record = attestation("deployed_journey", tmp_path)
+    payload = {"live": [record], "assurance": []}
+    attestations.write_text(json.dumps(payload))
+
+    target = tmp_path / str(record["path"])
+    target.write_text("tampered\n")
+    completed = subprocess.run(
+        [
+            sys.executable,
+            str(SCRIPT),
+            "--release-id",
+            "release-v1",
+            "--source-sha",
+            SHA,
+            "--image-digest",
+            IMAGE,
+            "--key-thumbprint",
+            THUMBPRINT,
+            "--attestations",
+            str(attestations),
+            "--artifact-root",
+            str(tmp_path),
+            "--output-root",
+            str(tmp_path / "tampered"),
+        ],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "digest does not match" in completed.stderr
+
+    target.unlink()
+    completed = subprocess.run(
+        [*completed.args[:-1], str(tmp_path / "missing")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "No such file" in completed.stderr
+
+    outside = tmp_path.parent / "outside-gate-artifact.json"
+    outside.write_text("outside\n")
+    record["path"] = "../outside-gate-artifact.json"
+    record["artifact_digest"] = hashlib.sha256(outside.read_bytes()).hexdigest()
+    attestations.write_text(json.dumps(payload))
+    completed = subprocess.run(
+        [*completed.args[:-1], str(tmp_path / "escaping")],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode != 0
+    assert "safe relative path" in completed.stderr

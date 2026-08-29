@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import hmac
 import json
 import re
 from pathlib import Path
@@ -512,13 +513,44 @@ def write_json(path: Path, value: object, *, canonical: bool = False) -> None:
 
 def load_attestations(
     path: Path | None,
+    *,
+    artifact_root: Path,
 ) -> tuple[list[ArtifactAttestation], list[ArtifactAttestation]]:
     if path is None:
         return [], []
     payload = json.loads(path.read_text(encoding="utf-8"))
+    if not isinstance(payload, dict) or set(payload) != {"live", "assurance"}:
+        raise ValueError("attestation manifest must contain exactly live and assurance")
+    if not isinstance(payload["live"], list) or not isinstance(payload["assurance"], list):
+        raise ValueError("attestation gate entries must be arrays")
+
+    resolved_root = artifact_root.resolve(strict=True)
+    seen_paths: set[str] = set()
+
+    def validated(item: object) -> ArtifactAttestation:
+        attestation = ArtifactAttestation.model_validate(item)
+        relative = Path(attestation.path)
+        if relative.is_absolute() or not relative.parts or ".." in relative.parts:
+            raise ValueError("attestation artifact path must be a safe relative path")
+        target = (resolved_root / relative).resolve(strict=True)
+        try:
+            target.relative_to(resolved_root)
+        except ValueError as error:
+            raise ValueError("attestation artifact path escapes artifact root") from error
+        normalized = relative.as_posix()
+        if normalized in seen_paths:
+            raise ValueError("attestation manifest references an artifact path more than once")
+        seen_paths.add(normalized)
+        if not target.is_file():
+            raise ValueError("attestation artifact path is not a regular file")
+        actual_digest = hashlib.sha256(target.read_bytes()).hexdigest()
+        if not hmac.compare_digest(actual_digest, attestation.artifact_digest):
+            raise ValueError("attestation artifact digest does not match referenced bytes")
+        return attestation
+
     return (
-        [ArtifactAttestation.model_validate(item) for item in payload.get("live", [])],
-        [ArtifactAttestation.model_validate(item) for item in payload.get("assurance", [])],
+        [validated(item) for item in payload["live"]],
+        [validated(item) for item in payload["assurance"]],
     )
 
 
@@ -545,7 +577,10 @@ def generate(arguments: argparse.Namespace) -> dict[str, object]:
     }
     webmcp = webmcp_cases(arguments.evaluation_version)
     registry = claims(identity)
-    live, assurance = load_attestations(arguments.attestations)
+    live, assurance = load_attestations(
+        arguments.attestations,
+        artifact_root=arguments.artifact_root,
+    )
     gates = derive_dual_gates(identity, live_artifacts=live, assurance_artifacts=assurance)
     statement = release_statement(gates)
     output_root = arguments.output_root
@@ -603,6 +638,12 @@ def parser() -> argparse.ArgumentParser:
     result.add_argument("--capability-policy-version", default="webmcp-capability-v1")
     result.add_argument("--receipt-policy-version", default="authority-receipt-policy-v1")
     result.add_argument("--attestations", type=Path)
+    result.add_argument(
+        "--artifact-root",
+        type=Path,
+        default=ROOT,
+        help="Trusted root for every artifact path referenced by --attestations.",
+    )
     result.add_argument("--output-root", type=Path, default=ROOT)
     return result
 
