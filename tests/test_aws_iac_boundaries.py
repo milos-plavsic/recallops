@@ -385,3 +385,18 @@ def test_cloudformation_execution_policy_has_no_wildcard_identity_mutation() -> 
         "s3:PutEncryptionConfiguration",
         "s3:PutLifecycleConfiguration",
     } <= all_actions
+
+    managed_update = next(
+        statement
+        for statement in execution["Statement"]
+        if statement["Sid"] == "UpdateRecallOpsWebAclWithAwsManagedRules"
+    )
+    assert managed_update == {
+        "Sid": "UpdateRecallOpsWebAclWithAwsManagedRules",
+        "Effect": "Allow",
+        "Action": "wafv2:UpdateWebACL",
+        "Resource": (
+            f"arn:aws:wafv2:us-east-1:{CURRENT_ACCOUNT}:"
+            "regional/managedruleset/*/*"
+        ),
+    }

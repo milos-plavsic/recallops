@@ -222,6 +222,12 @@
       "Resource": "arn:aws:wafv2:us-east-1:158363272009:regional/webacl/*/*"
     },
     {
+      "Sid": "UpdateRecallOpsWebAclWithAwsManagedRules",
+      "Effect": "Allow",
+      "Action": "wafv2:UpdateWebACL",
+      "Resource": "arn:aws:wafv2:us-east-1:158363272009:regional/managedruleset/*/*"
+    },
+    {
       "Sid": "CreateRecallOpsWebAclWithAwsManagedRules",
       "Effect": "Allow",
       "Action": "wafv2:CreateWebACL",
