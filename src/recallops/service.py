@@ -714,17 +714,9 @@ class IncidentService:
                 "created_at": assessment.created_at.isoformat().replace("+00:00", "Z"),
             },
         )
-        verdict_digest = content_digest(
-            "recallops-verdict-v1",
-            {
-                "observation_digest": verdict.observation_digest,
-                "classification": verdict.classification.value,
-                "checks_passed": verdict.checks_passed,
-                "checks_failed": verdict.checks_failed,
-                "policy_version": verdict.policy_version,
-                "computed_at": verdict.computed_at.isoformat().replace("+00:00", "Z"),
-            },
-        )
+        from recallops.sandbox import policy_verdict_digest
+
+        verdict_digest = policy_verdict_digest(verdict)
         return Memory(
             tenant_id=incident.tenant_id,
             service=incident.service,

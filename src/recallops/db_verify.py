@@ -61,6 +61,7 @@ EXPECTED_GRANTS = {
     ("recallops_api", "review_handoffs", "SELECT"),
     ("recallops_api", "review_handoffs", "UPDATE"),
     ("recallops_api", "release_evidence_records", "SELECT"),
+    ("recallops_api", "receipt_requests", "INSERT"),
     ("recallops_api", "sandbox_executions", "INSERT"),
     ("recallops_api", "sandbox_executions", "SELECT"),
     ("recallops_api", "webmcp_workflows", "INSERT"),
@@ -80,6 +81,8 @@ EXPECTED_GRANTS = {
     ("recallops_outbox", "release_evidence_records", "INSERT"),
     ("recallops_outbox", "release_evidence_records", "SELECT"),
     ("recallops_outbox", "release_evidence_records", "UPDATE"),
+    ("recallops_outbox", "receipt_requests", "SELECT"),
+    ("recallops_outbox", "receipt_requests", "UPDATE"),
 }
 
 
@@ -446,6 +449,8 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "UPDATE activity_observations SET outcome=outcome WHERE false"),
         ("recallops_api", "DELETE FROM activity_observations WHERE false"),
         ("recallops_api", "DELETE FROM authority_receipts WHERE false"),
+        ("recallops_api", "SELECT * FROM receipt_requests WHERE false"),
+        ("recallops_api", "UPDATE receipt_requests SET status=status WHERE false"),
         ("recallops_api", "UPDATE release_evidence_records SET release_id=release_id WHERE false"),
         ("recallops_api", "DELETE FROM release_evidence_records WHERE false"),
         ("recallops_api", "UPDATE sandbox_executions SET actor_id=actor_id WHERE false"),
@@ -464,6 +469,8 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_outbox", "INSERT INTO authority_events DEFAULT VALUES"),
         ("recallops_outbox", "UPDATE judge_runs SET status=status WHERE false"),
         ("recallops_outbox", "DELETE FROM authority_receipts WHERE false"),
+        ("recallops_outbox", "INSERT INTO receipt_requests DEFAULT VALUES"),
+        ("recallops_outbox", "DELETE FROM receipt_requests WHERE false"),
         ("recallops_outbox", "DELETE FROM release_evidence_records WHERE false"),
         ("recallops_outbox", "CREATE TABLE worker_privilege_escape (id INT PRIMARY KEY)"),
     )

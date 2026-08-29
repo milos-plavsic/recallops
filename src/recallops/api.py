@@ -64,6 +64,7 @@ from recallops.ledger import (
     InMemoryAuthorityLedgerRepository,
     PostgresAuthorityLedgerRepository,
 )
+from recallops.public_bundles import PublicBundleService
 from recallops.resilience import DependencyUnavailable
 from recallops.sandbox import (
     SANDBOX_ACTION_COMMAND,
@@ -72,6 +73,7 @@ from recallops.sandbox import (
     ObservationProvider,
     SandboxPolicyError,
     evaluate_observation,
+    policy_verdict_digest,
 )
 from recallops.service import (
     BedrockReasoner,
@@ -120,6 +122,7 @@ def create_app(
     *,
     checkout_sandbox: CheckoutSandbox | None = None,
     observation_provider: ObservationProvider | None = None,
+    public_bundle_service: PublicBundleService | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     store = store or (
@@ -243,6 +246,14 @@ def create_app(
     workflows = WorkflowCoordinator(workflow_repository, ledger_repository)
     checkout_sandbox = checkout_sandbox or CheckoutSandbox()
     observation_provider = observation_provider or DeterministicObservationProvider()
+    if public_bundle_service is None and settings.authority_bundle_bucket:
+        if not isinstance(store, PostgresStore):
+            raise ValueError("public authority bundles require the PostgreSQL store")
+        public_bundle_service = PublicBundleService.aws(
+            settings.database_url,
+            settings.aws_region,
+            settings.authority_bundle_bucket,
+        )
     authority_lock = threading.RLock()
 
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
@@ -253,6 +264,7 @@ def create_app(
     app.state.observation_provider = observation_provider
     app.state.judge_repository = judge_repository
     app.state.ledger_repository = ledger_repository
+    app.state.public_bundle_service = public_bundle_service
 
     def authority_transaction(
         operation: Callable[[IncidentService, WorkflowCoordinator], object],
@@ -1150,6 +1162,19 @@ def create_app(
             governed = tx_service.govern_memory(memory.id, governance)
             if governed is None:  # pragma: no cover - row is locked above
                 raise MemoryGovernanceError("review target is unavailable")
+            review_digest = content_digest(
+                "recallops-review-decision-v1",
+                {
+                    "run_id": str(run.run_id),
+                    "generation": str(run.generation),
+                    "workflow_id": str(handoff.workflow_id),
+                    "memory": payload.memory_digest,
+                    "reviewer": identity.subject,
+                    "decision": payload.decision.value,
+                    "reason_code": payload.reason_code.value,
+                    "note": payload.note,
+                },
+            )
             completed = tx_workflows.transition(
                 handoff.workflow_id,
                 run.tenant_id,
@@ -1159,6 +1184,19 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="reviewer",
+                reason_code=f"MEMORY_{payload.decision.value.upper()}",
+                object_type="review_binding",
+                object_id=review_digest,
+                object_digest=content_digest(
+                    "recallops-review-binding-v1",
+                    {
+                        "disposition": hashlib.sha256(
+                            payload.decision.value.encode("ascii")
+                        ).hexdigest(),
+                        "memory": payload.memory_digest,
+                        "review": review_digest,
+                    },
+                ),
             )
             return {"memory": governed, "workflow": completed}
 
@@ -1478,9 +1516,17 @@ def create_app(
                 actor_subject=webmcp_agent_subject(run),
                 role="agent",
                 reason_code="POSTCHECK_ASSESSMENT_RECORDED",
-                object_type="memory",
+                object_type="outcome_binding",
                 object_id=str(recorded_memory.id),
-                object_digest=cast(str, recorded_memory.memory_digest),
+                object_digest=content_digest(
+                    "recallops-outcome-binding-v1",
+                    {
+                        "assessment": cast(str, recorded_memory.assessment_digest),
+                        "memory": cast(str, recorded_memory.memory_digest),
+                        "observation": cast(str, recorded_memory.observation_digest),
+                        "policy_verdict": cast(str, recorded_memory.verdict_digest),
+                    },
+                ),
             )
             return {
                 "assessment": recorded_assessment,
@@ -1731,6 +1777,12 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="operator",
+                reason_code="PROPOSAL_APPROVED"
+                if payload.approved
+                else "PROPOSAL_REJECTED",
+                object_type="proposal",
+                object_id=str(incident_id),
+                object_digest=payload.proposal_hash,
             )
             return {"recorded": True, "workflow": workflow}
 
@@ -1800,6 +1852,16 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="operator",
+                reason_code="SANDBOX_EXECUTION_APPLIED",
+                object_type="execution_binding",
+                object_id=str(execution.id),
+                object_digest=content_digest(
+                    "recallops-execution-binding-v1",
+                    {
+                        "execution": execution.execution_digest,
+                        "proposal": execution.proposal_hash,
+                    },
+                ),
             )
             return execution, workflow
 
@@ -1866,6 +1928,17 @@ def create_app(
                 channel=RequestChannel.SYSTEM,
                 actor_subject="recallops-observer",
                 role="system",
+                reason_code="VERIFIED_OBSERVATION_RECORDED",
+                object_type="observation_binding",
+                object_id=str(recorded_observation.id),
+                object_digest=content_digest(
+                    "recallops-observation-binding-v1",
+                    {
+                        "execution": recorded_observation.execution_digest,
+                        "observation": recorded_observation.observation_digest,
+                        "policy_verdict": policy_verdict_digest(recorded_verdict),
+                    },
+                ),
             )
             return {
                 "execution": execution,
@@ -1993,6 +2066,17 @@ def create_app(
                 channel=RequestChannel.SYSTEM,
                 actor_subject="recallops-observer",
                 role="system",
+                reason_code="VERIFIED_OBSERVATION_RECORDED",
+                object_type="observation_binding",
+                object_id=str(recorded_observation.id),
+                object_digest=content_digest(
+                    "recallops-observation-binding-v1",
+                    {
+                        "execution": recorded_observation.execution_digest,
+                        "observation": recorded_observation.observation_digest,
+                        "policy_verdict": policy_verdict_digest(recorded_verdict),
+                    },
+                ),
             )
             return {
                 "execution": execution,
@@ -2367,6 +2451,36 @@ def create_app(
             return authority_transaction(invalidate_atomically)
         except WorkflowConflict as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
+    @app.get("/public/evidence/{receipt_id}/authority-bundle.zip", include_in_schema=False)
+    def public_authority_bundle(receipt_id: UUID) -> Response:
+        if public_bundle_service is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "finalized public receipt not found")
+        try:
+            result = public_bundle_service.download(receipt_id)
+        except DependencyUnavailable as error:
+            raise HTTPException(
+                status.HTTP_503_SERVICE_UNAVAILABLE,
+                "finalized authority bundle is temporarily unavailable",
+                headers={"Retry-After": "30"},
+            ) from error
+        if result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "finalized public receipt not found")
+        archive, record = result
+        return Response(
+            content=archive,
+            media_type="application/zip",
+            headers={
+                "Cache-Control": "public, max-age=31536000, immutable",
+                "Content-Disposition": (
+                    f'attachment; filename="recallops-authority-{receipt_id}.zip"'
+                ),
+                "ETag": f'"{record.bundle_digest}"',
+                "X-RecallOps-Bundle-Digest": record.bundle_digest,
+                "X-RecallOps-Source-SHA": record.source_sha,
+                "X-RecallOps-Image-Digest": record.image_digest,
+            },
+        )
 
     static_directory = Path(__file__).with_name("static")
 

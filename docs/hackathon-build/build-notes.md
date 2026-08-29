@@ -453,3 +453,36 @@
   because no real receipt KMS key or frozen release ID is configured in this workspace. No live-KMS
   pass or completed item-7 claim is recorded. Combined branch coverage is 95.65%; the 100% release
   coverage gate remains open for the adversarial-matrix item rather than being misrepresented.
+
+### Item 8 — independent authority bundle (core checkpoint; external proof gate open)
+
+- Implemented the one-way digest graph frozen by the spec: canonical auxiliary evidence, signed
+  evidence-index digest, compact manifest, Ed25519 JWS, outer checksum file, and an externally
+  recorded domain-separated bundle digest. Deterministic ZIP creation fixes order, timestamp,
+  permissions, UTF-8 flags, and compression; strict extraction rejects extra, duplicate, traversal,
+  symlink, special, oversized, and malformed members.
+- Added a network-free Node verifier using built-in crypto only. It checks the exact file set and
+  bounds, duplicate JSON keys, RFC 8785 byte equality, external bundle digest, repository-pinned
+  JWK and RFC 7638 thumbprint, frozen RFC 9864 JWS header, Ed25519 signature, evidence index,
+  ledger chain, transition/capability/actor/channel rules, tenant/release bindings, separation of
+  duties, causal object bindings, disposition, policy content, claims, and evaluation version. It
+  returns bounded stable error codes and never obtains trust from the bundle itself.
+- Closed a proof-level causal gap by binding the live journey's proposal, execution, observation,
+  policy verdict, assessment, memory, and review into transition-specific composite hashes. The
+  full judge-journey test recomputes those hashes from persisted evidence; signed-but-policy-invalid
+  actor, capability, causal, policy, and disposition vectors are rejected semantically.
+- Added a write-once private S3 adapter with exact object keys, `If-None-Match`, SHA-256 transport
+  checksums, mandatory KMS encryption evidence, mandatory version IDs, and retry reconciliation
+  only for an existing object with the identical bundle digest. Added a credential-free public
+  route that serves only signed, synthetic, explicitly public receipts after fetching the exact
+  recorded S3 version and revalidating the ZIP/checksum/bundle digest.
+- Extended migration 030 with immutable receipt requests, closed lease/delivery/dead-letter states,
+  public-synthetic constraints, and required object-version evidence. Real Cockroach verification
+  passes all 24 boundary tests with 64 exact grants and 36 prohibited-operation denials. A separate
+  real-database test proves lease claim, failure retry, failed-to-pending reset, atomic signed+
+  delivered finalization, idempotent replay, bounded backoff, explicit publication, and terminal
+  dead-letter behavior.
+- The Independent-proof gate remains open. Fixed published vector directories, complete receipt
+  enqueue wiring at reviewer disposition, live KMS signing, live versioned-S3 persistence/download,
+  and the human-readable signed authority-chain projection are not yet complete. Item 8 is not
+  marked passed, and storage/signing mocks are not represented as live external evidence.

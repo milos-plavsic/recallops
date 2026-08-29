@@ -14,7 +14,12 @@ CREATE TABLE IF NOT EXISTS authority_receipts (
     image_digest STRING NOT NULL CHECK (image_digest ~ '^sha256:[a-f0-9]{64}$'),
     evaluation_version STRING NOT NULL CHECK (length(evaluation_version) BETWEEN 3 AND 80),
     status STRING NOT NULL CHECK (status IN ('pending','signed','failed','superseded')),
+    synthetic BOOL NOT NULL DEFAULT false,
+    bundle_object_key STRING NULL CHECK (
+        bundle_object_key IS NULL OR length(bundle_object_key) BETWEEN 16 AND 1024
+    ),
     s3_version_id STRING NULL CHECK (s3_version_id IS NULL OR length(s3_version_id) BETWEEN 1 AND 1024),
+    public_at TIMESTAMPTZ NULL,
     created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
     signed_at TIMESTAMPTZ NULL,
     failure_code STRING NULL CHECK (failure_code IS NULL OR length(failure_code) BETWEEN 1 AND 100),
@@ -24,13 +29,34 @@ CREATE TABLE IF NOT EXISTS authority_receipts (
         status != 'signed' OR (
             manifest_digest IS NOT NULL AND bundle_digest IS NOT NULL AND jws_compact IS NOT NULL
             AND key_thumbprint IS NOT NULL AND signing_algorithm = 'Ed25519'
-            AND s3_version_id IS NOT NULL AND signed_at IS NOT NULL AND failure_code IS NULL
+            AND bundle_object_key IS NOT NULL AND s3_version_id IS NOT NULL
+            AND signed_at IS NOT NULL AND failure_code IS NULL
         )
     ),
     CONSTRAINT authority_receipts_failed_bounded CHECK (
         status != 'failed' OR (failure_code IS NOT NULL AND signed_at IS NULL)
     ),
     UNIQUE (receipt_id, run_id, tenant_id)
+);
+
+ALTER TABLE authority_receipts ADD COLUMN IF NOT EXISTS synthetic BOOL NOT NULL DEFAULT false;
+ALTER TABLE authority_receipts ADD COLUMN IF NOT EXISTS bundle_object_key STRING NULL;
+ALTER TABLE authority_receipts ADD COLUMN IF NOT EXISTS public_at TIMESTAMPTZ NULL;
+ALTER TABLE authority_receipts DROP CONSTRAINT IF EXISTS authority_receipts_signed_complete;
+ALTER TABLE authority_receipts ADD CONSTRAINT authority_receipts_signed_complete CHECK (
+    status != 'signed' OR (
+        manifest_digest IS NOT NULL AND bundle_digest IS NOT NULL AND jws_compact IS NOT NULL
+        AND key_thumbprint IS NOT NULL AND signing_algorithm = 'Ed25519'
+        AND bundle_object_key IS NOT NULL AND s3_version_id IS NOT NULL
+        AND signed_at IS NOT NULL AND failure_code IS NULL
+    )
+);
+ALTER TABLE authority_receipts DROP CONSTRAINT IF EXISTS authority_receipts_public_finalized;
+ALTER TABLE authority_receipts ADD CONSTRAINT authority_receipts_public_finalized CHECK (
+    public_at IS NULL OR (
+        synthetic AND status = 'signed' AND bundle_object_key IS NOT NULL
+        AND s3_version_id IS NOT NULL AND bundle_digest IS NOT NULL
+    )
 );
 
 CREATE UNIQUE INDEX IF NOT EXISTS authority_receipts_active_prefix
@@ -50,6 +76,7 @@ BEGIN
        OR (OLD).source_sha IS DISTINCT FROM (NEW).source_sha
        OR (OLD).image_digest IS DISTINCT FROM (NEW).image_digest
        OR (OLD).evaluation_version IS DISTINCT FROM (NEW).evaluation_version
+       OR (OLD).synthetic IS DISTINCT FROM (NEW).synthetic
        OR (OLD).created_at IS DISTINCT FROM (NEW).created_at
     THEN
         RAISE EXCEPTION 'authority receipt binding is immutable' USING ERRCODE = '23514';
@@ -61,7 +88,9 @@ BEGIN
        OR (OLD).key_thumbprint IS DISTINCT FROM (NEW).key_thumbprint
        OR (OLD).signing_algorithm IS DISTINCT FROM (NEW).signing_algorithm
        OR (OLD).s3_version_id IS DISTINCT FROM (NEW).s3_version_id
+       OR (OLD).bundle_object_key IS DISTINCT FROM (NEW).bundle_object_key
        OR (OLD).signed_at IS DISTINCT FROM (NEW).signed_at
+       OR (OLD).public_at IS DISTINCT FROM (NEW).public_at
     )
     THEN
         RAISE EXCEPTION 'signed authority receipt is immutable' USING ERRCODE = '23514';
@@ -84,6 +113,78 @@ CREATE TRIGGER recallops_authority_receipt_immutable
 BEFORE UPDATE ON authority_receipts
 FOR EACH ROW
 EXECUTE FUNCTION recallops_guard_authority_receipt();
+
+CREATE TABLE IF NOT EXISTS receipt_requests (
+    request_id UUID PRIMARY KEY,
+    receipt_id UUID NOT NULL UNIQUE,
+    run_id UUID NOT NULL,
+    tenant_id STRING NOT NULL,
+    event_type STRING NOT NULL DEFAULT 'receipt_requested'
+        CHECK (event_type = 'receipt_requested'),
+    target_sequence INT8 NOT NULL CHECK (target_sequence > 0),
+    target_ledger_hash STRING NOT NULL CHECK (target_ledger_hash ~ '^[a-f0-9]{64}$'),
+    publish_public BOOL NOT NULL DEFAULT false,
+    status STRING NOT NULL DEFAULT 'pending'
+        CHECK (status IN ('pending','processing','delivered','dead_lettered')),
+    available_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    claimed_by STRING NULL CHECK (claimed_by IS NULL OR length(claimed_by) BETWEEN 1 AND 200),
+    claimed_until TIMESTAMPTZ NULL,
+    attempts INT8 NOT NULL DEFAULT 0 CHECK (attempts >= 0),
+    last_error_code STRING NULL CHECK (
+        last_error_code IS NULL OR length(last_error_code) BETWEEN 1 AND 100
+    ),
+    created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+    delivered_at TIMESTAMPTZ NULL,
+    dead_lettered_at TIMESTAMPTZ NULL,
+    CONSTRAINT receipt_requests_receipt_fk
+        FOREIGN KEY (receipt_id, run_id, tenant_id)
+        REFERENCES authority_receipts (receipt_id, run_id, tenant_id),
+    CONSTRAINT receipt_requests_status_shape CHECK (
+        (status = 'pending' AND delivered_at IS NULL AND dead_lettered_at IS NULL)
+        OR (status = 'processing' AND claimed_by IS NOT NULL AND claimed_until IS NOT NULL
+            AND delivered_at IS NULL AND dead_lettered_at IS NULL)
+        OR (status = 'delivered' AND delivered_at IS NOT NULL AND dead_lettered_at IS NULL)
+        OR (status = 'dead_lettered' AND delivered_at IS NULL AND dead_lettered_at IS NOT NULL)
+    )
+);
+
+CREATE INDEX IF NOT EXISTS receipt_requests_claimable
+    ON receipt_requests (status, available_at, created_at);
+
+CREATE OR REPLACE FUNCTION recallops_guard_receipt_request()
+RETURNS trigger
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    IF (OLD).receipt_id IS DISTINCT FROM (NEW).receipt_id
+       OR (OLD).run_id IS DISTINCT FROM (NEW).run_id
+       OR (OLD).tenant_id IS DISTINCT FROM (NEW).tenant_id
+       OR (OLD).event_type IS DISTINCT FROM (NEW).event_type
+       OR (OLD).target_sequence IS DISTINCT FROM (NEW).target_sequence
+       OR (OLD).target_ledger_hash IS DISTINCT FROM (NEW).target_ledger_hash
+       OR (OLD).publish_public IS DISTINCT FROM (NEW).publish_public
+       OR (OLD).created_at IS DISTINCT FROM (NEW).created_at
+    THEN
+        RAISE EXCEPTION 'receipt request binding is immutable' USING ERRCODE = '23514';
+    END IF;
+    IF NOT (
+       ((OLD).status = 'pending' AND (NEW).status IN ('pending','processing','dead_lettered'))
+       OR ((OLD).status = 'processing' AND (NEW).status IN ('processing','pending','delivered','dead_lettered'))
+       OR ((OLD).status = 'delivered' AND (NEW).status = 'delivered')
+       OR ((OLD).status = 'dead_lettered' AND (NEW).status = 'dead_lettered')
+    )
+    THEN
+        RAISE EXCEPTION 'invalid receipt request status transition' USING ERRCODE = '23514';
+    END IF;
+    RETURN NEW;
+END
+$$;
+
+DROP TRIGGER IF EXISTS recallops_receipt_request_immutable ON receipt_requests;
+CREATE TRIGGER recallops_receipt_request_immutable
+BEFORE UPDATE ON receipt_requests
+FOR EACH ROW
+EXECUTE FUNCTION recallops_guard_receipt_request();
 
 CREATE TABLE IF NOT EXISTS release_evidence_records (
     release_id STRING PRIMARY KEY CHECK (length(release_id) BETWEEN 3 AND 100),
@@ -146,6 +247,8 @@ EXECUTE FUNCTION recallops_guard_release_identity();
 
 GRANT SELECT, INSERT, UPDATE ON TABLE authority_receipts TO recallops_api;
 GRANT SELECT, INSERT, UPDATE ON TABLE authority_receipts TO recallops_outbox;
+GRANT INSERT ON TABLE receipt_requests TO recallops_api;
+GRANT SELECT, UPDATE ON TABLE receipt_requests TO recallops_outbox;
 GRANT SELECT ON TABLE authority_events TO recallops_outbox;
 GRANT SELECT ON TABLE authority_ledger_heads TO recallops_outbox;
 GRANT SELECT ON TABLE judge_runs TO recallops_outbox;

@@ -8,6 +8,7 @@ from collections.abc import Mapping
 from typing import Protocol
 from uuid import UUID
 
+from recallops.canonical import content_digest
 from recallops.domain import (
     IncidentAnalysis,
     PolicyVerdict,
@@ -150,4 +151,19 @@ def evaluate_observation(observation: PostcheckObservation) -> PolicyVerdict:
         checks_passed=passed,
         checks_failed=failed,
         observation_digest=observation.observation_digest,
+    )
+
+
+def policy_verdict_digest(verdict: PolicyVerdict) -> str:
+    """Digest the immutable policy computation using the receipt's frozen domain."""
+    return content_digest(
+        "recallops-verdict-v1",
+        {
+            "observation_digest": verdict.observation_digest,
+            "classification": verdict.classification.value,
+            "checks_passed": verdict.checks_passed,
+            "checks_failed": verdict.checks_failed,
+            "policy_version": verdict.policy_version,
+            "computed_at": verdict.computed_at.isoformat().replace("+00:00", "Z"),
+        },
     )

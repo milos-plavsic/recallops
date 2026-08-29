@@ -1,3 +1,4 @@
+import hashlib
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from urllib.parse import urlsplit
@@ -8,6 +9,7 @@ from pydantic import SecretStr
 
 from recallops.api import create_app
 from recallops.auth import JudgeSessionAuthenticator, JudgeSessionError
+from recallops.canonical import content_digest
 from recallops.config import Settings
 from recallops.domain import Memory, MemoryState
 from recallops.embedding import DeterministicEmbedder
@@ -878,6 +880,43 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     events = app.state.ledger_repository.list_events(run.run_id, run.tenant_id)
     assert events[-1].actor_subject == exchange.json()["identity"]["subject"]
     assert events[-2].actor_subject.startswith("webmcp_agent_")
+    assert [event.object_type for event in events] == [
+        None,
+        "proposal",
+        "proposal",
+        "execution_binding",
+        "observation_binding",
+        "outcome_binding",
+        "review_binding",
+    ]
+    assert events[1].object_digest == events[2].object_digest == proposal_digest
+    execution = executed.json()["execution"]
+    assert events[3].object_digest == content_digest(
+        "recallops-execution-binding-v1",
+        {
+            "execution": execution["execution_digest"],
+            "proposal": proposal_digest,
+        },
+    )
+    memory = app.state.service.get_memory(UUID(assessment["memory"]["id"]), run.tenant_id)
+    assert memory is not None
+    assert events[5].object_digest == content_digest(
+        "recallops-outcome-binding-v1",
+        {
+            "assessment": cast(str, memory.assessment_digest),
+            "memory": cast(str, memory.memory_digest),
+            "observation": cast(str, memory.observation_digest),
+            "policy_verdict": cast(str, memory.verdict_digest),
+        },
+    )
+    assert events[6].object_id is not None and events[6].object_digest == content_digest(
+        "recallops-review-binding-v1",
+        {
+            "disposition": hashlib.sha256(b"certify").hexdigest(),
+            "memory": cast(str, memory.memory_digest),
+            "review": events[6].object_id,
+        },
+    )
 
 
 def test_authenticator_configuration_and_invalid_session_are_rejected() -> None:

@@ -73,6 +73,8 @@ class Settings(BaseSettings):
     receipt_policy_version: str = Field(
         default="authority-receipt-policy-v1", min_length=3, max_length=80
     )
+    authority_bundle_bucket: str | None = None
+    authority_bundle_kms_key_id: str | None = None
 
 
 @lru_cache
