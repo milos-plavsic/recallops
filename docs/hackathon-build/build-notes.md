@@ -803,3 +803,7 @@
   probe executed every receipt-material read and both allowed queue/receipt updates under
   `SET ROLE recallops_receipt`, then proved reciprocal worker isolation: the outbox role cannot
   read receipt evidence and the receipt role cannot read the evidence outbox.
+- The immutable managed record for `webmcp-rc1` was retained rather than deleted or rebound after
+  the security fix. The canonical repository trust registry now explicitly authorizes the same
+  pinned KMS Ed25519 key for the successor `webmcp-rc2`; live proof requires that a requested
+  release resolve to exactly one active pinned key, so no wildcard or fallback trust was added.

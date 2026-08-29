@@ -281,9 +281,17 @@ def _complete_journey(app: Any) -> UUID:
 def run_live_proof(arguments: argparse.Namespace) -> Mapping[str, object]:
     registry_bytes = arguments.registry.read_bytes()
     registry = json.loads(registry_bytes)
-    key = registry["keys"][0]
-    if key["release_ids"] != [arguments.release_id]:
-        raise RuntimeError("repository trust root is not bound to the requested release")
+    authorized_keys = [
+        key
+        for key in registry["keys"]
+        if key.get("status") == "active"
+        and arguments.release_id in key.get("release_ids", [])
+    ]
+    if len(authorized_keys) != 1:
+        raise RuntimeError(
+            "requested release must resolve to exactly one active repository-pinned key"
+        )
+    key = authorized_keys[0]
     manifest_json = arguments.release_manifest.read_text()
     secrets = boto3.client("secretsmanager", region_name=arguments.region)
     settings = Settings(
