@@ -649,10 +649,12 @@
   identical-input impact evidence, the verified-evidence/reviewer recurrence, independently
   verifiable receipt, exact local assurance counts, and explicit proof limitations mapped to the
   official WebMCP Leverage, Execution, Potential Impact, and Creativity & Ambition criteria.
-- Preserved the participant-owned untracked `devpost-submission.md`, thumbnail, subtitles, and video
-  helper files unchanged. That draft still reflects the prior CockroachDB event and must not be
-  pasted into the WebMCP form; `docs/DEVPOST_FINAL_COPY.md` is the corrected tracked source until the
-  participant reconciles or replaces the private draft.
+- The initial reconciliation preserved the participant-owned untracked `devpost-submission.md`,
+  thumbnail, subtitles, and video helpers unchanged. On the participant's explicit next
+  prepare-submission pass, reconciled the private draft to the official WebMCP fields while retaining
+  the useful problem, architecture, proof, and limitation material. The thumbnail remains unchanged
+  and provisional; the stale CockroachDB/AWS subtitle files remain unchanged and are explicitly
+  excluded from the WebMCP recording until replaced.
 - Item 12 remains unmarked until the frozen live URL, exact two-client results, manual accessibility
   record, public video URL, final screenshots, entrant-confirmed form answers, and verified Devpost
   project page exist. Preparing these files does not submit anything to Devpost.
