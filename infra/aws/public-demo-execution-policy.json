@@ -5,7 +5,8 @@
       "Sid": "ReadAccountAndNetworkShape",
       "Effect": "Allow",
       "Action": [
-        "ec2:DescribeAvailabilityZones", "ec2:DescribeNetworkInterfaces",
+        "ec2:DescribeAvailabilityZones", "ec2:DescribeInternetGateways",
+        "ec2:DescribeNetworkInterfaces",
         "ec2:DescribeRouteTables", "ec2:DescribeSecurityGroups",
         "ec2:DescribeSubnets", "ec2:DescribeVpcs",
         "elasticloadbalancing:DescribeListeners", "elasticloadbalancing:DescribeLoadBalancers",
@@ -188,12 +189,21 @@
       "Sid": "ManageRecallOpsRegionalWaf",
       "Effect": "Allow",
       "Action": [
-        "wafv2:AssociateWebACL", "wafv2:CreateWebACL", "wafv2:DeleteWebACL",
+        "wafv2:AssociateWebACL", "wafv2:DeleteWebACL",
         "wafv2:DisassociateWebACL", "wafv2:GetWebACL", "wafv2:GetWebACLForResource",
         "wafv2:ListResourcesForWebACL", "wafv2:ListTagsForResource", "wafv2:TagResource",
         "wafv2:UntagResource", "wafv2:UpdateWebACL"
       ],
       "Resource": "arn:aws:wafv2:us-east-1:158363272009:regional/webacl/recallops-*/*"
+    },
+    {
+      "Sid": "CreateRecallOpsWebAclWithAwsManagedRules",
+      "Effect": "Allow",
+      "Action": "wafv2:CreateWebACL",
+      "Resource": [
+        "arn:aws:wafv2:us-east-1:158363272009:regional/webacl/recallops-*/*",
+        "arn:aws:wafv2:us-east-1:158363272009:regional/managedruleset/*/*"
+      ]
     },
     {
       "Sid": "ReadAwsManagedWafRuleGroups",
