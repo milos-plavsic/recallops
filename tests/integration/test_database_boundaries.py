@@ -167,9 +167,7 @@ def test_concurrent_ledger_appends_retry_and_form_one_verifiable_chain() -> None
     def append(index: int) -> str:
         def operation(bound_store: PostgresStore, connection: object) -> str:
             del bound_store
-            event = PostgresAuthorityLedgerRepository.from_connection(
-                connection
-            ).append_transition(
+            event = PostgresAuthorityLedgerRepository.from_connection(connection).append_transition(
                 before,
                 after,
                 actor_subject=f"operator-{index}",
@@ -369,9 +367,109 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 48
-    assert len(report["cross_tenant_constraints"]) == 16
-    assert len(report["runtime_denials"]) == 25
+    assert report["exact_runtime_grants"] == 61
+    assert len(report["cross_tenant_constraints"]) == 17
+    assert len(report["runtime_denials"]) == 32
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_receipt_and_release_bindings_are_database_immutable() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    incident_id, run_id, receipt_id = uuid4(), uuid4(), uuid4()
+    tenant = f"receipt_{run_id.hex}"
+    head_hash = "1" * 64
+    source_sha = "a" * 40
+    image_digest = f"sha256:{'b' * 64}"
+    release_id = f"release-{run_id.hex}"
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            """INSERT INTO incidents
+            (id,tenant_id,service,service_version,symptom,idempotency_key,status,analysis)
+            VALUES (%s,%s,'checkout','v1','latency',%s,'open','{}')""",
+            (incident_id, tenant, f"receipt-{run_id.hex}"),
+        )
+        connection.execute(
+            """INSERT INTO webmcp_workflows (workflow_id,tenant_id,state,epoch)
+            VALUES (%s,%s,'REVIEWED',6)""",
+            (incident_id, tenant),
+        )
+        connection.execute(
+            """INSERT INTO judge_runs
+            (run_id,tenant_id,generation,scenario_version,source_incident_id,status,
+             operator_subject,build_sha,capability_policy_version,expires_at)
+            VALUES (%s,%s,1,'scenario-v1',%s,'completed','operator',%s,'capability-v1',
+                    now() + interval '5 minutes')""",
+            (run_id, tenant, incident_id, source_sha),
+        )
+        connection.execute(
+            """INSERT INTO authority_receipts
+            (receipt_id,run_id,tenant_id,ledger_head_hash,ledger_last_sequence,
+             receipt_policy_version,source_sha,image_digest,evaluation_version,status)
+            VALUES (%s,%s,%s,%s,6,'receipt-v1',%s,%s,'evaluation-v1','pending')""",
+            (receipt_id, run_id, tenant, head_hash, source_sha, image_digest),
+        )
+        with pytest.raises(psycopg.errors.UniqueViolation):
+            connection.execute(
+                """INSERT INTO authority_receipts
+                (receipt_id,run_id,tenant_id,ledger_head_hash,ledger_last_sequence,
+                 receipt_policy_version,source_sha,image_digest,evaluation_version,status)
+                VALUES (%s,%s,%s,%s,6,'receipt-v1',%s,%s,'evaluation-v1','pending')""",
+                (uuid4(), run_id, tenant, head_hash, source_sha, image_digest),
+            )
+        with pytest.raises(psycopg.errors.CheckViolation, match="binding is immutable"):
+            connection.execute(
+                "UPDATE authority_receipts SET ledger_head_hash=%s WHERE receipt_id=%s",
+                ("2" * 64, receipt_id),
+            )
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "UPDATE authority_receipts SET status='signed' WHERE receipt_id=%s",
+                (receipt_id,),
+            )
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                "UPDATE authority_receipts SET signing_algorithm='EdDSA' WHERE receipt_id=%s",
+                (receipt_id,),
+            )
+        connection.execute(
+            """UPDATE authority_receipts SET status='signed',manifest_digest=%s,
+            bundle_digest=%s,jws_compact=%s,key_thumbprint=%s,signing_algorithm='Ed25519',
+            s3_version_id='version-1',signed_at=now() WHERE receipt_id=%s""",
+            ("3" * 64, "4" * 64, "a" * 64, "k" * 43, receipt_id),
+        )
+        with pytest.raises(psycopg.errors.CheckViolation, match="signed authority receipt"):
+            connection.execute(
+                "UPDATE authority_receipts SET jws_compact=%s WHERE receipt_id=%s",
+                ("b" * 64, receipt_id),
+            )
+        with pytest.raises(psycopg.errors.CheckViolation, match="status transition"):
+            connection.execute(
+                "UPDATE authority_receipts SET status='failed' WHERE receipt_id=%s",
+                (receipt_id,),
+            )
+        connection.execute(
+            """INSERT INTO release_evidence_records
+            (release_id,source_sha,image_digest,capability_policy_version,
+             receipt_policy_version,evaluation_version,receipt_key_thumbprint,
+             live_proof_status,assurance_status)
+            VALUES (%s,%s,%s,'capability-v1','receipt-v1','evaluation-v1',%s,
+                    'pending','pending')""",
+            (release_id, source_sha, image_digest, "k" * 43),
+        )
+        with pytest.raises(psycopg.errors.CheckViolation, match="identity is immutable"):
+            connection.execute(
+                "UPDATE release_evidence_records SET source_sha=%s WHERE release_id=%s",
+                ("c" * 40, release_id),
+            )
+        with pytest.raises(psycopg.errors.CheckViolation):
+            connection.execute(
+                """UPDATE release_evidence_records SET live_proof_status='passing'
+                WHERE release_id=%s""",
+                (release_id,),
+            )
 
 
 @pytest.mark.skipif(
@@ -385,7 +483,8 @@ def test_judge_run_session_and_handoff_composite_relationships_fail_closed() -> 
     vector = "[" + ",".join(["0"] * 1024) + "]"
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
@@ -465,7 +564,8 @@ def test_postgres_store_complete_governed_memory_lifecycle() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
@@ -656,7 +756,8 @@ def test_postgres_sandbox_evidence_and_assessment_are_distinct_and_bound() -> No
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
@@ -802,7 +903,8 @@ def test_cockroach_concurrency_converges_on_one_incident_execution_and_memory() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
@@ -889,7 +991,8 @@ def test_cockroach_workflow_epoch_has_one_authoritative_winner() -> None:
     workflow_id = uuid4()
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
@@ -950,7 +1053,8 @@ def test_protected_domain_write_rolls_back_when_epoch_transition_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, "
@@ -1034,7 +1138,8 @@ def test_webmcp_proposal_idempotency_and_authority_commit_are_one_transaction() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, judge_auth_attempts, review_handoffs, judge_sessions, "
             "judge_runs, postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "
@@ -1115,9 +1220,7 @@ def test_webmcp_proposal_idempotency_and_authority_commit_are_one_transaction() 
             headers={
                 "Origin": "http://testserver",
                 "Content-Type": "application/json",
-                "If-Match": (
-                    f'"{failed_manifest["run_generation"]}:{failed_manifest["epoch"]}"'
-                ),
+                "If-Match": (f'"{failed_manifest["run_generation"]}:{failed_manifest["epoch"]}"'),
                 "Idempotency-Key": "postgres-fault-key-0001",
             },
             json={
@@ -1154,7 +1257,8 @@ def test_judge_run_persists_only_hashed_credentials_and_bound_authority() -> Non
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
@@ -1228,7 +1332,8 @@ def test_postgres_reset_route_commits_domain_workflow_event_and_head_together() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
@@ -1291,7 +1396,8 @@ def test_postgres_judge_run_handoff_expiry_and_reset_are_atomic() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
@@ -1403,7 +1509,8 @@ def test_review_activation_rolls_back_when_workflow_commit_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "TRUNCATE authority_receipts, webmcp_idempotency, activity_observations, "
+            "authority_events, "
             "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "

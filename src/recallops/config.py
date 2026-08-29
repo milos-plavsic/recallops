@@ -1,4 +1,5 @@
 from functools import lru_cache
+from pathlib import Path
 from typing import Literal
 
 from pydantic import Field, SecretStr
@@ -66,6 +67,12 @@ class Settings(BaseSettings):
         default="webmcp-capability-v1", min_length=3, max_length=80
     )
     memory_ttl_days: int = Field(default=180, ge=1, le=3650)
+    receipt_kms_key_id: str | None = None
+    receipt_release_id: str | None = Field(default=None, min_length=3, max_length=100)
+    receipt_trusted_keys_path: Path = Path("tools/trusted-receipt-keys.json")
+    receipt_policy_version: str = Field(
+        default="authority-receipt-policy-v1", min_length=3, max_length=80
+    )
 
 
 @lru_cache

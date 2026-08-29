@@ -428,3 +428,28 @@
   completed operator and reviewer pages; security-header assertions cover CSP, frame denial,
   nosniff, Origin-Agent-Cluster, and WebMCP Permissions-Policy. Desktop and constrained screenshots
   were visually inspected, and the participant approved the Live-story checkpoint.
+
+### Item 7 — pinned receipt core (implementation checkpoint; live KMS gate open)
+
+- Verified the frozen algorithm profile against RFC 8785, RFC 7638, RFC 8037, RFC 9864, and the
+  current AWS KMS `GetPublicKey`/`Sign` documentation. The production adapter accepts only
+  `ECC_NIST_EDWARDS25519`, `SIGN_VERIFY`, `ED25519_SHA_512`, and `MessageType=RAW`; deprecated
+  `EdDSA`, prehashed Ed25519, ECDSA, RSA, and local-key fallback paths do not exist.
+- Added migration 030 with receipt/release records, one active receipt per immutable ledger prefix,
+  closed database status transitions, immutable prefix/release bindings, signed-material freeze,
+  exact runtime grants, and direct cross-run/tenant constraints. A fresh database applied all
+  migrations through 030 and all 24 Cockroach boundary tests passed: 61 exact grants, 17 rejected
+  cross-boundary relationships, and 32 prohibited runtime operations.
+- Implemented complete genesis-to-target ledger-prefix verification, RFC 8785 canonical manifests,
+  exact 2 KiB/4 KiB bounds, RFC 7638 OKP thumbprints, fully specified compact `Ed25519` JWS,
+  repository-pinned trust roots, signed predecessor key transitions, and local verification of the
+  exact signature returned by KMS before a receipt can exist.
+- Replaced guessable subject hashes with domain-separated HMAC-SHA-256 pseudonyms under a required
+  server-held key of at least 256 bits. Neither raw subject nor pseudonym key enters the manifest.
+- Added 26 focused canonicalization, ledger, manifest, key-registry, JWS, KMS-contract, tamper,
+  build-mismatch, and privacy tests. The deterministic manifest is exactly 2,030 bytes and its KMS
+  signing input is exactly 2,862 bytes.
+- The repository-pinned registry remains intentionally empty and production preflight fails closed
+  because no real receipt KMS key or frozen release ID is configured in this workspace. No live-KMS
+  pass or completed item-7 claim is recorded. Combined branch coverage is 95.65%; the 100% release
+  coverage gate remains open for the adversarial-matrix item rather than being misrepresented.

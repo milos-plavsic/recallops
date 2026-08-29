@@ -28,6 +28,9 @@ EXPECTED_GRANTS = {
     ("recallops_api", "authority_ledger_heads", "INSERT"),
     ("recallops_api", "authority_ledger_heads", "SELECT"),
     ("recallops_api", "authority_ledger_heads", "UPDATE"),
+    ("recallops_api", "authority_receipts", "INSERT"),
+    ("recallops_api", "authority_receipts", "SELECT"),
+    ("recallops_api", "authority_receipts", "UPDATE"),
     ("recallops_api", "evidence_outbox", "INSERT"),
     ("recallops_api", "execution_attestations", "INSERT"),
     ("recallops_api", "execution_attestations", "SELECT"),
@@ -57,6 +60,7 @@ EXPECTED_GRANTS = {
     ("recallops_api", "review_handoffs", "INSERT"),
     ("recallops_api", "review_handoffs", "SELECT"),
     ("recallops_api", "review_handoffs", "UPDATE"),
+    ("recallops_api", "release_evidence_records", "SELECT"),
     ("recallops_api", "sandbox_executions", "INSERT"),
     ("recallops_api", "sandbox_executions", "SELECT"),
     ("recallops_api", "webmcp_workflows", "INSERT"),
@@ -67,6 +71,15 @@ EXPECTED_GRANTS = {
     ("recallops_api", "webmcp_idempotency", "UPDATE"),
     ("recallops_outbox", "evidence_outbox", "SELECT"),
     ("recallops_outbox", "evidence_outbox", "UPDATE"),
+    ("recallops_outbox", "authority_events", "SELECT"),
+    ("recallops_outbox", "authority_ledger_heads", "SELECT"),
+    ("recallops_outbox", "authority_receipts", "INSERT"),
+    ("recallops_outbox", "authority_receipts", "SELECT"),
+    ("recallops_outbox", "authority_receipts", "UPDATE"),
+    ("recallops_outbox", "judge_runs", "SELECT"),
+    ("recallops_outbox", "release_evidence_records", "INSERT"),
+    ("recallops_outbox", "release_evidence_records", "SELECT"),
+    ("recallops_outbox", "release_evidence_records", "UPDATE"),
 }
 
 
@@ -345,6 +358,15 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     (run_a, "2" * 64),
                     "webmcp_idempotency_run_tenant_fk",
                 ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO authority_receipts
+                    (receipt_id,run_id,tenant_id,ledger_head_hash,ledger_last_sequence,
+                     receipt_policy_version,source_sha,image_digest,evaluation_version,status)
+                    VALUES (%s,%s,'boundary_b',%s,1,'receipt-v1',%s,%s,'eval-v1','pending')""",
+                    (uuid4(), run_a, "3" * 64, "a" * 40, f"sha256:{'b' * 64}"),
+                    "authority_receipts_run_tenant_fk",
+                ),
             ]
         finally:
             # Verification is non-destructive even when pointed at a persistent
@@ -423,6 +445,9 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "DELETE FROM authority_ledger_heads WHERE false"),
         ("recallops_api", "UPDATE activity_observations SET outcome=outcome WHERE false"),
         ("recallops_api", "DELETE FROM activity_observations WHERE false"),
+        ("recallops_api", "DELETE FROM authority_receipts WHERE false"),
+        ("recallops_api", "UPDATE release_evidence_records SET release_id=release_id WHERE false"),
+        ("recallops_api", "DELETE FROM release_evidence_records WHERE false"),
         ("recallops_api", "UPDATE sandbox_executions SET actor_id=actor_id WHERE false"),
         ("recallops_api", "DELETE FROM sandbox_executions WHERE false"),
         ("recallops_api", "UPDATE postcheck_observations SET source=source WHERE false"),
@@ -436,6 +461,10 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "DELETE FROM postcheck_assessments WHERE false"),
         ("recallops_outbox", "SELECT * FROM incidents LIMIT 0"),
         ("recallops_outbox", "INSERT INTO incidents DEFAULT VALUES"),
+        ("recallops_outbox", "INSERT INTO authority_events DEFAULT VALUES"),
+        ("recallops_outbox", "UPDATE judge_runs SET status=status WHERE false"),
+        ("recallops_outbox", "DELETE FROM authority_receipts WHERE false"),
+        ("recallops_outbox", "DELETE FROM release_evidence_records WHERE false"),
         ("recallops_outbox", "CREATE TABLE worker_privilege_escape (id INT PRIMARY KEY)"),
     )
     results = []
