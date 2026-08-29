@@ -747,3 +747,16 @@
   service. Both rolled back. The first attempt's two exact retained keys were scheduled for deletion
   on 2026-09-05; `RetainExceptOnCreate` now prevents future create-rollbacks from orphaning keys.
   The corrected templates and IAM policies carry regression tests for every discovered boundary.
+
+### Item 10 — public ingress compatibility finding
+
+- Live HTTP API requests reached the internal ALB through the private VPC Link but were rejected
+  with HTTP 400 before reaching the healthy API task. AWS documents that Application Load
+  Balancer `strictest` desync mitigation rejects requests whose classification is not fully
+  compliant, while `defensive` routes compliant requests and permits ambiguous requests with
+  connection safeguards. API Gateway's VPC Link request form triggered that compatibility edge.
+- The public template now pins `routing.http.desync_mitigation_mode=defensive`, retains invalid
+  header dropping, preserves the single API Gateway → VPC Link → internal ALB ingress path, and
+  has a structural regression test for both attributes. This is the narrow AWS-supported
+  compatibility setting; it does not expand network reachability or any RecallOps application,
+  identity, tenant, evidence, authority, or receipt boundary.

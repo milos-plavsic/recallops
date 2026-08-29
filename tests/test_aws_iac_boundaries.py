@@ -228,6 +228,19 @@ def test_api_can_only_read_finalized_versioned_bundles() -> None:
 def test_network_has_one_ingress_path_and_workers_have_none() -> None:
     resources = template("public-demo.yaml")["Resources"]
     assert resources["LoadBalancer"]["Properties"]["Scheme"] == "internal"
+    load_balancer_attributes = {
+        attribute["Key"]: attribute["Value"]
+        for attribute in resources["LoadBalancer"]["Properties"][
+            "LoadBalancerAttributes"
+        ]
+    }
+    assert load_balancer_attributes[
+        "routing.http.drop_invalid_header_fields.enabled"
+    ] == "true"
+    assert (
+        load_balancer_attributes["routing.http.desync_mitigation_mode"]
+        == "defensive"
+    )
     assert resources["ApiIntegration"]["Properties"]["ConnectionType"] == "VPC_LINK"
     assert resources["ApiStage"]["Properties"]["DefaultRouteSettings"] == {
         "DetailedMetricsEnabled": True,
