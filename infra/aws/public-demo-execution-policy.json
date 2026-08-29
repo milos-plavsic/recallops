@@ -152,6 +152,17 @@
       "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } }
     },
     {
+      "Sid": "ManageApiGatewayLogDelivery",
+      "Effect": "Allow",
+      "Action": [
+        "logs:CreateLogDelivery", "logs:DeleteLogDelivery", "logs:GetLogDelivery",
+        "logs:ListLogDeliveries", "logs:UpdateLogDelivery",
+        "logs:DescribeResourcePolicies", "logs:PutResourcePolicy"
+      ],
+      "Resource": "*",
+      "Condition": { "StringEquals": { "aws:RequestedRegion": "us-east-1" } }
+    },
+    {
       "Sid": "ManageRecallOpsEcs",
       "Effect": "Allow",
       "Action": [
