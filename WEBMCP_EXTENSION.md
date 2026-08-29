@@ -17,15 +17,26 @@ workflow state while server policy remains the eventual security boundary.
 
 ## Current implementation
 
-Milestone 1 adds two native imperative tools:
+The frozen native imperative surface contains exactly four tools:
 
-- `inspect_incident`: bounded, read-only incident evidence.
-- `propose_mitigation`: prepares a proposal through the existing incident API, but cannot approve or
-  execute it. A successful mutating proposal withdraws this capability using `AbortController`.
+- `inspect_incident`: bounded, read-only incident and candidate evidence.
+- `propose_mitigation`: stages an idempotent, digest-bound proposal but cannot approve or execute it.
+- `record_postcheck_assessment`: records an attributable opinion about immutable server observation;
+  it cannot submit measurements or a policy verdict and creates only pending review memory.
+- `recall_reviewed_memory`: reads the compatible recurrence only while a certified, admissible memory
+  exists.
 
-Approval, sandbox execution, observation retry, review, and reset are intentionally never WebMCP
-tools. The page includes a Capability Inspector and activity rail, falls back cleanly when WebMCP is
-unavailable, and sends explicit origin-isolation and `tools=(self)` policy headers.
+The server-issued capability manifest is bound to run generation, workflow epoch, memory governance
+version, capability policy, and build identity. Registrations use separate lifecycle-bound
+`AbortController` instances, generation-safe reconciliation, conditional polling, stale-callback
+server rejection, and bounded non-authoritative activity observations. Approval, rejection, sandbox
+execution, observation retry, reviewer handoff, governance, role change, policy override, and reset
+are never WebMCP tools.
+
+The independent reviewer page loads no WebMCP registration code. Reviewer authority is a distinct,
+single-use, purpose-bound session, and the three evidence layers remain immutable and separately
+attributed even when the agent assessment disagrees with policy. Unsupported clients receive an
+honest no-fallback state.
 
 ## Reproduce Milestone 1
 
@@ -42,8 +53,10 @@ The final command requires Chrome or Chromium 149+ with WebMCP available; set
 
 ## Scope boundary
 
-Milestone 1 proves native discovery, invocation, shared UI state, lifecycle withdrawal, bounded
-contracts, progressive enhancement, and stale-callback rejection. It does not claim that the client
-phase is the final authorization boundary. Server-authoritative epochs, channel enforcement,
-sandboxed mutation, independent observation, reviewed recurrence, signed receipts, deployment, and
-cross-client evaluation remain later milestones.
+The current extension proves native discovery and invocation, state-specific withdrawal, current
+`options.signal` cancellation, rapid-manifest race convergence, post-receipt reconciliation,
+server-authoritative epochs, channel enforcement, idempotent proposal/assessment transactions,
+independent review, disagreement preservation, revocation withdrawal, and reviewed recurrence. It
+does not claim that browser registration is an authorization boundary or that WebMCP prevents general
+browser automation. Signed receipts, release deployment, and final cross-client evaluation remain
+later milestones.

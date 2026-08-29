@@ -255,7 +255,7 @@ test("native Chromium and the real server enforce the same authority boundary", 
   expect(result.tools).toEqual(["inspect_incident"]);
   await expect(page.locator("#webmcp-state")).toHaveText("AWAITING_OPERATOR_APPROVAL");
 
-  const bypass = await request.post(`/v1/incidents/${result.payload.incident_id}/approval`, {
+  const bypass = await request.post(`/v1/incidents/${result.payload.proposal_id}/approval`, {
     headers: {
       ...operator,
       "X-Actor-ID": "native-agent",
@@ -267,9 +267,19 @@ test("native Chromium and the real server enforce the same authority boundary", 
       tenant_id: "native",
       actor_id: "native-agent",
       approved: true,
-      proposal_hash: result.payload.proposed_action.action_hash,
+      proposal_hash: analysis.proposed_action.action_hash,
       reason: "this WebMCP authority bypass must fail",
     },
   });
-  expect(bypass.status()).toBe(403);
+  expect(bypass.status(), await bypass.text()).toBe(403);
+});
+
+test("the independent reviewer page registers zero WebMCP tools", async ({ page }) => {
+  await page.goto("/reviewer");
+  const tools = await page.evaluate(async () => {
+    const context = (document as any).modelContext;
+    return context?.getTools ? (await context.getTools()).map((tool: any) => tool.name) : [];
+  });
+  expect(tools).toEqual([]);
+  await expect(page.getByRole("heading", { name: "Review immutable evidence" })).toBeVisible();
 });

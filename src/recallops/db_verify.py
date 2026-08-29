@@ -62,6 +62,9 @@ EXPECTED_GRANTS = {
     ("recallops_api", "webmcp_workflows", "INSERT"),
     ("recallops_api", "webmcp_workflows", "SELECT"),
     ("recallops_api", "webmcp_workflows", "UPDATE"),
+    ("recallops_api", "webmcp_idempotency", "INSERT"),
+    ("recallops_api", "webmcp_idempotency", "SELECT"),
+    ("recallops_api", "webmcp_idempotency", "UPDATE"),
     ("recallops_outbox", "evidence_outbox", "SELECT"),
     ("recallops_outbox", "evidence_outbox", "UPDATE"),
 }
@@ -334,6 +337,14 @@ def _verify_cross_tenant_constraints(database_url: str) -> list[dict[str, str]]:
                     (uuid4(), run_b, incident_b, authority_event_a),
                     "activity_observations_authority_event_fk",
                 ),
+                _expect_fk_rejection(
+                    connection,
+                    """INSERT INTO webmcp_idempotency
+                    (run_id,tenant_id,route,idempotency_key,request_digest)
+                    VALUES (%s,'boundary_b','proposal','boundary-probe-key',%s)""",
+                    (run_a, "2" * 64),
+                    "webmcp_idempotency_run_tenant_fk",
+                ),
             ]
         finally:
             # Verification is non-destructive even when pointed at a persistent
@@ -403,6 +414,7 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_api", "UPDATE evidence_outbox SET attempts=attempts WHERE false"),
         ("recallops_api", "CREATE TABLE runtime_privilege_escape (id INT PRIMARY KEY)"),
         ("recallops_api", "DELETE FROM webmcp_workflows WHERE false"),
+        ("recallops_api", "DELETE FROM webmcp_idempotency WHERE false"),
         ("recallops_api", "DELETE FROM judge_sessions WHERE false"),
         ("recallops_api", "DELETE FROM judge_runs WHERE false"),
         ("recallops_api", "DELETE FROM review_handoffs WHERE false"),

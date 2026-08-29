@@ -1,0 +1,34 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="description" content="RecallOps independent evidence review">
+  <title>RecallOps — independent reviewer</title>
+  <link rel="stylesheet" href="/assets/styles.css">
+  <script src="/assets/reviewer.js" defer></script>
+</head>
+<body class="reviewer-page">
+  <a class="skip-link" href="#review-main">Skip to review evidence</a>
+  <header class="topbar">
+    <a class="brand" href="/" aria-label="RecallOps home"><span aria-hidden="true">R/</span> RecallOps</a>
+    <span class="pill neutral">Independent reviewer · zero agent tools</span>
+  </header>
+  <main id="review-main" class="section" tabindex="-1">
+    <p class="eyebrow">HUMAN-ONLY AUTHORITY</p>
+    <h1>Review immutable evidence</h1>
+    <p>This page does not load the WebMCP registry. Its controls use a single-use, evidence-bound
+      reviewer session and cannot change measurements or policy verdicts.</p>
+    <section class="panel" aria-labelledby="packet-title">
+      <h2 id="packet-title">Evidence packet</h2>
+      <div id="review-status" role="status" aria-live="polite">Exchanging the bounded handoff…</div>
+      <div id="review-packet"></div>
+      <div id="review-actions" class="loop-actions" hidden>
+        <button class="button primary" data-decision="certify" type="button">Certify evidence</button>
+        <button class="button" data-decision="quarantine" type="button">Quarantine</button>
+        <button class="button" data-decision="reject" type="button">Reject</button>
+      </div>
+    </section>
+  </main>
+</body>
+</html>

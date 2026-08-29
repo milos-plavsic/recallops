@@ -9,6 +9,8 @@ const state = {
   identity: null,
   webmcpPhase: sessionStorage.getItem("webmcp_phase") || "INVESTIGATING",
   workflowEpoch: Number(sessionStorage.getItem("workflow_epoch") || "0"),
+  runGeneration: Number(sessionStorage.getItem("run_generation") || "0"),
+  manifestEtag: null,
   webmcpTools: ["inspect_incident", "propose_mitigation"],
   authorityOwner: "AGENT"
 };
@@ -127,6 +129,11 @@ function renderAnalysis(analysis) {
   $("#observe").disabled = true;
 }
 function applyWorkflowManifest(manifest) {
+  if (manifest.run_generation) {
+    state.runGeneration = Number(manifest.run_generation);
+    sessionStorage.setItem("run_generation", String(state.runGeneration));
+  }
+  state.manifestEtag = manifest.etag || state.manifestEtag;
   setWebMcpPhase(manifest.state, {
     epoch: manifest.epoch,
     availableTools: manifest.available_tools,
@@ -135,7 +142,26 @@ function applyWorkflowManifest(manifest) {
 }
 async function refreshWorkflow({ signal } = {}) {
   if (!state.incidentId) return null;
-  const manifest = await request(`/v1/incidents/${state.incidentId}/capabilities`, {
+  if (state.config?.auth_mode === "judge") {
+    const response = await fetch("/v1/webmcp/capabilities", {
+      headers: {
+        "Accept": "application/json",
+        ...(state.manifestEtag ? { "If-None-Match": state.manifestEtag } : {})
+      },
+      signal
+    });
+    if (response.status === 304) return null;
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+    const manifest = await response.json();
+    state.manifestEtag = response.headers.get("ETag") || manifest.etag || state.manifestEtag;
+    applyWorkflowManifest(manifest);
+    return manifest;
+  }
+  const path = `/v1/incidents/${state.incidentId}/capabilities`;
+  const manifest = await request(path, {
     headers: headers("demo-agent", "agent", "webmcp"), signal
   });
   applyWorkflowManifest(manifest);
@@ -250,6 +276,9 @@ function boundedIncidentSnapshot() {
   };
 }
 async function inspectForWebMcp({ signal } = {}) {
+  if (state.config?.auth_mode === "judge") {
+    return request("/v1/webmcp/incident", { signal });
+  }
   if (!state.incidentId) return boundedIncidentSnapshot();
   try {
     const incident = await request(`/v1/incidents/${state.incidentId}`, { headers: headers(), signal });
@@ -271,6 +300,20 @@ async function proposeForWebMcp(input, { signal } = {}) {
   if (!service || !serviceVersion || !symptom) throw new Error("service, service_version, and symptom are required");
   if (service.length > 80 || serviceVersion.length > 80 || symptom.length > 500) throw new Error("incident input exceeds its bounded schema");
   $("#service").value = service; $("#version").value = serviceVersion; $("#symptom").value = symptom;
+  if (state.config?.auth_mode === "judge") {
+    const idempotencyKey = `proposal-${randomBase64Url(24)}`;
+    return request("/v1/webmcp/proposal", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "If-Match": `"${state.runGeneration}:${state.workflowEpoch}"`,
+        "Idempotency-Key": idempotencyKey
+      },
+      body: JSON.stringify({ service, service_version: serviceVersion, symptom,
+        ...(input?.rationale ? { rationale: String(input.rationale).slice(0, 500) } : {}) }),
+      signal
+    });
+  }
   state.key = `webmcp-${Date.now()}-${randomBase64Url(12)}`;
   return runAnalysis(incidentPayload(), { signal, channel: "webmcp", refresh: false });
 }
@@ -283,9 +326,14 @@ async function recordPostcheckForWebMcp(input, { signal } = {}) {
   if (!observationId || observationId !== state.observationId) throw new Error("observation_id is stale or mismatched");
   if (!["recovered", "not_recovered", "inconclusive"].includes(classification)) throw new Error("invalid assessment classification");
   if (rationale.length < 3 || rationale.length > 1000) throw new Error("rationale must contain 3 to 1000 characters");
-  const result = await request(`/v1/incidents/${state.incidentId}/postcheck-assessment`, {
+  const judgeMode = state.config?.auth_mode === "judge";
+  const result = await request(judgeMode ? "/v1/webmcp/assessment" : `/v1/incidents/${state.incidentId}/postcheck-assessment`, {
     method: "POST",
-    headers: headers("demo-agent", "agent", "webmcp", state.workflowEpoch),
+    headers: judgeMode ? {
+      "Content-Type": "application/json",
+      "If-Match": `"${state.runGeneration}:${state.workflowEpoch}"`,
+      "Idempotency-Key": `assessment-${randomBase64Url(24)}`
+    } : headers("demo-agent", "agent", "webmcp", state.workflowEpoch),
     body: JSON.stringify({ observation_id: observationId, classification, rationale }),
     signal
   });
@@ -293,8 +341,35 @@ async function recordPostcheckForWebMcp(input, { signal } = {}) {
   sessionStorage.setItem("memory_id", state.memoryId);
   $("#review").disabled = false;
   $("#result").innerHTML = `<span class="confidence">PENDING REVIEW · MEMORY ${escapeHtml(shortId(state.memoryId))}</span><h3>Agent assessment recorded separately from policy.</h3><dl><dt>Agent assessment</dt><dd>${escapeHtml(result.assessment.classification)}</dd><dt>Policy verdict</dt><dd>${escapeHtml(result.policy_verdict.classification)}</dd></dl><p>The memory remains excluded from retrieval until an independent reviewer acts.</p>`;
-  setTimeout(() => applyWorkflowManifest(result.workflow), 0);
+  if (result.workflow) setTimeout(() => applyWorkflowManifest(result.workflow), 0);
   return result;
+}
+
+async function recallForWebMcp({ signal } = {}) {
+  if (state.config?.auth_mode === "judge") return request("/v1/webmcp/recurrence", { signal });
+  state.key = `webmcp-recurrence-${Date.now()}-${randomBase64Url(12)}`;
+  const result = await runAnalysis(incidentPayload(), { signal, channel: "webmcp" });
+  const selected = result.memories?.[0]?.memory;
+  return {
+    scenario_id: "checkout-latency-43",
+    service: $("#service").value,
+    service_version: $("#version").value,
+    governed_memory_id: selected?.id || null,
+    governed_recommendation: selected?.action || "Abstained — no admissible reviewed memory",
+    eligible_memory_ids: (result.memories || []).map((item) => item.memory.id).slice(0, 3),
+    compatibility_policy_version: result.retrieval_policy_version
+  };
+}
+
+async function recordWebMcpActivity(items) {
+  if (state.config?.auth_mode !== "judge" || !items.length) return;
+  const clientKey = sessionStorage.getItem("webmcp_client_id") || randomBase64Url(24);
+  sessionStorage.setItem("webmcp_client_id", clientKey);
+  await request("/v1/webmcp/activity", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ client_instance_id: clientKey, items })
+  });
 }
 
 window.recallOpsWebMcpHost = Object.freeze({
@@ -304,6 +379,8 @@ window.recallOpsWebMcpHost = Object.freeze({
   inspectIncident: inspectForWebMcp,
   proposeMitigation: proposeForWebMcp,
   recordPostcheckAssessment: recordPostcheckForWebMcp,
+  recallReviewedMemory: recallForWebMcp,
+  recordActivity: recordWebMcpActivity,
   refreshWorkflow
 });
 async function signIn() {
@@ -361,6 +438,17 @@ async function initialize() {
         $("#tenant").value = state.identity.tenant_id; $("#tenant").disabled = true;
         $("#auth-status").textContent = `${state.identity.roles.join(" + ")} · ${state.identity.subject.slice(0, 8)}`;
         $("#signin").hidden = true; $("#signout").hidden = false;
+        if (state.config.auth_mode === "judge") {
+          const run = await request("/v1/operator/run");
+          state.incidentId = run.incident_id;
+          state.runGeneration = Number(run.generation);
+          sessionStorage.setItem("incident_id", state.incidentId);
+          sessionStorage.setItem("run_generation", String(state.runGeneration));
+          const inspected = await request("/v1/webmcp/incident");
+          $("#service").value = inspected.incident.service;
+          $("#version").value = inspected.incident.service_version;
+          $("#symptom").value = inspected.incident.symptom;
+        }
       }
     }
     await request("/ready"); $("#health-label").textContent = "API and memory ready";

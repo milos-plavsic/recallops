@@ -110,7 +110,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   that activity-observation writes have no path to authority tables. Stop at the Authority gate if
   any atomicity, ordering, role, channel, or isolation assertion fails.
 
-- [ ] **5. Complete the four-tool WebMCP and reviewer journey**
+- [x] **5. Complete the four-tool WebMCP and reviewer journey**
   Spec ref: `spec.md > WebMCP Tool Contracts`; `spec.md > Data Flow > Flow D — assessment and independent review`; `spec.md > Data Flow > Flow E — receipt and recurrence`
   What to build: Implement exactly the four frozen tool definitions and the server-issued manifest:
   add `recall_reviewed_memory`, correct current callback `options.signal` handling, separate

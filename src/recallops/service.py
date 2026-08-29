@@ -532,6 +532,12 @@ class IncidentService:
     def get_approval(self, incident_id: UUID, tenant_id: str) -> ApprovalDecision | None:
         return self._store.get_approval(incident_id, tenant_id)
 
+    def get_analysis(self, incident_id: UUID, tenant_id: str) -> IncidentAnalysis | None:
+        return self._store.get_analysis(incident_id, tenant_id)
+
+    def get_incident(self, incident_id: UUID, tenant_id: str) -> IncidentCreate | None:
+        return self._store.get_incident(incident_id, tenant_id)
+
     def get_memory(self, memory_id: UUID, tenant_id: str) -> Memory | None:
         return self._store.get_memory(memory_id, tenant_id)
 

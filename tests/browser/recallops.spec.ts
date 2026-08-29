@@ -188,7 +188,7 @@ test.describe("judge console", () => {
     await expect(page.getByText(/small, synthetic, deterministic policy regression set/)).toBeVisible();
     await expect(page.getByText(/not an end-to-end retrieval benchmark/)).toBeVisible();
     await expect(page.getByText("API and memory ready")).toBeVisible();
-    await expect(page.getByText("WebMCP unavailable · manual controls remain")).toBeVisible();
+    await expect(page.getByText("WebMCP unavailable · no fallback installed")).toBeVisible();
     expect(consoleErrors).toEqual([]);
 
     const results = await new AxeBuilder({ page }).analyze();
@@ -388,17 +388,17 @@ test.describe("judge console", () => {
       return JSON.parse(response.content[0].text);
     });
     expect(proposal).toMatchObject({
-      incident_id: successfulAnalysis.incident_id,
+      proposal_id: successfulAnalysis.incident_id,
       proposal_staged: true,
       requires_human_approval: true,
-      proposed_action: { action_hash: successfulAnalysis.proposed_action.action_hash },
+      proposal_digest: successfulAnalysis.proposed_action.action_hash,
     });
 
     await expect.poll(() => page.evaluate(() => Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
     await expect(page.locator("#webmcp-state")).toHaveText("AWAITING_OPERATOR_APPROVAL");
     await expect(page.locator("#webmcp-epoch")).toHaveText("1");
     await expect(page.locator("#webmcp-authority")).toHaveText("HUMAN_OPERATOR");
-    await expect(page.locator("#webmcp-withheld")).toContainText("propose_mitigation — unresolved proposal");
+    await expect(page.locator("#webmcp-withheld")).toContainText("propose_mitigation — withheld in AWAITING_OPERATOR_APPROVAL");
     await expect(page.locator("#webmcp-events")).toContainText("propose_mitigation withdrawn");
 
     const staleFailure = await page.evaluate(async () => {
@@ -445,11 +445,82 @@ test.describe("judge console", () => {
     await expect(page.locator("#webmcp-state")).toHaveText("INVESTIGATING");
     await expect(page.locator("#webmcp-events")).toContainText("no mutating proposal staged");
   });
+
+  test("discards a late registration when a newer manifest withdraws it", async ({ page }) => {
+    await page.addInitScript(() => {
+      const tools = new Map<string, { definition: any; options: any }>();
+      const modelContext = {
+        async registerTool(definition: any, options: any = {}) {
+          if (definition.name === "propose_mitigation") {
+            await new Promise((resolve) => setTimeout(resolve, 1000));
+          }
+          if (options.signal?.aborted) throw new DOMException("registration aborted", "AbortError");
+          tools.set(definition.name, { definition, options });
+          options.signal?.addEventListener("abort", () => tools.delete(definition.name), { once: true });
+        },
+      };
+      Object.defineProperty(document, "modelContext", { configurable: true, value: modelContext });
+      Object.defineProperty(window, "__webmcpTools", { configurable: true, value: tools });
+    });
+    await mockApi(page);
+    await page.goto("/");
+    await page.evaluate(() => window.dispatchEvent(new CustomEvent("recallops:webmcp-state", {
+      detail: {
+        phase: "AWAITING_OPERATOR_APPROVAL", epoch: 2,
+        availableTools: ["inspect_incident"], authorityOwner: "HUMAN_OPERATOR",
+      },
+    })));
+    await expect.poll(() => page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
+    await expect(page.locator("#webmcp-events")).toContainText("late registration discarded");
+  });
+
+  test("reconciles authoritative withdrawal when invocation is cancelled after receipt", async ({ page }) => {
+    await installWebMcpHarness(page);
+    await mockApi(page);
+    let serverReceived = false;
+    await page.addInitScript((incidentId) => sessionStorage.setItem("incident_id", incidentId), successfulAnalysis.incident_id);
+    await page.unroute("**/v1/incidents/*/capabilities");
+    await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: {
+      workflow_id: successfulAnalysis.incident_id,
+      state: serverReceived ? "AWAITING_OPERATOR_APPROVAL" : "INVESTIGATING",
+      epoch: serverReceived ? 2 : 1,
+      active: true,
+      authority_owner: serverReceived ? "HUMAN_OPERATOR" : "AGENT",
+      available_tools: serverReceived
+        ? ["inspect_incident"] : ["inspect_incident", "propose_mitigation"],
+      protected_tools: [],
+    } }));
+    await page.unroute("**/v1/incidents");
+    await page.route("**/v1/incidents", async (route) => {
+      serverReceived = true;
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      await route.fulfill({ status: 201, json: successfulAnalysis }).catch(() => {});
+    });
+    await page.goto("/");
+    const outcome = await page.evaluate(async () => {
+      const tool = (window as any).__webmcpTools.get("propose_mitigation").definition;
+      const controller = new AbortController();
+      const pending = tool.execute({
+        service: "checkout", service_version: "2026.07.31",
+        symptom: "latency spike after connection pool exhaustion",
+      }, { signal: controller.signal });
+      setTimeout(() => controller.abort(), 20);
+      try { await pending; return "unexpected success"; }
+      catch (error) { return (error as Error).name; }
+    });
+    expect(serverReceived).toBe(true);
+    expect(outcome).toBe("AbortError");
+    await expect.poll(() => page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
+    await expect(page.locator("#webmcp-events")).toContainText("invocation cancelled; reconciling committed state");
+  });
 });
 
 test("judge bootstrap is removed from the URL and WebMCP receives no CSRF authority", async ({ page }) => {
   await installWebMcpHarness(page);
-  const incidentHeaders: Record<string, string>[] = [];
+  const proposalHeaders: Record<string, string>[] = [];
+  let phase = "INVESTIGATING";
   await page.route("**/v1/config", (route) => route.fulfill({ json: {
     auth_required: false, auth_mode: "judge",
   } }));
@@ -459,6 +530,18 @@ test("judge bootstrap is removed from the URL and WebMCP receives no CSRF author
   } }));
   await page.route("**/v1/me", (route) => route.fulfill({ json: {
     subject: "judge-operator", tenant_id: "judge", roles: ["agent", "operator"],
+  } }));
+  await page.route("**/v1/operator/run", (route) => route.fulfill({ json: {
+    run_id: "00000000-0000-0000-0000-000000000099", generation: 1,
+    incident_id: successfulAnalysis.incident_id, status: "active", simulation: true,
+  } }));
+  await page.route("**/v1/webmcp/incident", (route) => route.fulfill({ json: {
+    incident: { service: "checkout", service_version: "v1", symptom: "latency spike" },
+    workflow: { state: phase, epoch: phase === "INVESTIGATING" ? 1 : 2 },
+    authority_owner: phase === "INVESTIGATING" ? "AGENT" : "HUMAN_OPERATOR",
+    available_tools: phase === "INVESTIGATING"
+      ? ["inspect_incident", "propose_mitigation"] : ["inspect_incident"],
+    candidates: [], untrusted_fields: ["incident.symptom"], trusted_fields: ["workflow"],
   } }));
   await page.route("**/ready", (route) => route.fulfill({ json: { status: "ready" } }));
   await page.route("**/v1/system/status", (route) => route.fulfill({ json: {
@@ -470,19 +553,33 @@ test("judge bootstrap is removed from the URL and WebMCP receives no CSRF author
     recallops: { top1_safe_accuracy: 1, unsafe_selection_rate: 0, isolation_violations: 0, mean_reciprocal_rank: 1 },
     similarity_only: { top1_safe_accuracy: 0, unsafe_selection_rate: 1, isolation_violations: 0, mean_reciprocal_rank: 0 },
   } }));
-  await page.route("**/v1/incidents", (route) => {
-    incidentHeaders.push(route.request().headers());
-    return route.fulfill({ status: 201, json: successfulAnalysis });
+  await page.route("**/v1/webmcp/proposal", (route) => {
+    proposalHeaders.push(route.request().headers());
+    phase = "AWAITING_OPERATOR_APPROVAL";
+    return route.fulfill({ status: 201, json: {
+      proposal_id: successfulAnalysis.incident_id,
+      proposal_digest: successfulAnalysis.proposed_action.action_hash,
+      diagnosis: successfulAnalysis.diagnosis,
+      action: { id: "checkout.reduce_concurrency_and_recycle.v1", risk_class: "mutating" },
+      requires_human_approval: true, authority_owner: "HUMAN_OPERATOR", epoch: 2,
+    } });
   });
-  await page.route("**/v1/incidents/*/capabilities", (route) => route.fulfill({ json: {
-    workflow_id: successfulAnalysis.incident_id, state: "AWAITING_OPERATOR_APPROVAL", epoch: 1,
-    active: true, authority_owner: "HUMAN_OPERATOR", available_tools: ["inspect_incident"],
-    protected_tools: [],
+  await page.route("**/v1/webmcp/capabilities", (route) => route.fulfill({ json: {
+    run_id: "00000000-0000-0000-0000-000000000099", run_generation: 1,
+    workflow_id: successfulAnalysis.incident_id, state: phase,
+    epoch: phase === "INVESTIGATING" ? 1 : 2,
+    authority_owner: phase === "INVESTIGATING" ? "AGENT" : "HUMAN_OPERATOR",
+    available_tools: phase === "INVESTIGATING"
+      ? ["inspect_incident", "propose_mitigation"] : ["inspect_incident"],
+    withheld_tools: [], protected_operations: [], memory_governance_version: 0,
+    capability_policy_version: "webmcp-capability-v1", build_sha: "test", etag: '"manifest"',
   } }));
+  await page.route("**/v1/webmcp/activity", (route) => route.fulfill({ status: 202, json: { accepted: 1 } }));
 
   await page.goto("/#access=judge-bootstrap-secret");
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator("#auth-status")).toContainText("agent + operator · judge-op");
+  await expect(page.locator("#webmcp-epoch")).toHaveText("1");
   await page.evaluate(async () => {
     const tools = (window as any).__webmcpTools as Map<string, any>;
     await tools.get("propose_mitigation").definition.execute({
@@ -490,11 +587,12 @@ test("judge bootstrap is removed from the URL and WebMCP receives no CSRF author
     });
   });
 
-  expect(incidentHeaders).toHaveLength(1);
-  expect(incidentHeaders[0]["x-recallops-channel"]).toBe("webmcp");
-  expect(incidentHeaders[0]["x-csrf-token"]).toBeUndefined();
-  expect(incidentHeaders[0]["x-roles"]).toBeUndefined();
-  expect(incidentHeaders[0]["x-actor-id"]).toBeUndefined();
+  expect(proposalHeaders).toHaveLength(1);
+  expect(proposalHeaders[0]["x-csrf-token"]).toBeUndefined();
+  expect(proposalHeaders[0]["x-roles"]).toBeUndefined();
+  expect(proposalHeaders[0]["x-actor-id"]).toBeUndefined();
+  expect(proposalHeaders[0]["if-match"]).toBe('"1:1"');
+  expect(proposalHeaders[0]["idempotency-key"]).toBeTruthy();
   expect(await page.evaluate(() => sessionStorage.getItem("judge_csrf"))).toBe("synchronizer-token");
   expect(page.url()).not.toContain("judge-bootstrap-secret");
 });

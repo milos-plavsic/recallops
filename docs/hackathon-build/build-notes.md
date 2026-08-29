@@ -1,5 +1,36 @@
 # Guided Build Notes
 
+## 2026-08-29 — Checklist item 5: frozen four-tool WebMCP and independent review
+
+- Replaced the provisional browser surface with exactly four frozen tools and a server-issued
+  manifest bound to run generation, workflow epoch, memory governance version, capability policy,
+  and build SHA. Protected operator/reviewer operations remain disjoint and undiscoverable.
+- Added exact judge routes for bounded incident inspection, idempotent proposal staging, immutable
+  postcheck assessment, reviewed recurrence, and bounded supporting activity. Proposal and assessment
+  idempotency records commit atomically with domain state, workflow CAS, authority event, and ledger
+  head in CockroachDB.
+- Derived WebMCP agent attribution server-side so visiting-agent events never inherit the operator's
+  authenticated subject merely because browser requests carry the operator session cookie.
+- Implemented separate registration controllers, current callback `options.signal`, manifest
+  generation guards, late-registration discard, conditional visible-page polling, stale callback
+  rejection, and post-cancellation reconciliation to server authority. No fallback tool registry is
+  installed when native WebMCP is unavailable.
+- Added a dedicated reviewer document that loads no WebMCP registration script. It consumes the
+  single-use fragment handoff before network use, renders immutable measurement, attributable agent
+  assessment, and independent policy verdict safely, and permits only purpose-bound reviewer actions.
+- Preserved agent/policy disagreement rather than collapsing it, kept all resulting memory pending
+  until independent disposition, and withdrew recall immediately after revocation, expiry, or other
+  admissibility loss.
+- Corrected in-memory assessment indexing to match the database's one-assessment-per-incident key;
+  this was found by the full disagreement/reviewer journey test.
+- Verified 251 Python tests against a fresh CockroachDB schema, including exact 48 runtime grants,
+  16 cross-tenant constraints, 25 runtime denials, proposal idempotency replay, and fault-injected
+  rollback after authority-event insertion. The focused browser suite passes 10/10 and native
+  Chromium WebMCP passes 4/4, including reviewer discovery of zero tools.
+- The repository-wide 100% coverage release gate remains intentionally open for the later evidence
+  milestone: the combined suite currently reports 97.84% while all functional tests pass. No green
+  assurance claim was made from that incomplete gate.
+
 ## 2026-08-29 — Checklist item 2: isolated judge authority
 
 - Added migration 027 with run/tenant/source-incident composite integrity, run-bound role sessions,

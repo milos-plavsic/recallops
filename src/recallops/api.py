@@ -1,15 +1,18 @@
+import hashlib
 import hmac
+import json
 import os
 import secrets
 import threading
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
-from typing import Annotated, cast
+from typing import Annotated, Any, cast
 from urllib.parse import urlsplit
 from uuid import NAMESPACE_URL, UUID, uuid4, uuid5
 
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
+from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
@@ -21,6 +24,7 @@ from recallops.auth import (
     Principal,
     create_authenticator,
 )
+from recallops.canonical import content_digest
 from recallops.config import Settings, get_settings
 from recallops.diagnostics import (
     AwsCloudWatchAlarmInspector,
@@ -55,6 +59,7 @@ from recallops.embedding import BedrockTitanEmbedder, DeterministicEmbedder
 from recallops.evaluation import EvaluationReport, evaluate, load_dataset
 from recallops.evidence import AwsEvidenceVerifier, ManualOnlyEvidenceVerifier
 from recallops.ledger import (
+    ActivityObservation,
     InMemoryAuthorityLedgerRepository,
     PostgresAuthorityLedgerRepository,
 )
@@ -80,7 +85,22 @@ from recallops.sessions import (
     PostgresJudgeSessionRepository,
     ReviewHandoff,
 )
-from recallops.store import InMemoryStore, MemoryGovernanceError, MemoryStore, PostgresStore
+from recallops.store import (
+    InMemoryStore,
+    MemoryGovernanceError,
+    MemoryStore,
+    PostgresStore,
+    version_compatibility,
+)
+from recallops.webmcp_contracts import (
+    PROTECTED_OPERATIONS,
+    WEBMCP_TOOL_NAMES,
+    ActivityBatch,
+    AssessmentToolRequest,
+    ProposalToolRequest,
+    WebMcpManifest,
+    WithheldTool,
+)
 from recallops.workflow import (
     InMemoryWorkflowRepository,
     PostgresWorkflowRepository,
@@ -89,6 +109,7 @@ from recallops.workflow import (
     WorkflowCoordinator,
     WorkflowSnapshot,
     WorkflowState,
+    authority_owner,
 )
 
 
@@ -557,6 +578,184 @@ def create_app(
             raise HTTPException(status.HTTP_409_CONFLICT, "judge run is no longer active")
         return run
 
+    def run_memory(run: JudgeRun) -> Memory | None:
+        if isinstance(store, InMemoryStore):
+            return store.outcome_memories.get((run.tenant_id, run.source_incident_id))
+        if isinstance(store, PostgresStore):
+            with store.pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """SELECT id FROM memories WHERE tenant_id=%s AND source_incident_id=%s
+                    ORDER BY created_at DESC, id DESC LIMIT 1""",
+                    (run.tenant_id, run.source_incident_id),
+                )
+                row = cursor.fetchone()
+            return (
+                store.get_memory(UUID(str(dict(row)["id"])), run.tenant_id)
+                if row is not None
+                else None
+            )
+        return None  # pragma: no cover - create_app owns the supported store variants
+
+    def webmcp_agent_subject(run: JudgeRun) -> str:
+        """Return server-derived agent attribution, never the operator's cookie subject."""
+        return f"webmcp_agent_{run.run_id.hex}"
+
+    withheld_reasons = {
+        "inspect_incident": "WORKFLOW_INACTIVE",
+        "propose_mitigation": "PROPOSAL_NOT_AVAILABLE_IN_CURRENT_STATE",
+        "record_postcheck_assessment": "VERIFIED_OBSERVATION_NOT_READY",
+        "recall_reviewed_memory": "CERTIFIED_COMPATIBLE_MEMORY_NOT_AVAILABLE",
+    }
+
+    def webmcp_manifest(run: JudgeRun, snapshot: WorkflowSnapshot) -> WebMcpManifest:
+        memory = run_memory(run)
+        available = list(snapshot.available_tools)
+        recall_eligible = bool(
+            memory
+            and memory.state is MemoryState.ACTIVE
+            and memory.valid
+            and memory.service == "checkout"
+            and version_compatibility(
+                memory.service_version,
+                "v2.4.1",
+                memory.compatibility_policy,
+            )
+            == 1.0
+            and memory.outcome_semantics is not MemoryOutcome.INCONCLUSIVE
+            and (memory.expires_at is None or memory.expires_at > datetime.now(UTC))
+            and memory.superseded_at is None
+            and memory.revoked_at is None
+        )
+        if "recall_reviewed_memory" in available and not recall_eligible:
+            available.remove("recall_reviewed_memory")
+        if not snapshot.active:
+            available = []
+        binding = {
+            "run_id": str(run.run_id),
+            "run_generation": str(run.generation),
+            "workflow_id": str(snapshot.workflow_id),
+            "epoch": str(snapshot.epoch),
+            "memory_governance_version": str(memory.governance_version if memory else 0),
+            "capability_policy_version": run.capability_policy_version,
+        }
+        etag = f'"{content_digest("recallops-webmcp-manifest-v1", binding)}"'
+        return WebMcpManifest(
+            run_id=run.run_id,
+            run_generation=run.generation,
+            workflow_id=snapshot.workflow_id,
+            state=snapshot.state,
+            epoch=snapshot.epoch,
+            authority_owner="NONE" if not snapshot.active else authority_owner(snapshot.state),
+            available_tools=tuple(available),
+            withheld_tools=tuple(
+                WithheldTool(name=name, reason_code=withheld_reasons[name])
+                for name in WEBMCP_TOOL_NAMES
+                if name not in available
+            ),
+            protected_operations=PROTECTED_OPERATIONS,
+            memory_governance_version=memory.governance_version if memory else 0,
+            capability_policy_version=run.capability_policy_version,
+            build_sha=run.build_sha,
+            etag=etag,
+        )
+
+    def require_webmcp_mutation(request: Request) -> None:
+        if request.headers.get("origin") != settings.public_origin:
+            raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
+        if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "JSON required")
+
+    def require_idempotency_key(value: str | None) -> str:
+        if value is None or not 16 <= len(value) <= 200:
+            raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "Idempotency-Key required")
+        return value
+
+    webmcp_memory_results: dict[tuple[UUID, str, str], tuple[str, dict[str, object]]] = {}
+
+    def existing_webmcp_result(
+        run: JudgeRun, route: str, key: str, request_digest: str
+    ) -> dict[str, object] | None:
+        if isinstance(store, PostgresStore):
+            with store.pool.connection() as connection, connection.cursor() as cursor:
+                cursor.execute(
+                    """SELECT request_digest,response_payload FROM webmcp_idempotency
+                    WHERE run_id=%s AND route=%s AND idempotency_key=%s""",
+                    (run.run_id, route, key),
+                )
+                row = cursor.fetchone()
+            if row is None:
+                return None
+            existing = dict(row)
+            if not hmac.compare_digest(str(existing["request_digest"]), request_digest):
+                raise WorkflowConflict("idempotency key is bound to different input")
+            return cast(dict[str, object] | None, existing["response_payload"])
+        memory_existing = webmcp_memory_results.get((run.run_id, route, key))
+        if memory_existing is None:
+            return None
+        if not hmac.compare_digest(memory_existing[0], request_digest):
+            raise WorkflowConflict("idempotency key is bound to different input")
+        return memory_existing[1]
+
+    def idempotent_webmcp_mutation(
+        run: JudgeRun,
+        route: str,
+        key: str,
+        request_digest: str,
+        operation: Callable[[IncidentService, WorkflowCoordinator], dict[str, object]],
+    ) -> dict[str, object]:
+        if isinstance(store, PostgresStore):
+            def transact(bound_store: PostgresStore, connection: object) -> dict[str, object]:
+                with cast(Any, connection).cursor() as cursor:
+                    cursor.execute(
+                        """INSERT INTO webmcp_idempotency
+                        (run_id,tenant_id,route,idempotency_key,request_digest)
+                        VALUES (%s,%s,%s,%s,%s) ON CONFLICT DO NOTHING""",
+                        (run.run_id, run.tenant_id, route, key, request_digest),
+                    )
+                    cursor.execute(
+                        """SELECT request_digest,response_payload FROM webmcp_idempotency
+                        WHERE run_id=%s AND route=%s AND idempotency_key=%s FOR UPDATE""",
+                        (run.run_id, route, key),
+                    )
+                    row = cursor.fetchone()
+                    if row is None:  # pragma: no cover - insert/select share one transaction
+                        raise RuntimeError("idempotency record unavailable")
+                    existing = dict(row)
+                    if not hmac.compare_digest(str(existing["request_digest"]), request_digest):
+                        raise WorkflowConflict("idempotency key is bound to different input")
+                    if existing["response_payload"] is not None:
+                        return cast(dict[str, object], existing["response_payload"])
+                    fault_hook = getattr(app.state, "ledger_fault_hook", None)
+                    result = operation(
+                        service.using_store(bound_store),
+                        WorkflowCoordinator(
+                            PostgresWorkflowRepository.from_connection(connection),
+                            PostgresAuthorityLedgerRepository.from_connection(
+                                connection, fault_hook
+                            ),
+                            fault_hook,
+                        ),
+                    )
+                    encoded = cast(dict[str, object], jsonable_encoder(result))
+                    cursor.execute(
+                        """UPDATE webmcp_idempotency SET response_payload=%s::JSONB,
+                        completed_at=now() WHERE run_id=%s AND route=%s AND idempotency_key=%s""",
+                        (json.dumps(encoded), run.run_id, route, key),
+                    )
+                    return encoded
+
+            return store.atomic(transact)
+        memory_key = (run.run_id, route, key)
+        with authority_lock:
+            existing = webmcp_memory_results.get(memory_key)
+            if existing is not None:
+                if not hmac.compare_digest(existing[0], request_digest):
+                    raise WorkflowConflict("idempotency key is bound to different input")
+                return existing[1]
+            result = cast(dict[str, object], jsonable_encoder(operation(service, workflows)))
+            webmcp_memory_results[memory_key] = (request_digest, result)
+            return result
+
     @app.get("/v1/operator/run")
     def get_operator_run(identity: AuthenticatedPrincipal) -> dict[str, object]:
         require_role(identity, "operator")
@@ -705,7 +904,7 @@ def create_app(
         )
         judge_repository.save_handoff(handoff)
         return {
-            "reviewer_url": f"{settings.public_origin}/#review={code}",
+            "reviewer_url": f"{settings.public_origin}/reviewer#review={code}",
             "expires_at": handoff.expires_at,
             "purpose": handoff.purpose,
         }
@@ -716,6 +915,8 @@ def create_app(
             raise HTTPException(status.HTTP_404_NOT_FOUND, "judge runs are not enabled")
         if request.headers.get("origin") != settings.public_origin:
             raise HTTPException(status.HTTP_403_FORBIDDEN, "trusted Origin required")
+        if request.headers.get("content-type", "").split(";", 1)[0] != "application/json":
+            raise HTTPException(status.HTTP_415_UNSUPPORTED_MEDIA_TYPE, "JSON required")
         body = await request.json()
         code = body.get("code") if isinstance(body, dict) else None
         if not isinstance(code, str) or not 32 <= len(code) <= 128:
@@ -823,6 +1024,7 @@ def create_app(
             if memory.outcome_semantics is MemoryOutcome.INCONCLUSIVE
             else ["certify", "quarantine", "reject"]
         )
+        review_workflow = workflows.get(handoff.workflow_id, run.tenant_id)
         return {
             "purpose": handoff.purpose,
             "memory": memory.model_dump(mode="json", exclude={"embedding"}),
@@ -835,6 +1037,10 @@ def create_app(
                 and assessment.classification is verdict.classification
             ),
             "allowed_dispositions": allowed if handoff.purpose == "initial_review" else [],
+            "precondition": {
+                "generation": run.generation,
+                "epoch": review_workflow.epoch if review_workflow is not None else None,
+            },
         }
 
     @app.post("/v1/reviewer/disposition")
@@ -960,12 +1166,295 @@ def create_app(
         except (MemoryGovernanceError, WorkflowConflict) as error:
             raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
 
+    def record_server_activity(
+        run: JudgeRun,
+        *,
+        activity_type: str,
+        tool_name: str,
+        outcome: str,
+        summary: str,
+        actor_subject: str,
+    ) -> None:
+        try:
+            ledger_repository.add_activity(
+                ActivityObservation(
+                    run_id=run.run_id,
+                    tenant_id=run.tenant_id,
+                    workflow_id=run.source_incident_id,
+                    source="webmcp",
+                    actor_subject=actor_subject,
+                    activity_type=activity_type,
+                    tool_name=tool_name,
+                    outcome=outcome,
+                    display_summary=summary[:240],
+                    build_sha=run.build_sha,
+                )
+            )
+        except Exception:
+            # Supporting activity is deliberately not an authorization dependency.
+            return
+
+    @app.get("/v1/webmcp/capabilities", response_model=WebMcpManifest)
+    def webmcp_capabilities(
+        request: Request,
+        response: Response,
+        identity: AuthenticatedPrincipal,
+    ) -> object:
+        require_role(identity, "agent")
+        run = current_run(identity)
+        snapshot = workflows.get(run.source_incident_id, run.tenant_id)
+        if snapshot is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "workflow not found")
+        result = webmcp_manifest(run, snapshot)
+        if request.headers.get("if-none-match") == result.etag:
+            return Response(status_code=status.HTTP_304_NOT_MODIFIED, headers={"ETag": result.etag})
+        response.headers["ETag"] = result.etag
+        return result
+
+    @app.get("/v1/webmcp/incident")
+    def inspect_webmcp_incident(identity: AuthenticatedPrincipal) -> dict[str, object]:
+        require_role(identity, "agent")
+        run = current_run(identity)
+        incident = service.get_incident(run.source_incident_id, run.tenant_id)
+        analysis = service.get_analysis(run.source_incident_id, run.tenant_id)
+        snapshot = workflows.get(run.source_incident_id, run.tenant_id)
+        if incident is None or analysis is None or snapshot is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        manifest_value = webmcp_manifest(run, snapshot)
+        decisions = {item.memory_id: item for item in analysis.candidate_decisions}
+        candidates = []
+        for retrieved in analysis.memories[:3]:
+            decision = decisions.get(retrieved.memory.id)
+            candidates.append(
+                {
+                    "memory_id": str(retrieved.memory.id),
+                    "similarity": round(retrieved.semantic_similarity, 6),
+                    "eligible": bool(decision and decision.disposition.value == "selected"),
+                    "rejection_codes": [] if decision is None else decision.reasons[:5],
+                    "service_version": retrieved.memory.service_version,
+                    "outcome_semantics": retrieved.memory.outcome_semantics,
+                    "state": retrieved.memory.state,
+                }
+            )
+        record_server_activity(
+            run,
+            activity_type="tool_invoked",
+            tool_name="inspect_incident",
+            outcome="observed",
+            summary="Agent inspected bounded incident evidence",
+            actor_subject=webmcp_agent_subject(run),
+        )
+        return {
+            "incident": {
+                "service": incident.service,
+                "service_version": incident.service_version,
+                "symptom": incident.symptom,
+                "status": analysis.status,
+            },
+            "workflow": {"state": snapshot.state, "epoch": snapshot.epoch},
+            "authority_owner": manifest_value.authority_owner,
+            "available_tools": manifest_value.available_tools,
+            "candidates": candidates,
+            "trusted_fields": ["workflow", "authority_owner", "available_tools"],
+            "untrusted_fields": [
+                "incident.service",
+                "incident.service_version",
+                "incident.symptom",
+            ],
+            "build_sha": run.build_sha,
+            "capability_policy_version": run.capability_policy_version,
+        }
+
+    @app.post("/v1/webmcp/proposal", status_code=status.HTTP_201_CREATED)
+    def propose_webmcp_mitigation(
+        payload: ProposalToolRequest,
+        request: Request,
+        identity: AuthenticatedPrincipal,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
+    ) -> dict[str, object]:
+        require_webmcp_mutation(request)
+        require_role(identity, "agent")
+        run = current_run(identity)
+        workflow = workflows.get(run.source_incident_id, run.tenant_id)
+        incident = service.get_incident(run.source_incident_id, run.tenant_id)
+        analysis = service.get_analysis(run.source_incident_id, run.tenant_id)
+        if workflow is None or incident is None or analysis is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        key = require_idempotency_key(idempotency_key)
+        supplied_precondition = request.headers.get("if-match") or ""
+        digest = content_digest(
+            "recallops-webmcp-proposal-request-v1",
+            {
+                "run_id": str(run.run_id),
+                "generation": str(run.generation),
+                "workflow_id": str(run.source_incident_id),
+                "precondition": supplied_precondition,
+                **payload.model_dump(mode="json"),
+            },
+        )
+        try:
+            replay = existing_webmcp_result(run, "proposal", key, digest)
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        if replay is not None:
+            return replay
+        require_if_match(request, run, workflow)
+        if (payload.service, payload.service_version, payload.symptom) != (
+            incident.service,
+            incident.service_version,
+            incident.symptom,
+        ):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "proposal input does not match run evidence",
+            )
+        proposal_digest = analysis.proposed_action.action_hash
+        if proposal_digest is None or not analysis.proposed_action.requires_approval:
+            raise HTTPException(status.HTTP_409_CONFLICT, "bounded proposal is unavailable")
+
+        def stage(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> dict[str, object]:
+            del tx_service
+            staged = tx_workflows.transition(
+                run.source_incident_id,
+                run.tenant_id,
+                workflow.epoch,
+                WorkflowState.INVESTIGATING,
+                WorkflowState.AWAITING_OPERATOR_APPROVAL,
+                channel=RequestChannel.WEBMCP,
+                actor_subject=webmcp_agent_subject(run),
+                role="agent",
+                reason_code="PROPOSAL_STAGED",
+                object_type="proposal",
+                object_id=str(run.source_incident_id),
+                object_digest=proposal_digest,
+            )
+            return {
+                "proposal_id": str(run.source_incident_id),
+                "proposal_digest": proposal_digest,
+                "diagnosis": analysis.diagnosis[:500],
+                "rationale": (payload.rationale or analysis.proposed_action.rationale)[:500],
+                "action": {
+                    "id": "checkout.reduce_concurrency_and_recycle.v1",
+                    "display_name": analysis.proposed_action.name[:80],
+                    "risk_class": analysis.proposed_action.risk,
+                },
+                "expires_at": run.expires_at,
+                "requires_human_approval": True,
+                "authority_owner": "HUMAN_OPERATOR",
+                "epoch": staged.epoch,
+            }
+
+        try:
+            result = idempotent_webmcp_mutation(run, "proposal", key, digest, stage)
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        return result
+
+    @app.post("/v1/webmcp/assessment", status_code=status.HTTP_201_CREATED)
+    def assess_webmcp_postcheck(
+        payload: AssessmentToolRequest,
+        request: Request,
+        identity: AuthenticatedPrincipal,
+        idempotency_key: str | None = Header(default=None, alias="Idempotency-Key", max_length=200),
+    ) -> dict[str, object]:
+        require_webmcp_mutation(request)
+        require_role(identity, "agent")
+        run = current_run(identity)
+        workflow = workflows.get(run.source_incident_id, run.tenant_id)
+        result = service.get_postcheck(run.source_incident_id, run.tenant_id)
+        if workflow is None or result is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "verified postcheck not found")
+        observation, verdict = result
+        if payload.observation_id != observation.id:
+            raise HTTPException(status.HTTP_409_CONFLICT, "stale or mismatched observation")
+        key = require_idempotency_key(idempotency_key)
+        supplied_precondition = request.headers.get("if-match") or ""
+        digest = content_digest(
+            "recallops-webmcp-assessment-request-v1",
+            {
+                "run_id": str(run.run_id),
+                "generation": str(run.generation),
+                "workflow_id": str(run.source_incident_id),
+                "precondition": supplied_precondition,
+                **payload.model_dump(mode="json"),
+            },
+        )
+        try:
+            replay = existing_webmcp_result(run, "assessment", key, digest)
+        except WorkflowConflict as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+        if replay is not None:
+            return replay
+        require_if_match(request, run, workflow)
+        assessment = PostcheckAssessment(
+            observation_id=observation.id,
+            incident_id=run.source_incident_id,
+            tenant_id=run.tenant_id,
+            agent_subject=webmcp_agent_subject(run),
+            classification=payload.classification,
+            rationale=payload.rationale,
+            observation_digest=observation.observation_digest,
+        )
+        try:
+            memory = service.prepare_verified_outcome(
+                run.source_incident_id, observation, verdict, assessment
+            )
+        except (DependencyUnavailable, IncidentWorkflowError) as error:
+            raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
+        if memory is None or memory.memory_digest is None:
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+        def persist(
+            tx_service: IncidentService, tx_workflows: WorkflowCoordinator
+        ) -> dict[str, object]:
+            recorded_assessment, recorded_memory = tx_service.persist_verified_outcome(
+                assessment, memory
+            )
+            completed = tx_workflows.transition(
+                run.source_incident_id,
+                run.tenant_id,
+                workflow.epoch,
+                WorkflowState.POSTCHECK_READY,
+                WorkflowState.PENDING_REVIEW,
+                channel=RequestChannel.WEBMCP,
+                actor_subject=webmcp_agent_subject(run),
+                role="agent",
+                reason_code="POSTCHECK_ASSESSMENT_RECORDED",
+                object_type="memory",
+                object_id=str(recorded_memory.id),
+                object_digest=cast(str, recorded_memory.memory_digest),
+            )
+            return {
+                "assessment": recorded_assessment,
+                "policy_verdict": verdict,
+                "assessment_policy_agree": (
+                    recorded_assessment.classification is verdict.classification
+                ),
+                "memory": {
+                    "id": str(recorded_memory.id),
+                    "digest": recorded_memory.memory_digest,
+                    "state": recorded_memory.state,
+                    "retrievable": False,
+                },
+                "independent_review_required": True,
+                "authority_owner": "HUMAN_REVIEWER",
+                "epoch": completed.epoch,
+            }
+
+        try:
+            return idempotent_webmcp_mutation(run, "assessment", key, digest, persist)
+        except (IncidentWorkflowError, MemoryGovernanceError, WorkflowConflict) as error:
+            raise HTTPException(status.HTTP_409_CONFLICT, str(error)) from error
+
     @app.get("/v1/webmcp/recurrence", response_model=RecurrenceView)
     def recall_recurrence(identity: AuthenticatedPrincipal) -> RecurrenceView:
         require_role(identity, "agent")
         run = current_run(identity)
         workflow = workflows.get(run.source_incident_id, run.tenant_id)
-        if workflow is None or not workflow.active or workflow.state is not WorkflowState.REVIEWED:
+        if workflow is None or "recall_reviewed_memory" not in webmcp_manifest(
+            run, workflow
+        ).available_tools:
             raise HTTPException(status.HTTP_409_CONFLICT, "reviewed recurrence is unavailable")
         recurrence = IncidentCreate(
             tenant_id=run.tenant_id,
@@ -974,7 +1463,50 @@ def create_app(
             symptom="checkout-latency-43: compatible recurrence of elevated p95 latency",
             idempotency_key=f"recurrence-{run.run_id.hex}",
         )
-        return service.recurrence_view(recurrence)
+        result = service.recurrence_view(recurrence)
+        record_server_activity(
+            run,
+            activity_type="tool_invoked",
+            tool_name="recall_reviewed_memory",
+            outcome="observed",
+            summary="Agent evaluated immutable compatible recurrence",
+            actor_subject=webmcp_agent_subject(run),
+        )
+        return result
+
+    @app.post("/v1/webmcp/activity", status_code=status.HTTP_202_ACCEPTED)
+    def record_webmcp_activity(
+        payload: ActivityBatch,
+        request: Request,
+        identity: AuthenticatedPrincipal,
+    ) -> dict[str, int]:
+        require_webmcp_mutation(request)
+        require_role(identity, "agent")
+        run = current_run(identity)
+        client_hash = hashlib.sha256(payload.client_instance_id.encode()).hexdigest()
+        if not judge_repository.consume_attempt(
+            f"activity:{run.run_id}:{client_hash}", 120, 60
+        ):
+            raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "activity rate limit exceeded")
+        for item in payload.items:
+            ledger_repository.add_activity(
+                ActivityObservation(
+                    run_id=run.run_id,
+                    tenant_id=run.tenant_id,
+                    workflow_id=run.source_incident_id,
+                    source="browser",
+                    actor_subject="browser-client",
+                    activity_type=item.activity_type,
+                    tool_name=item.tool_name,
+                    outcome=item.outcome,
+                    display_summary=(
+                        f"Browser reports {item.tool_name} {item.activity_type.replace('_', ' ')}"
+                    )[:240],
+                    build_sha=run.build_sha,
+                    client_instance_id_hash=client_hash,
+                )
+            )
+        return {"accepted": len(payload.items)}
 
     def channel(value: str | None) -> RequestChannel:
         try:
@@ -1568,6 +2100,7 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="operator",
+                allow_legacy_ui=True,
             )
             execution = tx_service.persist_execution(prepared_execution)
             tx_workflows.transition(
@@ -1579,6 +2112,7 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="operator",
+                allow_legacy_ui=True,
             )
             return execution
 
@@ -1782,6 +2316,10 @@ def create_app(
     @app.get("/", include_in_schema=False)
     def console() -> FileResponse:
         return FileResponse(static_directory / "index.html")
+
+    @app.get("/reviewer", include_in_schema=False)
+    def reviewer_console() -> FileResponse:
+        return FileResponse(static_directory / "reviewer.html")
 
     app.mount("/assets", StaticFiles(directory=static_directory), name="assets")
     return app

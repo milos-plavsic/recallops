@@ -466,11 +466,10 @@ def test_reviewer_handoff_disposition_recurrence_and_revocation_are_exactly_boun
     assert revoked.status_code == 200
     assert store.get_memory(pending.id, run.tenant_id).state is MemoryState.REVOKED  # type: ignore[union-attr]
     after_revocation = operator.get("/v1/webmcp/recurrence")
-    assert after_revocation.status_code == 200
-    after_payload = after_revocation.json()
-    assert after_payload["governed_memory_id"] != str(pending.id)
-    assert str(pending.id) not in after_payload["eligible_memory_ids"]
-    assert str(pending.id) not in after_payload["negative_warning_memory_ids"]
+    assert after_revocation.status_code == 409
+    assert operator.get("/v1/webmcp/capabilities").json()["available_tools"] == [
+        "inspect_incident"
+    ]
     legacy = operator.post(
         f"/v1/memories/{pending.id}/governance",
         json={

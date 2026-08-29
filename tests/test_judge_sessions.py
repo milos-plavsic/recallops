@@ -587,6 +587,288 @@ def test_judge_mode_rejects_manual_attestation_and_operator_supplied_outcome() -
     assert outcome.status_code == 410
 
 
+def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
+    app = create_app(settings(), InMemoryStore())
+    client = TestClient(app)
+    started = create_run(client)
+    run_data = cast(dict[str, object], started["run"])
+    run = app.state.judge_repository.get_run(UUID(str(run_data["run_id"])))
+    assert run is not None
+
+    manifest_response = client.get("/v1/webmcp/capabilities")
+    assert manifest_response.status_code == 200
+    manifest = manifest_response.json()
+    assert manifest["available_tools"] == ["inspect_incident", "propose_mitigation"]
+    assert {item["name"] for item in manifest["withheld_tools"]} == {
+        "record_postcheck_assessment",
+        "recall_reviewed_memory",
+    }
+    assert set(manifest["available_tools"]).isdisjoint(manifest["protected_operations"])
+    assert manifest_response.headers["etag"] == manifest["etag"]
+    assert (
+        client.get(
+            "/v1/webmcp/capabilities",
+            headers={"If-None-Match": manifest["etag"]},
+        ).status_code
+        == 304
+    )
+
+    inspected = client.get("/v1/webmcp/incident")
+    assert inspected.status_code == 200
+    evidence = inspected.json()
+    assert evidence["incident"] == {
+        "service": "checkout",
+        "service_version": "v2.4.1",
+        "symptom": "checkout-latency-42: p95 latency and error rate exceed the sandbox SLO",
+        "status": "open",
+    }
+    assert len(evidence["candidates"]) <= 3
+    assert "incident.symptom" in evidence["untrusted_fields"]
+
+    proposal_payload = {
+        "service": evidence["incident"]["service"],
+        "service_version": evidence["incident"]["service_version"],
+        "symptom": evidence["incident"]["symptom"],
+        "rationale": "Bounded proposal derived from the selected eligible memory.",
+    }
+    precondition = f'"{manifest["run_generation"]}:{manifest["epoch"]}"'
+    mutation_headers = {
+        "Origin": "http://testserver",
+        "Content-Type": "application/json",
+        "If-Match": precondition,
+        "Idempotency-Key": "proposal-contract-key-0001",
+    }
+    assert client.post("/v1/webmcp/proposal", json=proposal_payload).status_code == 403
+    staged = client.post(
+        "/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload
+    )
+    assert staged.status_code == 201
+    staged_body = staged.json()
+    assert staged_body["requires_human_approval"] is True
+    assert staged_body["authority_owner"] == "HUMAN_OPERATOR"
+    assert "command" not in staged.text
+    assert len(staged_body["proposal_digest"]) == 64
+
+    replay = client.post(
+        "/v1/webmcp/proposal", headers=mutation_headers, json=proposal_payload
+    )
+    assert replay.status_code == 201 and replay.json() == staged_body
+    changed = {**proposal_payload, "rationale": "Different input must conflict."}
+    assert (
+        client.post("/v1/webmcp/proposal", headers=mutation_headers, json=changed).status_code
+        == 409
+    )
+
+    after = client.get("/v1/webmcp/capabilities").json()
+    assert after["available_tools"] == ["inspect_incident"]
+    assert next(
+        item for item in after["withheld_tools"] if item["name"] == "propose_mitigation"
+    )["reason_code"] == "PROPOSAL_NOT_AVAILABLE_IN_CURRENT_STATE"
+    for protected in manifest["protected_operations"]:
+        assert client.post(f"/v1/webmcp/{protected}", json={}).status_code == 404
+
+    authority_before = app.state.ledger_repository.list_events(run.run_id, run.tenant_id)
+    activity = client.post(
+        "/v1/webmcp/activity",
+        headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+        json={
+            "client_instance_id": "native-client-instance-0001",
+            "items": [
+                {
+                    "activity_type": "tool_withdrawn",
+                    "tool_name": "propose_mitigation",
+                    "outcome": "observed",
+                }
+            ],
+        },
+    )
+    assert activity.status_code == 202 and activity.json() == {"accepted": 1}
+    assert len(app.state.ledger_repository.list_events(run.run_id, run.tenant_id)) == len(
+        authority_before
+    )
+    timeline = client.get("/v1/evidence/timeline").json()
+    browser_entries = [
+        item
+        for item in timeline["entries"]
+        if item.get("evidence_class") == "supporting_observation"
+    ]
+    assert any(item.get("event_type") == "tool_withdrawn" for item in browser_entries)
+    withdrawal_entries = [
+        item for item in browser_entries if item.get("event_type") == "tool_withdrawn"
+    ]
+    assert all(item.get("actor_subject") == "browser-client" for item in withdrawal_entries)
+
+
+def test_reviewer_document_has_zero_webmcp_surface() -> None:
+    client = TestClient(create_app(settings(), InMemoryStore()))
+    response = client.get("/reviewer")
+    assert response.status_code == 200
+    assert "reviewer.js" in response.text
+    assert "webmcp.js" not in response.text
+    assert "document.modelContext" not in response.text
+
+
+def test_webmcp_schemas_reject_agent_supplied_metrics_and_unknown_fields() -> None:
+    client = TestClient(create_app(settings(), InMemoryStore()))
+    create_run(client)
+    mutation_headers = {
+        "Origin": "http://testserver",
+        "Content-Type": "application/json",
+        "If-Match": '"1:1"',
+        "Idempotency-Key": "assessment-contract-key-0001",
+    }
+    response = client.post(
+        "/v1/webmcp/assessment",
+        headers=mutation_headers,
+        json={
+            "observation_id": "00000000-0000-0000-0000-000000000001",
+            "classification": "recovered",
+            "rationale": "Agent cannot supply measurements.",
+            "latency_after_ms": 1,
+        },
+    )
+    assert response.status_code == 422
+
+
+def test_four_tool_journey_preserves_three_evidence_layers_and_independent_review() -> None:
+    app = create_app(settings(), InMemoryStore())
+    operator = TestClient(app)
+    started = create_run(operator)
+    run_data = cast(dict[str, object], started["run"])
+    operator_identity = cast(dict[str, object], started["identity"])
+    run = app.state.judge_repository.get_run(UUID(str(run_data["run_id"])))
+    assert run is not None
+
+    initial = operator.get("/v1/webmcp/capabilities").json()
+    inspected = operator.get("/v1/webmcp/incident").json()
+    proposal = operator.post(
+        "/v1/webmcp/proposal",
+        headers={
+            "Origin": "http://testserver",
+            "Content-Type": "application/json",
+            "If-Match": f'"{initial["run_generation"]}:{initial["epoch"]}"',
+            "Idempotency-Key": "journey-proposal-key-0001",
+        },
+        json={
+            "service": inspected["incident"]["service"],
+            "service_version": inspected["incident"]["service_version"],
+            "symptom": inspected["incident"]["symptom"],
+            "rationale": "Use only the eligible reviewed memory.",
+        },
+    )
+    assert proposal.status_code == 201
+    proposal_digest = proposal.json()["proposal_digest"]
+    ui_headers = {
+        "Origin": "http://testserver",
+        "X-CSRF-Token": str(started["csrf_token"]),
+        "X-RecallOps-Channel": "ui",
+    }
+    approved = operator.post(
+        f"/v1/incidents/{run.source_incident_id}/approval",
+        headers={**ui_headers, "X-Workflow-Epoch": "2"},
+        json={
+            "tenant_id": run.tenant_id,
+            "approved": True,
+            "actor_id": operator_identity["subject"],
+            "proposal_hash": proposal_digest,
+            "reason": "Operator approved the exact bound proposal digest.",
+        },
+    )
+    assert approved.status_code == 200
+    executed = operator.post(
+        f"/v1/incidents/{run.source_incident_id}/sandbox-execution",
+        headers={**ui_headers, "X-Workflow-Epoch": "3"},
+        json={
+            "tenant_id": run.tenant_id,
+            "actor_id": operator_identity["subject"],
+            "proposal_hash": proposal_digest,
+            "idempotency_key": "journey-sandbox-key-0001",
+        },
+    )
+    assert executed.status_code == 201
+    observation = executed.json()["observation"]
+    ready = operator.get("/v1/webmcp/capabilities").json()
+    assert ready["available_tools"] == ["inspect_incident", "record_postcheck_assessment"]
+
+    assessed = operator.post(
+        "/v1/webmcp/assessment",
+        headers={
+            "Origin": "http://testserver",
+            "Content-Type": "application/json",
+            "If-Match": f'"{ready["run_generation"]}:{ready["epoch"]}"',
+            "Idempotency-Key": "journey-assessment-key-0001",
+        },
+        json={
+            "observation_id": observation["id"],
+            "classification": "not_recovered",
+            "rationale": "Preserve this deliberate disagreement for independent review.",
+        },
+    )
+    assert assessed.status_code == 201
+    assessment = assessed.json()
+    assert assessment["assessment_policy_agree"] is False
+    assert assessment["policy_verdict"]["classification"] == "recovered"
+    assert assessment["memory"]["state"] == "pending_review"
+    assert assessment["memory"]["retrievable"] is False
+    assert operator.get("/v1/webmcp/recurrence").status_code == 409
+
+    handoff = operator.post(
+        "/v1/operator/reviewer-handoff",
+        headers={
+            "Origin": "http://testserver",
+            "X-CSRF-Token": str(started["csrf_token"]),
+        },
+        json={
+            "purpose": "initial_review",
+            "memory_digest": assessment["memory"]["digest"],
+        },
+    )
+    assert handoff.status_code == 201
+    code = urlsplit(handoff.json()["reviewer_url"]).fragment.removeprefix("review=")
+    reviewer = TestClient(app)
+    exchange = reviewer.post(
+        "/v1/judge/reviewer-exchange",
+        headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+        json={"code": code},
+    )
+    assert exchange.status_code == 200
+    assert exchange.json()["identity"]["subject"] != operator_identity["subject"]
+    evidence = reviewer.get("/v1/reviewer/evidence").json()
+    assert evidence["immutable_observation"]["observation_digest"] == observation[
+        "observation_digest"
+    ]
+    assert evidence["agent_assessment"]["classification"] == "not_recovered"
+    assert evidence["policy_verdict"]["classification"] == "recovered"
+    assert evidence["assessment_policy_agree"] is False
+    disposition = reviewer.post(
+        "/v1/reviewer/disposition",
+        headers={
+            "Origin": "http://testserver",
+            "Content-Type": "application/json",
+            "X-CSRF-Token": exchange.json()["csrf_token"],
+            "If-Match": (
+                f'"{evidence["precondition"]["generation"]}:'
+                f'{evidence["precondition"]["epoch"]}"'
+            ),
+        },
+        json={
+            "decision": "certify",
+            "memory_digest": assessment["memory"]["digest"],
+            "reason_code": "EVIDENCE_ACCEPTED",
+            "note": "Independent reviewer accepts the measurements and policy verdict.",
+        },
+    )
+    assert disposition.status_code == 200
+    reviewed = operator.get("/v1/webmcp/capabilities").json()
+    assert reviewed["available_tools"] == ["inspect_incident", "recall_reviewed_memory"]
+    recurrence = operator.get("/v1/webmcp/recurrence")
+    assert recurrence.status_code == 200
+    assert recurrence.json()["governed_memory_id"] == assessment["memory"]["id"]
+    events = app.state.ledger_repository.list_events(run.run_id, run.tenant_id)
+    assert events[-1].actor_subject == exchange.json()["identity"]["subject"]
+    assert events[-2].actor_subject.startswith("webmcp_agent_")
+
+
 def test_authenticator_configuration_and_invalid_session_are_rejected() -> None:
     repository = InMemoryJudgeSessionRepository()
     try:

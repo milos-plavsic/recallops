@@ -501,7 +501,9 @@ class InMemoryStore:
     def record_postcheck_assessment(
         self, assessment: PostcheckAssessment
     ) -> PostcheckAssessment:
-        key = (assessment.tenant_id, assessment.observation_id)
+        # Match the authoritative database key and retrieval contract: one assessment
+        # per incident, with the observation binding validated independently.
+        key = (assessment.tenant_id, assessment.incident_id)
         existing = self.postcheck_assessments.get(key)
         if existing is not None:
             if (

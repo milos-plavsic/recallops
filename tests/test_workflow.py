@@ -267,9 +267,9 @@ def test_channel_role_separation_and_reset_fail_closed() -> None:
             "demo",
             1,
             WorkflowState.INVESTIGATING,
-            channel=RequestChannel.UI,
-            actor_subject="operator",
-            role="operator",
+            channel=RequestChannel.WEBMCP,
+            actor_subject="agent",
+            role="agent",
         )
     with pytest.raises(WorkflowConflict, match="reset requires"):
         coordinator.invalidate(

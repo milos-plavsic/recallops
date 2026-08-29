@@ -116,9 +116,9 @@ def test_authority_transaction_faults_roll_back_every_boundary(fault_stage: str)
             1,
             WorkflowState.INVESTIGATING,
             WorkflowState.AWAITING_OPERATOR_APPROVAL,
-            channel=RequestChannel.UI,
-            actor_subject="operator-ledger",
-            role="operator",
+            channel=RequestChannel.WEBMCP,
+            actor_subject="agent-ledger",
+            role="agent",
         )
 
     try:
@@ -369,9 +369,9 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 45
-    assert len(report["cross_tenant_constraints"]) == 15
-    assert len(report["runtime_denials"]) == 24
+    assert report["exact_runtime_grants"] == 48
+    assert len(report["cross_tenant_constraints"]) == 16
+    assert len(report["runtime_denials"]) == 25
 
 
 @pytest.mark.skipif(
@@ -385,7 +385,8 @@ def test_judge_run_session_and_handoff_composite_relationships_fail_closed() -> 
     vector = "[" + ",".join(["0"] * 1024) + "]"
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
@@ -464,7 +465,8 @@ def test_postgres_store_complete_governed_memory_lifecycle() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
@@ -654,7 +656,8 @@ def test_postgres_sandbox_evidence_and_assessment_are_distinct_and_bound() -> No
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "
@@ -799,7 +802,8 @@ def test_cockroach_concurrency_converges_on_one_incident_execution_and_memory() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
@@ -885,7 +889,8 @@ def test_cockroach_workflow_epoch_has_one_authoritative_winner() -> None:
     workflow_id = uuid4()
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, "
@@ -945,7 +950,8 @@ def test_protected_domain_write_rolls_back_when_epoch_transition_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, "
             "postcheck_policy_verdicts, postcheck_observations, sandbox_executions, "
@@ -1024,11 +1030,132 @@ def test_protected_domain_write_rolls_back_when_epoch_transition_fails(
     not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
     reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
 )
+def test_webmcp_proposal_idempotency_and_authority_commit_are_one_transaction() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute(
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, judge_auth_attempts, review_handoffs, judge_sessions, "
+            "judge_runs, postcheck_assessments, postcheck_policy_verdicts, "
+            "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "
+            "execution_attestations, approvals, evidence_outbox, memories, incidents"
+        )
+    store = PostgresStore(database_url)
+    app = create_app(
+        Settings(
+            store="postgres",
+            database_url=database_url,
+            auth_mode="judge",
+            public_origin="http://testserver",
+            judge_rate_limit_key=SecretStr("integration-rate-limit-key"),
+            judge_cookie_secure=False,
+            judge_active_run_limit=4,
+        ),
+        store,
+    )
+    client = TestClient(app, raise_server_exceptions=False)
+    try:
+        started = client.post(
+            "/v1/judge/runs",
+            headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+            json={},
+        )
+        assert started.status_code == 201
+        manifest = client.get("/v1/webmcp/capabilities").json()
+        incident = client.get("/v1/webmcp/incident").json()["incident"]
+        headers = {
+            "Origin": "http://testserver",
+            "Content-Type": "application/json",
+            "If-Match": f'"{manifest["run_generation"]}:{manifest["epoch"]}"',
+            "Idempotency-Key": "postgres-proposal-key-0001",
+        }
+        payload = {
+            "service": incident["service"],
+            "service_version": incident["service_version"],
+            "symptom": incident["symptom"],
+        }
+        proposal = client.post("/v1/webmcp/proposal", headers=headers, json=payload)
+        assert proposal.status_code == 201
+        replay = client.post("/v1/webmcp/proposal", headers=headers, json=payload)
+        assert replay.status_code == 201 and replay.json() == proposal.json()
+        run_id = UUID(started.json()["run"]["run_id"])
+        with psycopg.connect(database_url) as connection:
+            row = connection.execute(
+                """SELECT i.request_digest,i.response_payload,i.completed_at,w.state,w.epoch,
+                   count(e.event_id) FILTER (WHERE e.reason_code='PROPOSAL_STAGED')
+                   FROM webmcp_idempotency i
+                   JOIN judge_runs r ON r.run_id=i.run_id AND r.tenant_id=i.tenant_id
+                   JOIN webmcp_workflows w ON w.workflow_id=r.source_incident_id
+                                            AND w.tenant_id=r.tenant_id
+                   LEFT JOIN authority_events e ON e.run_id=r.run_id AND e.tenant_id=r.tenant_id
+                   WHERE i.run_id=%s AND i.route='proposal'
+                   GROUP BY i.request_digest,i.response_payload,i.completed_at,w.state,w.epoch""",
+                (run_id,),
+            ).fetchone()
+        assert row is not None
+        assert len(str(row[0])) == 64 and row[1] == proposal.json() and row[2] is not None
+        assert row[3:] == ("AWAITING_OPERATOR_APPROVAL", 2, 1)
+
+        failed = client.post(
+            "/v1/judge/runs",
+            headers={"Origin": "http://testserver", "Content-Type": "application/json"},
+            json={},
+        )
+        assert failed.status_code == 201
+        failed_manifest = client.get("/v1/webmcp/capabilities").json()
+        failed_incident = client.get("/v1/webmcp/incident").json()["incident"]
+
+        def fail_after_event(stage: str) -> None:
+            if stage == "after_event":
+                raise RuntimeError("fault after authority event")
+
+        app.state.ledger_fault_hook = fail_after_event
+        failed_response = client.post(
+            "/v1/webmcp/proposal",
+            headers={
+                "Origin": "http://testserver",
+                "Content-Type": "application/json",
+                "If-Match": (
+                    f'"{failed_manifest["run_generation"]}:{failed_manifest["epoch"]}"'
+                ),
+                "Idempotency-Key": "postgres-fault-key-0001",
+            },
+            json={
+                "service": failed_incident["service"],
+                "service_version": failed_incident["service_version"],
+                "symptom": failed_incident["symptom"],
+            },
+        )
+        assert failed_response.status_code == 500
+        failed_run_id = UUID(failed.json()["run"]["run_id"])
+        with psycopg.connect(database_url) as connection:
+            idempotency_count = connection.execute(
+                "SELECT count(*) FROM webmcp_idempotency WHERE run_id=%s", (failed_run_id,)
+            ).fetchone()
+            workflow_row = connection.execute(
+                """SELECT w.state,w.epoch,count(e.event_id)
+                   FROM judge_runs r JOIN webmcp_workflows w
+                     ON w.workflow_id=r.source_incident_id AND w.tenant_id=r.tenant_id
+                   LEFT JOIN authority_events e ON e.run_id=r.run_id AND e.tenant_id=r.tenant_id
+                   WHERE r.run_id=%s GROUP BY w.state,w.epoch""",
+                (failed_run_id,),
+            ).fetchone()
+        assert idempotency_count == (0,)
+        assert workflow_row == ("INVESTIGATING", 1, 1)
+    finally:
+        store.close()
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
 def test_judge_run_persists_only_hashed_credentials_and_bound_authority() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
@@ -1101,7 +1228,8 @@ def test_postgres_reset_route_commits_domain_workflow_event_and_head_together() 
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
@@ -1163,7 +1291,8 @@ def test_postgres_judge_run_handoff_expiry_and_reset_are_atomic() -> None:
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "judge_auth_attempts, review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, postcheck_observations, "
             "sandbox_executions, webmcp_workflows, memory_events, execution_attestations, "
@@ -1274,7 +1403,8 @@ def test_review_activation_rolls_back_when_workflow_commit_fails(
     database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
     with psycopg.connect(database_url, autocommit=True) as connection:
         connection.execute(
-            "TRUNCATE activity_observations, authority_events, authority_ledger_heads, "
+            "TRUNCATE webmcp_idempotency, activity_observations, authority_events, "
+            "authority_ledger_heads, "
             "review_handoffs, judge_sessions, judge_runs, "
             "postcheck_assessments, postcheck_policy_verdicts, "
             "postcheck_observations, sandbox_executions, webmcp_workflows, memory_events, "

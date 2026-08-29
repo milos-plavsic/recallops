@@ -399,6 +399,11 @@ class WorkflowCoordinator:
         channel: RequestChannel,
         actor_subject: str,
         role: str,
+        reason_code: str = "STATE_TRANSITION_ACCEPTED",
+        object_type: str | None = None,
+        object_id: str | None = None,
+        object_digest: str | None = None,
+        allow_legacy_ui: bool = False,
     ) -> WorkflowSnapshot:
         self.validate_transition(
             workflow_id,
@@ -408,6 +413,7 @@ class WorkflowCoordinator:
             channel=channel,
             actor_subject=actor_subject,
             role=role,
+            allow_legacy_ui=allow_legacy_ui,
         )
         before = self.get(workflow_id, tenant_id)
         if before is None:  # pragma: no cover - validate_transition already enforces this
@@ -430,6 +436,10 @@ class WorkflowCoordinator:
                 actor_subject=actor_subject,
                 actor_role=role,
                 channel=channel,
+                reason_code=reason_code,
+                object_type=object_type,
+                object_id=object_id,
+                object_digest=object_digest,
             )
         return after
 
@@ -443,8 +453,16 @@ class WorkflowCoordinator:
         channel: RequestChannel,
         actor_subject: str,
         role: str,
+        allow_legacy_ui: bool = False,
     ) -> WorkflowSnapshot:
-        if expected_state is WorkflowState.OBSERVING_POSTCHECK:
+        if expected_state is WorkflowState.INVESTIGATING:
+            if allow_legacy_ui and channel is RequestChannel.UI and role == "operator":
+                required_role = "operator"
+            elif channel is RequestChannel.WEBMCP and role == "agent":
+                required_role = "agent"
+            else:
+                raise WorkflowConflict("proposal transition requires WebMCP agent authority")
+        elif expected_state is WorkflowState.OBSERVING_POSTCHECK:
             if channel is not RequestChannel.SYSTEM or role != "system":
                 raise WorkflowConflict("postcheck state transition requires system authority")
             required_role = "system"
