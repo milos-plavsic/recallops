@@ -59,3 +59,10 @@ Milestone 2 authentication and atomicity are isolated in challenge-period commit
 Milestone 3's verified sandbox evidence loop is isolated in challenge-period commit
 [`d804584`](https://github.com/milos-plavsic/recallops/commit/d804584). Its incremental comparison is
 <https://github.com/milos-plavsic/recallops/compare/1921207...d804584>.
+
+## Guided-build execution baseline
+
+Checklist execution began from verified documentation tip `7f66e15` on 2026-08-29. The generated
+`evidence/requirements-trace.json` inventories all 180 normative requirement identifiers as planned
+work without claiming unexecuted results. Its baseline regression repeated the real CockroachDB,
+100% branch-coverage, Playwright, and native Chromium gates before Milestone 4 implementation.

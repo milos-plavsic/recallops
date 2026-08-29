@@ -6,6 +6,10 @@ Security and functionality come first, followed by independent proof and judge-v
 Every addition must close a documented threat, have automated verification, and materially improve
 one of the four judging criteria without putting the live demonstration at risk.
 
+Judge-visible live proof and independently reproducible assurance are separate 100% completion
+gates, not an effort tradeoff. Every material claim must work in the deployed judge path and map to
+a build-bound test, trace, or verification artifact. Submission readiness requires both gates.
+
 ## Milestone 1: native WebMCP vertical slice
 
 **Status: complete and verified on 2026-08-28.** See
@@ -65,7 +69,8 @@ separate from judge mode and is not used as identity proof.
 - Enforce different operator and reviewer subjects.
 - Review positive, negative, and unusable outcomes.
 - Expose recall only for reviewed evidence.
-- Demonstrate a later compatible recurrence using reviewed negative evidence.
+- Demonstrate a later compatible recurrence using the newly reviewed successful evidence.
+- Preserve reviewed negative evidence and agent-policy disagreement as secondary evaluation paths.
 
 ## Milestone 5: signed proof
 
@@ -97,8 +102,9 @@ refresh, explain errors, and produce the same result repeatedly.
 
 ### Potential Impact
 
-Committed evaluations must show an attractive unsafe baseline decision being prevented and reviewed
-negative evidence improving a later compatible incident. Only measured results may be published.
+Committed evaluations must show an attractive unsafe baseline decision being prevented and newly
+reviewed successful evidence improving a later compatible incident. Secondary cases must prove that
+reviewed failures penalize unsafe reuse. Only measured results may be published.
 
 ### Creativity and Ambition
 

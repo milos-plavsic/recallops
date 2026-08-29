@@ -179,7 +179,8 @@ policy versions, source commit, and generation commands accompany summarized res
 3. Telemetry produces a bound observation; assessment ability appears.
 4. Agent assessment and independent policy verdict are shown separately.
 5. Memory stays unavailable until a distinct reviewer certifies it.
-6. A compatible recurrence uses reviewed negative evidence to avoid the attractive failed action.
+6. A compatible recurrence uses the newly reviewed successful evidence; secondary evaluations show
+   reviewed failures penalizing unsafe reuse.
 7. Two compact fail-closed results and the offline receipt verifier provide supporting proof.
 
 Closing line: **Similarity can discover experience. Only reviewed evidence earns authority.**
