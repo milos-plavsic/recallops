@@ -9,6 +9,7 @@ from uuid import UUID, uuid4
 import psycopg
 import pytest
 from fastapi.testclient import TestClient
+from psycopg import sql
 from pydantic import SecretStr
 
 from recallops.api import create_app
@@ -396,7 +397,7 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
     report = verify_database_boundaries(os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"])
 
     assert report["passed"] is True
-    assert report["exact_runtime_grants"] == 69
+    assert report["exact_runtime_grants"] == 72
     assert report["governance_routine"] == {
         "name": "recallops_govern_memory",
         "owner": "recallops_governor",
@@ -406,7 +407,54 @@ def test_runtime_grants_and_cross_tenant_constraints() -> None:
         "governor_schema_create": False,
     }
     assert len(report["cross_tenant_constraints"]) == 17
-    assert len(report["runtime_denials"]) == 38
+    assert len(report["runtime_denials"]) == 47
+
+
+@pytest.mark.skipif(
+    not os.getenv("RECALLOPS_INTEGRATION_DATABASE_URL"),
+    reason="RECALLOPS_INTEGRATION_DATABASE_URL is required for direct database tests",
+)
+def test_receipt_and_outbox_roles_execute_only_their_worker_boundaries() -> None:
+    database_url = os.environ["RECALLOPS_INTEGRATION_DATABASE_URL"]
+    receipt_read_tables = (
+        "approvals",
+        "authority_events",
+        "authority_ledger_heads",
+        "authority_receipts",
+        "judge_runs",
+        "memories",
+        "postcheck_assessments",
+        "postcheck_observations",
+        "postcheck_policy_verdicts",
+        "receipt_requests",
+        "release_evidence_records",
+        "sandbox_executions",
+    )
+    with psycopg.connect(database_url, autocommit=True) as connection:
+        connection.execute("SET ROLE recallops_receipt")
+        for table in receipt_read_tables:
+            connection.execute(
+                sql.SQL("SELECT 1 FROM {} LIMIT 0").format(sql.Identifier(table))
+            )
+        connection.execute(
+            "UPDATE authority_receipts SET status=status WHERE false"
+        )
+        connection.execute("UPDATE receipt_requests SET status=status WHERE false")
+
+    for role, forbidden_table in (
+        ("recallops_outbox", "sandbox_executions"),
+        ("recallops_receipt", "evidence_outbox"),
+    ):
+        with (
+            psycopg.connect(database_url, autocommit=True) as connection,
+            pytest.raises(psycopg.errors.InsufficientPrivilege),
+        ):
+            connection.execute(sql.SQL("SET ROLE {}").format(sql.Identifier(role)))
+            connection.execute(
+                sql.SQL("SELECT 1 FROM {} LIMIT 0").format(
+                    sql.Identifier(forbidden_table)
+                )
+            )
 
 
 @pytest.mark.skipif(

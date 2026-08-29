@@ -40,6 +40,10 @@ Parameters:
     Type: String
     NoEcho: true
     AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
+  ReceiptDatabaseUrlSecretArn:
+    Type: String
+    NoEcho: true
+    AllowedPattern: '^arn:aws[a-zA-Z-]*:secretsmanager:[a-z0-9-]+:[0-9]{12}:secret:.+$'
   MigrationDatabaseUrlSecretArn:
     Type: String
     NoEcho: true
@@ -235,7 +239,7 @@ Resources:
                 Resource: !Sub '${ReceiptLogGroup.Arn}:*'
               - Effect: Allow
                 Action: secretsmanager:GetSecretValue
-                Resource: [!Ref OutboxDatabaseUrlSecretArn, !Ref ReceiptPseudonymSecretArn]
+                Resource: [!Ref ReceiptDatabaseUrlSecretArn, !Ref ReceiptPseudonymSecretArn]
 
   MigrationExecutionRole:
     Type: AWS::IAM::Role
@@ -702,7 +706,7 @@ Resources:
             InitProcessEnabled: true
           Secrets:
             - Name: RECALLOPS_DATABASE_URL
-              ValueFrom: !Ref OutboxDatabaseUrlSecretArn
+              ValueFrom: !Ref ReceiptDatabaseUrlSecretArn
             - Name: RECALLOPS_RECEIPT_SUBJECT_PSEUDONYM_KEY_B64
               ValueFrom: !Ref ReceiptPseudonymSecretArn
           Environment:

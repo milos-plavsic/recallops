@@ -203,6 +203,21 @@ def test_task_identity_is_separated_and_only_receipt_worker_can_sign() -> None:
         "StringEquals": {"kms:SigningAlgorithm": "ED25519_SHA_512"}
     }
 
+    outbox_secret = resources["OutboxTaskDefinition"]["Properties"][
+        "ContainerDefinitions"
+    ][0]["Secrets"][0]["ValueFrom"]
+    receipt_secret = resources["ReceiptTaskDefinition"]["Properties"][
+        "ContainerDefinitions"
+    ][0]["Secrets"][0]["ValueFrom"]
+    assert outbox_secret == {"!Ref": "OutboxDatabaseUrlSecretArn"}
+    assert receipt_secret == {"!Ref": "ReceiptDatabaseUrlSecretArn"}
+    assert outbox_secret != receipt_secret
+    receipt_execution = json.dumps(
+        resources["ReceiptExecutionRole"], sort_keys=True
+    )
+    assert "ReceiptDatabaseUrlSecretArn" in receipt_execution
+    assert "OutboxDatabaseUrlSecretArn" not in receipt_execution
+
 
 def test_api_can_only_read_finalized_versioned_bundles() -> None:
     resources = template("public-demo.yaml")["Resources"]

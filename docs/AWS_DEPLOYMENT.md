@@ -55,15 +55,16 @@ Arbitrary HTTP references are rejected to avoid SSRF.
 - An OIDC application that emits access tokens with `custom:tenant_id` and
   `cognito:groups` claims. Self-registration must be disabled and tenant assignment
   controlled by an administrator.
-- Three Secrets Manager secrets containing complete CockroachDB connection URLs: a LOGIN
+- Four Secrets Manager secrets containing complete CockroachDB connection URLs: a LOGIN
   principal granted only `recallops_api`, a different LOGIN principal granted only
-  `recallops_outbox`, and the migration-owner URL.
+  `recallops_outbox`, a third LOGIN principal granted only `recallops_receipt`, and the
+  migration-owner URL.
   The target `recallops` database must already exist; migrations own its schema, not
   cluster-level database provisioning. Confirm vector indexes are supported and
   enabled on the target cluster before deployment.
   Never place the URL in a CloudFormation parameter value or source file.
-- Migration 019 creates `NOLOGIN` privilege bundles but intentionally does not create credentialed
-  users. Provision and grant the API and outbox login principals using
+- Migrations create `NOLOGIN` privilege bundles but intentionally do not create credentialed
+  users. Provision and grant the API, outbox, and receipt login principals using
   [`DATABASE_SECURITY.md`](DATABASE_SECURITY.md), then retain their URLs in separate secrets.
 - Docker, Git, AWS CLI v2, and an authenticated AWS session.
 

@@ -10,13 +10,14 @@ A semantically similar remediation can be dangerous when it applies to another t
 
 Keeping operational rows and embeddings in one transactional database avoids consistency gaps between an incident record and a separate vector store. A tenant and service prefix on the vector index aligns index filtering with the dominant retrieval boundary. An observed outcome is linked to exactly one source incident, making retries idempotent and preserving the causal provenance of learned memory.
 
-Database authorization is split by workload. A migration owner manages schema; the API, outbox
-worker, and non-login governance definer use separate `NOLOGIN` role bundles with exact table
+Database authorization is split by workload. A migration owner manages schema; the API, evidence
+outbox, receipt finalizer, and non-login governance definer use separate `NOLOGIN` role bundles
+with exact table
 privileges. The API cannot directly update memory lifecycle state or insert its audit event; one
 policy-enforcing `SECURITY DEFINER` routine performs both atomically under a minimum-privilege,
 non-schema-creating owner. ECS supplies the owner URL
-only to a one-shot migrator, the API URL only to the API container, and the outbox URL only to a
-dedicated delivery container after migration succeeds.
+only to a one-shot migrator, and each runtime task receives only its workload-specific database
+URL after migration succeeds.
 Composite tenant foreign keys prevent cross-tenant provenance and governance relationships even
 through direct SQL. Row visibility remains application-enforced because one pooled SQL principal
 serves multiple tenants; native CockroachDB RLS is intentionally not claimed without a trusted

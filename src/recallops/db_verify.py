@@ -77,17 +77,20 @@ EXPECTED_GRANTS = {
     ("recallops_api", "webmcp_idempotency", "UPDATE"),
     ("recallops_outbox", "evidence_outbox", "SELECT"),
     ("recallops_outbox", "evidence_outbox", "UPDATE"),
-    ("recallops_outbox", "authority_events", "SELECT"),
-    ("recallops_outbox", "authority_ledger_heads", "SELECT"),
-    ("recallops_outbox", "authority_receipts", "INSERT"),
-    ("recallops_outbox", "authority_receipts", "SELECT"),
-    ("recallops_outbox", "authority_receipts", "UPDATE"),
-    ("recallops_outbox", "judge_runs", "SELECT"),
-    ("recallops_outbox", "release_evidence_records", "INSERT"),
-    ("recallops_outbox", "release_evidence_records", "SELECT"),
-    ("recallops_outbox", "release_evidence_records", "UPDATE"),
-    ("recallops_outbox", "receipt_requests", "SELECT"),
-    ("recallops_outbox", "receipt_requests", "UPDATE"),
+    ("recallops_receipt", "approvals", "SELECT"),
+    ("recallops_receipt", "authority_events", "SELECT"),
+    ("recallops_receipt", "authority_ledger_heads", "SELECT"),
+    ("recallops_receipt", "authority_receipts", "SELECT"),
+    ("recallops_receipt", "authority_receipts", "UPDATE"),
+    ("recallops_receipt", "judge_runs", "SELECT"),
+    ("recallops_receipt", "memories", "SELECT"),
+    ("recallops_receipt", "postcheck_assessments", "SELECT"),
+    ("recallops_receipt", "postcheck_observations", "SELECT"),
+    ("recallops_receipt", "postcheck_policy_verdicts", "SELECT"),
+    ("recallops_receipt", "receipt_requests", "SELECT"),
+    ("recallops_receipt", "receipt_requests", "UPDATE"),
+    ("recallops_receipt", "release_evidence_records", "SELECT"),
+    ("recallops_receipt", "sandbox_executions", "SELECT"),
 }
 
 
@@ -387,7 +390,9 @@ def _verify_exact_grants(cursor: psycopg.Cursor[Any]) -> int:
     cursor.execute(
         """SELECT grantee, table_name, privilege_type
            FROM information_schema.table_privileges
-           WHERE grantee IN ('recallops_api', 'recallops_outbox', 'recallops_governor')"""
+           WHERE grantee IN (
+             'recallops_api','recallops_outbox','recallops_governor','recallops_receipt'
+           )"""
     )
     actual = {(str(row[0]), str(row[1]), str(row[2])) for row in cursor.fetchall()}
     if actual != EXPECTED_GRANTS:
@@ -401,7 +406,9 @@ def _verify_role_attributes(cursor: psycopg.Cursor[Any]) -> list[dict[str, objec
     cursor.execute(
         """SELECT rolname, rolcanlogin, rolcreaterole, rolcreatedb, rolbypassrls
            FROM pg_catalog.pg_roles
-           WHERE rolname IN ('recallops_api', 'recallops_outbox', 'recallops_governor')
+           WHERE rolname IN (
+             'recallops_api','recallops_outbox','recallops_governor','recallops_receipt'
+           )
            ORDER BY rolname"""
     )
     roles = [
@@ -414,7 +421,7 @@ def _verify_role_attributes(cursor: psycopg.Cursor[Any]) -> list[dict[str, objec
         }
         for row in cursor.fetchall()
     ]
-    if len(roles) != 3 or any(
+    if len(roles) != 4 or any(
         role[attribute]
         for role in roles
         for attribute in ("login", "create_role", "create_database", "bypass_rls")
@@ -525,6 +532,18 @@ def _verify_runtime_denials(database_url: str) -> list[dict[str, str]]:
         ("recallops_outbox", "DELETE FROM receipt_requests WHERE false"),
         ("recallops_outbox", "DELETE FROM release_evidence_records WHERE false"),
         ("recallops_outbox", "CREATE TABLE worker_privilege_escape (id INT PRIMARY KEY)"),
+        ("recallops_receipt", "SELECT * FROM evidence_outbox LIMIT 0"),
+        ("recallops_receipt", "INSERT INTO authority_events DEFAULT VALUES"),
+        ("recallops_receipt", "UPDATE authority_events SET reason_code=reason_code WHERE false"),
+        ("recallops_receipt", "INSERT INTO authority_receipts DEFAULT VALUES"),
+        ("recallops_receipt", "DELETE FROM authority_receipts WHERE false"),
+        ("recallops_receipt", "INSERT INTO receipt_requests DEFAULT VALUES"),
+        ("recallops_receipt", "DELETE FROM receipt_requests WHERE false"),
+        (
+            "recallops_receipt",
+            "UPDATE release_evidence_records SET release_id=release_id WHERE false",
+        ),
+        ("recallops_receipt", "CREATE TABLE receipt_privilege_escape (id INT PRIMARY KEY)"),
     )
     results = []
     for role, statement in probes:

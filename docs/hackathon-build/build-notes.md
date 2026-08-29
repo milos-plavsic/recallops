@@ -792,3 +792,14 @@
   reviewer transition and its serializable transaction, so it now uses a plain insert: transaction
   retries remain safe, while any committed duplicate fails closed instead of being silently
   accepted. The API still cannot inspect or mutate the worker's private queue.
+- The live finalizer then proved that reusing the legacy evidence-outbox database credential was
+  an invalid separation boundary. Migration 032 introduces a dedicated non-login
+  `recallops_receipt` role with only the evidence-chain reads and receipt-state updates required to
+  verify and finalize a bundle, while revoking every receipt privilege from `recallops_outbox`.
+  The receipt ECS execution role and task now consume a distinct Secrets Manager URL; structural
+  tests fail if either worker is wired to the other's credential.
+- A fresh migration-032 database passed the complete 480-test suite with exactly 5,392/5,392
+  tracked statements and 1,206/1,206 branches covered (100.00%). A direct database integration
+  probe executed every receipt-material read and both allowed queue/receipt updates under
+  `SET ROLE recallops_receipt`, then proved reciprocal worker isolation: the outbox role cannot
+  read receipt evidence and the receipt role cannot read the evidence outbox.

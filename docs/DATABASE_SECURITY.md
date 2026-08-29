@@ -1,16 +1,17 @@
 # CockroachDB authorization and tenant-boundary evidence
 
-RecallOps deliberately separates four database identities:
+RecallOps deliberately separates five database identities:
 
 | Identity | Purpose | Required access |
 | --- | --- | --- |
 | Migration owner | Ordered schema migrations only | Object ownership and role/grant administration |
 | `recallops_api` member | API runtime | Exact table-level `SELECT`/`INSERT`/`UPDATE` grants in migration 019 |
 | `recallops_outbox` member | Evidence delivery worker | `SELECT` and `UPDATE` on `evidence_outbox` only |
+| `recallops_receipt` member | Receipt finalizer | Exact evidence-chain reads plus `SELECT`/`UPDATE` on receipt state |
 | `recallops_governor` | Non-login security definer | Minimum reads required for FK validation, memory lifecycle update, and atomic memory-event insert |
 
-All three runtime bundles are `NOLOGIN` roles. CockroachDB
-creates roles as `NOLOGIN` by default. Neither role can create roles or databases, bypass
+All four runtime bundles are `NOLOGIN` roles. CockroachDB
+creates roles as `NOLOGIN` by default. No runtime bundle can create roles or databases, bypass
 row-level security, delete application rows, change the schema, or read the migration ledger.
 Migration 019 also revokes `CREATE` on the dedicated application's `public` schema from
 `PUBLIC`. A separately managed `LOGIN` principal receives membership in exactly one runtime
@@ -24,18 +25,22 @@ administrative workflow, create distinct login principals and grant role members
 ```sql
 CREATE USER recallops_api_login WITH PASSWORD '<generated-secret>';
 CREATE USER recallops_outbox_login WITH PASSWORD '<different-generated-secret>';
+CREATE USER recallops_receipt_login WITH PASSWORD '<third-generated-secret>';
 GRANT CONNECT ON DATABASE recallops TO recallops_api_login;
 GRANT CONNECT ON DATABASE recallops TO recallops_outbox_login;
+GRANT CONNECT ON DATABASE recallops TO recallops_receipt_login;
 GRANT recallops_api TO recallops_api_login;
 GRANT recallops_outbox TO recallops_outbox_login;
+GRANT recallops_receipt TO recallops_receipt_login;
 ```
 
 Do not paste real passwords into source, CI logs, shell history, or CloudFormation parameters.
 Store complete `sslmode=verify-full` URLs in separate Secrets Manager secrets. Pass the API
-secret as `DatabaseUrlSecretArn`, the outbox secret as `OutboxDatabaseUrlSecretArn`, and the owner
-secret as `MigrationDatabaseUrlSecretArn`. The ECS task runs a nonessential migration container
+secret as `DatabaseUrlSecretArn`, the outbox secret as `OutboxDatabaseUrlSecretArn`, the receipt
+secret as `ReceiptDatabaseUrlSecretArn`, and the owner secret as
+`MigrationDatabaseUrlSecretArn`. The ECS task runs a nonessential migration container
 first; the API starts only after it succeeds and never receives the owner or outbox URL. A
-dedicated outbox container receives only the outbox principal URL.
+dedicated outbox and receipt containers each receive only their own principal URL.
 
 The runtime image includes the public Cockroach Cloud CA used by those `verify-full` URLs. No
 password, connection string, or private key is committed with the certificate.
@@ -78,8 +83,8 @@ recallops-db-verify \
 ```
 
 It opens real SQL transactions, attempts 17 cross-tenant writes, requires rejection by the
-exact named foreign key, checks all 69 exact table grants and safe role attributes, verifies the
-definer owner/security/execute/schema metadata, and executes 38 forbidden statements under the
+exact named foreign key, checks all 72 exact table grants and safe role attributes, verifies the
+definer owner/security/execute/schema metadata, and executes 47 forbidden statements under the
 effective runtime roles. A separate direct-SQL test proves rejected self-review, invalid
 certification, cross-tenant non-disclosure, and one valid transition with an atomic audit row.
 Synthetic rows are rolled back.
