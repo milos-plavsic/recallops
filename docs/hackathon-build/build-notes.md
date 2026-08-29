@@ -606,6 +606,15 @@
   placeholder key thumbprint, so both gates and release readiness are false. The final KMS-signed
   statement can only be produced after the immutable image and AWS key exist; this external proof
   is not claimed or replaced with a local signer.
+- Item-9 live proof binds source `c76320666d4447bef64f5919b3cdeb715bd5e637` to immutable ECR
+  digest `sha256:b2e0f0a0abdf515891a415fbbd9e0b0096c272c4621c296f4751ccdd15ec1fad`.
+  Two clean generations were byte-identical. The live KMS signer produced a locally verified
+  release-statement JWS with digest
+  `c841979023f7e579eaafe6aed6eeed61ce0fe43693da67dc861a612246bdfea3`.
+  The signed statement truthfully records both gates and `release_ready` as false until their
+  mandatory exact-image evidence exists. The three frozen release documents and signed statement
+  are stored as versioned SSE-KMS objects; the statement version is
+  `8dGI7armYplxKylYK7IQpiO4Cd9Rvn1N` under 14-day S3 Object Lock COMPLIANCE retention.
 
 ### Item 10 — complete local automated assurance (manual/external gates remain open)
 

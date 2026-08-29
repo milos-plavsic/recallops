@@ -176,7 +176,7 @@ only when its product behavior and corresponding assurance evidence both pass.
   and verify the public download from a credential-free browser. Stop at the Independent-proof gate
   on any false accept, false reject, unsigned fallback, or circular binding.
 
-- [ ] **9. Generate fair impact evidence, claims, and dual gates**
+- [x] **9. Generate fair impact evidence, claims, and dual gates**
   Spec ref: `spec.md > Evaluation And Verification > Fair impact benchmark`; `spec.md > Evaluation And Verification > Claim registry and dual-gate derivation`
   What to build: Publish immutable WebMCP cases and the governed benchmark; run similarity-only and
   RecallOps over identical inputs/tie-breaking; generate exact counts/denominators; complete the

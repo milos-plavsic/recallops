@@ -1,0 +1,18 @@
+{
+    "AcceptRanges": "bytes",
+    "LastModified": "2026-08-29T18:26:31+00:00",
+    "ContentLength": 1212,
+    "ETag": "\"60248e7b85b2ba34249bc5f6278f039b\"",
+    "VersionId": "8dGI7armYplxKylYK7IQpiO4Cd9Rvn1N",
+    "CacheControl": "public, max-age=31536000, immutable",
+    "ContentType": "application/jose",
+    "ServerSideEncryption": "aws:kms",
+    "Metadata": {
+        "sha256": "a3bbd3af16db68d485dba9b8f5a9c6941a5495c3638d5b65125cbc96e7c45c71",
+        "release-ready": "false"
+    },
+    "SSEKMSKeyId": "arn:aws:kms:us-east-1:158363272009:key/28cc124e-2028-4aef-a2aa-7c6c467416aa",
+    "BucketKeyEnabled": true,
+    "ObjectLockMode": "COMPLIANCE",
+    "ObjectLockRetainUntilDate": "2026-09-12T18:26:30.843000+00:00"
+}

@@ -1,0 +1,507 @@
+{
+  "candidate_pool_digest": "c432b5a6f4084597b2cd5c09dc74237f900769e41a7b7352ab7609e1d874aabc",
+  "cases": [
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_47",
+          "compatible": false,
+          "known_failed": true,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [
+            "SERVICE_VERSION_MISMATCH",
+            "KNOWN_FAILED_OUTCOME"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.94
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "checkout-latency-42-headline",
+      "category": "compatibility_known_failure",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_pending",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "pending_review",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_PENDING_REVIEW",
+            "INDEPENDENT_REVIEW_REQUIRED"
+          ],
+          "reviewed": false,
+          "same_tenant": true,
+          "similarity": 0.97
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "pending-high-similarity",
+      "category": "review_gating",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_failed",
+          "compatible": true,
+          "known_failed": true,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [
+            "KNOWN_FAILED_OUTCOME"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.96
+        }
+      ],
+      "case_id": "no-eligible-memory",
+      "category": "abstention",
+      "expected_governed": null
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_other_tenant",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [
+            "TENANT_SCOPE_MISMATCH"
+          ],
+          "reviewed": true,
+          "same_tenant": false,
+          "similarity": 0.99
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "cross-tenant-shortcut",
+      "category": "tenant_isolation",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_revoked",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "revoked",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_REVOKED"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.98
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "revoked-shortcut",
+      "category": "revocation",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_expired",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "expired",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_EXPIRED"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.97
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "expired-shortcut",
+      "category": "expiry",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_quarantine",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "quarantined",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_QUARANTINED"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.96
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "quarantined-shortcut",
+      "category": "quarantine",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_rejected",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "rejected",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_REJECTED"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.95
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "rejected-shortcut",
+      "category": "rejection",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_negative",
+          "compatible": true,
+          "known_failed": true,
+          "lifecycle": "active",
+          "outcome": "negative",
+          "rejection_codes": [
+            "KNOWN_FAILED_OUTCOME"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.92
+        }
+      ],
+      "case_id": "negative-only",
+      "category": "negative_evidence",
+      "expected_governed": null
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_inconclusive",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "inconclusive",
+          "rejection_codes": [
+            "INCONCLUSIVE_OUTCOME"
+          ],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.91
+        }
+      ],
+      "case_id": "inconclusive-only",
+      "category": "inconclusive",
+      "expected_governed": null
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_88",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "pending_review",
+          "outcome": "positive",
+          "rejection_codes": [
+            "LIFECYCLE_PENDING_REVIEW",
+            "INDEPENDENT_REVIEW_REQUIRED"
+          ],
+          "reviewed": false,
+          "same_tenant": true,
+          "similarity": 0.99
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "checkout-latency-43-before-review",
+      "category": "recurrence_before_review",
+      "expected_governed": "mem_12"
+    },
+    {
+      "candidates": [
+        {
+          "candidate_id": "mem_88",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.99
+        },
+        {
+          "candidate_id": "mem_12",
+          "compatible": true,
+          "known_failed": false,
+          "lifecycle": "active",
+          "outcome": "positive",
+          "rejection_codes": [],
+          "reviewed": true,
+          "same_tenant": true,
+          "similarity": 0.81
+        }
+      ],
+      "case_id": "checkout-latency-43-after-review",
+      "category": "recurrence_after_review",
+      "expected_governed": "mem_88"
+    }
+  ],
+  "evaluation_version": "governed-benchmark-v1",
+  "result": {
+    "cases": [
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_47",
+        "baseline_unsafe": true,
+        "case_id": "checkout-latency-42-headline",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": true,
+        "baseline_selected": "mem_pending",
+        "baseline_unsafe": true,
+        "case_id": "pending-high-similarity",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_failed",
+        "baseline_unsafe": true,
+        "case_id": "no-eligible-memory",
+        "expected_governed": null,
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": null,
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_other_tenant",
+        "baseline_unsafe": true,
+        "case_id": "cross-tenant-shortcut",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_revoked",
+        "baseline_unsafe": true,
+        "case_id": "revoked-shortcut",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_expired",
+        "baseline_unsafe": true,
+        "case_id": "expired-shortcut",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_quarantine",
+        "baseline_unsafe": true,
+        "case_id": "quarantined-shortcut",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_rejected",
+        "baseline_unsafe": true,
+        "case_id": "rejected-shortcut",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_negative",
+        "baseline_unsafe": true,
+        "case_id": "negative-only",
+        "expected_governed": null,
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": null,
+        "negative_warnings": [
+          "mem_negative"
+        ]
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_inconclusive",
+        "baseline_unsafe": true,
+        "case_id": "inconclusive-only",
+        "expected_governed": null,
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": null,
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": true,
+        "baseline_selected": "mem_88",
+        "baseline_unsafe": true,
+        "case_id": "checkout-latency-43-before-review",
+        "expected_governed": "mem_12",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_12",
+        "negative_warnings": []
+      },
+      {
+        "baseline_pending_leakage": false,
+        "baseline_selected": "mem_88",
+        "baseline_unsafe": false,
+        "case_id": "checkout-latency-43-after-review",
+        "expected_governed": "mem_88",
+        "governed_correct": true,
+        "governed_pending_leakage": false,
+        "governed_selected": "mem_88",
+        "negative_warnings": []
+      }
+    ],
+    "evaluation_version": "governed-benchmark-v1",
+    "limitations": "Synthetic deterministic policy evidence; no production incident rate claim.",
+    "method": {
+      "baseline": "maximum similarity; tie-break by candidate_id descending",
+      "governed": "policy eligibility before similarity ranking; negative evidence warns only",
+      "identical_inputs": true
+    },
+    "passed": true,
+    "summary": {
+      "baseline_pending_leakage": 2,
+      "baseline_unsafe_selections": 11,
+      "case_count": 12,
+      "correct_abstentions": 3,
+      "expected_abstentions": 3,
+      "governed_correct": 12,
+      "governed_pending_leakage": 0,
+      "governed_unsafe_selections": 0,
+      "recurrence_recommendation_changed_after_review": true
+    },
+    "synthetic": true
+  },
+  "schema_version": "governed-benchmark-v1",
+  "source_sha": "c76320666d4447bef64f5919b3cdeb715bd5e637",
+  "synthetic": true
+}
