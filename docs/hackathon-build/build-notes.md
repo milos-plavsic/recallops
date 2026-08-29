@@ -853,5 +853,9 @@
   the complete public browser journey, verifies the downloaded receipt bundle offline, compares
   release identity before/bundle/after, retains evidence for 14 days, and fails the workflow on any
   drift. It has repository read permission only and therefore cannot mutate AWS, the database, or
-  either proof gate. The frozen source is resolved from the explicit `webmcp-rc7-source` tag rather
+  either proof gate. The frozen source is resolved from the explicit `webmcp-rc8-source` tag rather
   than copied into a self-referential build file.
+- The first clean-run monitor attempt failed closed before browser setup because `git rev-list`
+  does not support `--verify`. No smoke artifact or gate update was produced. The corrected workflow
+  resolves the annotated tag to a commit with `git rev-parse --verify <tag>^{commit}`; rc7 remains an
+  immutable failed candidate and rc8 is the successor rather than rewriting published history.

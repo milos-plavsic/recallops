@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 12
     env:
       RECALLOPS_LIVE_URL: https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com
-      RECALLOPS_EXPECTED_RELEASE_ID: webmcp-rc7
-      RECALLOPS_RELEASE_TAG: webmcp-rc7-source
+      RECALLOPS_EXPECTED_RELEASE_ID: webmcp-rc8
+      RECALLOPS_RELEASE_TAG: webmcp-rc8-source
       RECALLOPS_TRUSTED_KEYS: tools/trusted-receipt-keys.json
       RECALLOPS_SMOKE_OUTPUT: artifacts/smoke-live.json
     steps:
@@ -32,7 +32,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          expected_source_sha="$(git rev-list --verify --max-count=1 "$RECALLOPS_RELEASE_TAG")"
+          expected_source_sha="$(git rev-parse --verify "$RECALLOPS_RELEASE_TAG^{commit}")"
           test -n "$expected_source_sha"
           echo "RECALLOPS_EXPECTED_SOURCE_SHA=$expected_source_sha" >> "$GITHUB_ENV"
 
