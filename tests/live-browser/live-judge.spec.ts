@@ -165,18 +165,19 @@ test("public judge path produces a signed, downloadable authority bundle", async
   await expect
     .poll(
       async () => {
-        await page.reload({ waitUntil: "domcontentloaded" });
-        await expect(page.locator("#health-label")).toHaveText(
-          "API and memory ready",
-        );
-        const status = page.locator("#receipt-status");
-        return (await status.isVisible())
-          ? status.textContent()
-          : "receipt unavailable";
+        const response = await page.request.get("/v1/evidence/receipt");
+        if (response.status() !== 200) return `HTTP ${response.status()}`;
+        const body = await response.json();
+        return body.receipt?.status ?? "receipt unavailable";
       },
       { timeout: 120_000, intervals: [2_000, 3_000, 5_000] },
     )
-    .toContain("SIGNED");
+    .toBe("signed");
+  await page.reload({ waitUntil: "domcontentloaded" });
+  await expect(page.locator("#health-label")).toHaveText(
+    "API and memory ready",
+  );
+  await expect(page.locator("#receipt-status")).toContainText("SIGNED");
   await expect(page.locator("#receipt-chain li")).toHaveCount(7);
   await expect(page.locator("#receipt-limitations")).toContainText(
     "does not prove external truth",

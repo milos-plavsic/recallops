@@ -807,3 +807,10 @@
   the security fix. The canonical repository trust registry now explicitly authorizes the same
   pinned KMS Ed25519 key for the successor `webmcp-rc2`; live proof requires that a requested
   release resolve to exactly one active pinned key, so no wildcard or fallback trust was added.
+- The first `webmcp-rc2` public browser run produced a valid signed receipt, but its verifier
+  repeatedly reloaded the page and interrupted the page's asynchronous receipt restoration before
+  sampling it. The trace itself showed the restored signed receipt. The live test now polls the
+  authenticated receipt endpoint to completion, performs one reload, and separately requires the
+  UI to restore `SIGNED`; the exact public rerun passed both the full journey (24.1 seconds) and
+  narrow viewport. `webmcp-rc2` remains immutable, while `webmcp-rc3` names the final candidate
+  containing this stronger proof harness.
