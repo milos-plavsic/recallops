@@ -26,6 +26,7 @@ from pydantic import BaseModel, ConfigDict, Field, field_validator, model_valida
 
 from recallops.canonical import canonical_bytes, content_digest
 from recallops.ledger import ZERO_EVENT_HASH, AuthorityEvent, verify_event
+from recallops.release_evidence import ReleaseStatement
 from recallops.workflow import RequestChannel
 
 JOSE_ALGORITHM = "Ed25519"
@@ -35,6 +36,7 @@ AWS_SIGNING_ALGORITHM = "ED25519_SHA_512"
 AWS_MESSAGE_TYPE = "RAW"
 RECEIPT_TYP = "recallops-authority-receipt+jws"
 TRANSITION_TYP = "recallops-receipt-key-transition+jws"
+RELEASE_STATEMENT_TYP = "recallops-release-evidence+jws"
 RECEIPT_VERSION = "authority-receipt-v1"
 RECEIPT_MANIFEST_MAX_BYTES = 2048
 KMS_RAW_MESSAGE_MAX_BYTES = 4096
@@ -686,8 +688,21 @@ class KmsReceiptSigner:
             raise ReceiptPreflightError("KMS receipt signer has not passed preflight")
         if manifest.key_thumbprint != self._kid or manifest.release.release_id != self._release_id:
             raise ReceiptPreflightError("manifest key or release differs from preflight binding")
-        payload = manifest.canonical()
-        signing_input = jws_signing_input(payload, self._kid)
+        return self._sign_payload(manifest.canonical(), RECEIPT_TYP)
+
+    def sign_release_statement(self, statement: ReleaseStatement) -> str:
+        if (
+            statement.identity.release_id != self._release_id
+            or statement.identity.receipt_key_thumbprint != self.kid
+        ):
+            raise ReceiptPreflightError("release statement differs from preflight binding")
+        payload = canonical_bytes(statement.model_dump(mode="json"))
+        return self._sign_payload(payload, RELEASE_STATEMENT_TYP)
+
+    def _sign_payload(self, payload: bytes, typ: str) -> str:
+        if self._public_key is None or self._kid is None or self._kms_key_id is None:
+            raise ReceiptPreflightError("KMS receipt signer has not passed preflight")
+        signing_input = jws_signing_input(payload, self._kid, typ)
         try:
             response = self._client.sign(
                 KeyId=self._kms_key_id,
@@ -747,6 +762,41 @@ def verify_receipt_jws(
     if manifest.key_thumbprint != kid or manifest.release.release_id != release_id:
         raise ReceiptVerificationError("receipt trust binding does not match protected header")
     return manifest
+
+
+def verify_release_statement_jws(
+    compact: str,
+    trusted_keys: TrustedKeyRegistry,
+    *,
+    release_id: str,
+) -> ReleaseStatement:
+    parts = compact.split(".")
+    if len(parts) != 3:
+        raise ReceiptVerificationError("compact JWS must contain three segments")
+    protected = parse_canonical_json(_decode_b64url(parts[0]))
+    if not isinstance(protected, dict) or protected.get("alg") != JOSE_ALGORITHM:
+        raise ReceiptVerificationError("release statement requires the Ed25519 profile")
+    kid = protected.get("kid")
+    if not isinstance(kid, str):
+        raise ReceiptVerificationError("release statement has no valid kid")
+    key = trusted_keys.resolve(kid, release_id)
+    payload, payload_bytes = _verify_compact(
+        compact,
+        key.jwk,
+        expected_kid=kid,
+        expected_typ=RELEASE_STATEMENT_TYP,
+    )
+    try:
+        statement = ReleaseStatement.model_validate(payload)
+    except ValueError as error:
+        raise ReceiptVerificationError("release statement schema is invalid") from error
+    if (
+        canonical_bytes(statement.model_dump(mode="json")) != payload_bytes
+        or statement.identity.release_id != release_id
+        or statement.identity.receipt_key_thumbprint != kid
+    ):
+        raise ReceiptVerificationError("release statement trust binding differs")
+    return statement
 
 
 def production_preflight() -> str:

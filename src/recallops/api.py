@@ -65,6 +65,7 @@ from recallops.ledger import (
     PostgresAuthorityLedgerRepository,
 )
 from recallops.public_bundles import PublicBundleService
+from recallops.release_status import PublicReleaseStatus, ReleaseStatusService
 from recallops.resilience import DependencyUnavailable
 from recallops.sandbox import (
     SANDBOX_ACTION_COMMAND,
@@ -123,6 +124,7 @@ def create_app(
     checkout_sandbox: CheckoutSandbox | None = None,
     observation_provider: ObservationProvider | None = None,
     public_bundle_service: PublicBundleService | None = None,
+    release_status_service: ReleaseStatusService | None = None,
 ) -> FastAPI:
     settings = settings or get_settings()
     store = store or (
@@ -254,6 +256,7 @@ def create_app(
             settings.aws_region,
             settings.authority_bundle_bucket,
         )
+    release_status_service = release_status_service or ReleaseStatusService.production(settings)
     authority_lock = threading.RLock()
 
     app = FastAPI(title="RecallOps", version="0.1.0", docs_url="/docs")
@@ -265,6 +268,7 @@ def create_app(
     app.state.judge_repository = judge_repository
     app.state.ledger_repository = ledger_repository
     app.state.public_bundle_service = public_bundle_service
+    app.state.release_status_service = release_status_service
 
     def authority_transaction(
         operation: Callable[[IncidentService, WorkflowCoordinator], object],
@@ -435,12 +439,9 @@ def create_app(
 
         def fixture_embedding(similarity: float, label: str) -> list[float]:
             seed = embedder.embed(f"{label}:{run_id}")
-            projection = sum(
-                left * right for left, right in zip(incident_unit, seed, strict=True)
-            )
+            projection = sum(left * right for left, right in zip(incident_unit, seed, strict=True))
             orthogonal = [
-                value - projection * base
-                for value, base in zip(seed, incident_unit, strict=True)
+                value - projection * base for value, base in zip(seed, incident_unit, strict=True)
             ]
             norm = math.sqrt(sum(value * value for value in orthogonal))
             if norm == 0:  # pragma: no cover - independent deterministic labels are non-collinear
@@ -516,9 +517,7 @@ def create_app(
                 run = build_run(prepared)
                 saved = bound_service.persist_analysis(incident, prepared)
                 bound_judges = PostgresJudgeSessionRepository.from_connection(connection)
-                bound_judges.save_run(
-                    run, settings.judge_active_run_limit
-                )
+                bound_judges.save_run(run, settings.judge_active_run_limit)
                 bound_ledger = PostgresAuthorityLedgerRepository.from_connection(connection)
                 initial_workflow = WorkflowCoordinator(
                     PostgresWorkflowRepository.from_connection(connection),
@@ -741,6 +740,7 @@ def create_app(
         operation: Callable[[IncidentService, WorkflowCoordinator], dict[str, object]],
     ) -> dict[str, object]:
         if isinstance(store, PostgresStore):
+
             def transact(bound_store: PostgresStore, connection: object) -> dict[str, object]:
                 with cast(Any, connection).cursor() as cursor:
                     cursor.execute(
@@ -861,9 +861,7 @@ def create_app(
             "OBSERVING_POSTCHECK_TO_POSTCHECK_READY": (
                 "System recorded observation and policy verdict"
             ),
-            "POSTCHECK_READY_TO_PENDING_REVIEW": (
-                "Agent assessed evidence; memory quarantined"
-            ),
+            "POSTCHECK_READY_TO_PENDING_REVIEW": ("Agent assessed evidence; memory quarantined"),
             "PENDING_REVIEW_TO_REVIEWED": "Independent reviewer governed reuse",
         }
         chain = [
@@ -909,6 +907,7 @@ def create_app(
             raise HTTPException(status.HTTP_409_CONFLICT, "judge workflow unavailable")
 
         if isinstance(store, PostgresStore):
+
             def reset_atomically(bound_store: PostgresStore, connection: object) -> bool:
                 del bound_store
                 bound_workflows = WorkflowCoordinator(
@@ -1122,9 +1121,7 @@ def create_app(
             raise HTTPException(status.HTTP_403_FORBIDDEN, "independent reviewer required")
         return run, handoff, memory
 
-    def require_if_match(
-        request: Request, run: JudgeRun, workflow: WorkflowSnapshot
-    ) -> None:
+    def require_if_match(request: Request, run: JudgeRun, workflow: WorkflowSnapshot) -> None:
         supplied = request.headers.get("if-match")
         if supplied is None:
             raise HTTPException(status.HTTP_428_PRECONDITION_REQUIRED, "If-Match required")
@@ -1564,6 +1561,7 @@ def create_app(
             raise HTTPException(status.HTTP_503_SERVICE_UNAVAILABLE, str(error)) from error
         if memory is None or memory.memory_digest is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
+
         def persist(
             tx_service: IncidentService, tx_workflows: WorkflowCoordinator
         ) -> dict[str, object]:
@@ -1619,9 +1617,10 @@ def create_app(
         require_role(identity, "agent")
         run = current_run(identity)
         workflow = workflows.get(run.source_incident_id, run.tenant_id)
-        if workflow is None or "recall_reviewed_memory" not in webmcp_manifest(
-            run, workflow
-        ).available_tools:
+        if (
+            workflow is None
+            or "recall_reviewed_memory" not in webmcp_manifest(run, workflow).available_tools
+        ):
             raise HTTPException(status.HTTP_409_CONFLICT, "reviewed recurrence is unavailable")
         recurrence = IncidentCreate(
             tenant_id=run.tenant_id,
@@ -1651,9 +1650,7 @@ def create_app(
         require_role(identity, "agent")
         run = current_run(identity)
         client_hash = hashlib.sha256(payload.client_instance_id.encode()).hexdigest()
-        if not judge_repository.consume_attempt(
-            f"activity:{run.run_id}:{client_hash}", 120, 60
-        ):
+        if not judge_repository.consume_attempt(f"activity:{run.run_id}:{client_hash}", 120, 60):
             raise HTTPException(status.HTTP_429_TOO_MANY_REQUESTS, "activity rate limit exceeded")
         for item in payload.items:
             ledger_repository.add_activity(
@@ -1720,6 +1717,10 @@ def create_app(
     @app.get("/v1/evaluation", response_model=EvaluationReport)
     def evaluation_report() -> EvaluationReport:
         return evaluate(load_dataset(Path("evaluation/memory_cases.json")))
+
+    @app.get("/v1/release", response_model=PublicReleaseStatus)
+    def release_status() -> PublicReleaseStatus:
+        return release_status_service.current()
 
     @app.get("/v1/config")
     def public_config() -> dict[str, str | bool | None]:
@@ -1841,9 +1842,7 @@ def create_app(
                 channel=RequestChannel.UI,
                 actor_subject=identity.subject,
                 role="operator",
-                reason_code="PROPOSAL_APPROVED"
-                if payload.approved
-                else "PROPOSAL_REJECTED",
+                reason_code="PROPOSAL_APPROVED" if payload.approved else "PROPOSAL_REJECTED",
                 object_type="proposal",
                 object_id=str(incident_id),
                 object_digest=payload.proposal_hash,
@@ -2499,6 +2498,7 @@ def create_app(
                 "reset is not authorized through WebMCP",
             )
         try:
+
             def invalidate_atomically(
                 tx_service: IncidentService, tx_workflows: WorkflowCoordinator
             ) -> object:

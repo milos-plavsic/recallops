@@ -62,6 +62,10 @@ def test_judge_console_and_live_evaluation_are_served() -> None:
     assert report.status_code == 200
     assert report.json()["passed"] is True
     assert report.json()["similarity_only"]["unsafe_selection_rate"] > 0
+    release = client.get("/v1/release")
+    assert release.status_code == 200
+    assert release.json()["release_ready"] is False
+    assert release.json()["reason"] == "release evidence is not configured"
 
 
 def test_tenant_boundary_is_enforced() -> None:

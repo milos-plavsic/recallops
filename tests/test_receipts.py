@@ -43,6 +43,15 @@ from recallops.receipts import (
     transition_binding_digest,
     verify_ledger_prefix,
     verify_receipt_jws,
+    verify_release_statement_jws,
+)
+from recallops.release_evidence import (
+    ASSURANCE_REQUIREMENTS,
+    LIVE_REQUIREMENTS,
+    ArtifactAttestation,
+    ReleaseIdentity,
+    derive_dual_gates,
+    release_statement,
 )
 from recallops.workflow import RequestChannel
 
@@ -447,6 +456,57 @@ def test_kms_signing_uses_exact_profile_and_verifies_returned_signature_locally(
         "MessageType": AWS_MESSAGE_TYPE,
         "SigningAlgorithm": AWS_SIGNING_ALGORITHM,
     }
+
+
+def test_kms_signs_and_verifies_acyclic_dual_gate_release_statement() -> None:
+    key = private_key()
+    registry = root_registry(key)
+    signer = KmsReceiptSigner(
+        FakeKms(key), "alias/recallops-receipt", RELEASE_ID, registry
+    )
+    kid = signer.preflight()
+    identity = ReleaseIdentity(
+        release_id=RELEASE_ID,
+        source_sha=SOURCE_SHA,
+        image_digest=f"sha256:{'b' * 64}",
+        capability_policy_version="webmcp-capability-v1",
+        receipt_policy_version="authority-receipt-policy-v1",
+        evaluation_version="governed-benchmark-v1",
+        receipt_key_thumbprint=kid,
+    )
+
+    def evidence(kinds: frozenset[str]) -> list[ArtifactAttestation]:
+        return [
+            ArtifactAttestation(
+                artifact_kind=kind,
+                artifact_digest=f"{index:064x}",
+                release_id=RELEASE_ID,
+                source_sha=SOURCE_SHA,
+                image_digest=identity.image_digest,
+                passed=True,
+                path=f"artifacts/release/{kind}.json",
+            )
+            for index, kind in enumerate(sorted(kinds), start=1)
+        ]
+
+    statement = release_statement(
+        derive_dual_gates(
+            identity,
+            live_artifacts=evidence(LIVE_REQUIREMENTS),
+            assurance_artifacts=evidence(ASSURANCE_REQUIREMENTS),
+        )
+    )
+    compact = signer.sign_release_statement(statement)
+    assert (
+        verify_release_statement_jws(compact, registry, release_id=RELEASE_ID)
+        == statement
+    )
+    with pytest.raises(ReceiptPreflightError, match="release statement"):
+        signer.sign_release_statement(
+            statement.model_copy(
+                update={"identity": identity.model_copy(update={"release_id": "other-release"})}
+            )
+        )
 
 
 def test_kms_returned_signature_must_verify_before_receipt_exists() -> None:

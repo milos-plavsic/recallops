@@ -17,7 +17,7 @@
     "quarantine_memory", "reject_memory", "revoke_memory", "switch_role",
     "override_policy", "reset_demo"
   ];
-  let reconcileGeneration = 0;
+  let currentDesired = new Set();
 
   function activity(actor, message) {
     const item = document.createElement("li");
@@ -188,7 +188,6 @@
   }
 
   async function reconcile(phase, serverTools = host.getCapabilities()) {
-    const generation = ++reconcileGeneration;
     render(phase, serverTools);
     if (!modelContext?.registerTool) {
       status.textContent = "WebMCP unavailable · no fallback installed";
@@ -202,6 +201,7 @@
 
     status.textContent = "Native WebMCP active · synchronized to server manifest";
     const desired = new Set(desiredTools(serverTools));
+    currentDesired = desired;
     for (const [name, registration] of registrations) {
       if (!desired.has(name)) {
         registration.abort();
@@ -213,21 +213,32 @@
     for (const name of desired) {
       if (registrations.has(name)) continue;
       const registrationController = new AbortController();
+      // Reserve before awaiting the browser. Concurrent authoritative refreshes must
+      // observe one lifecycle owner rather than create duplicate native registrations.
+      registrations.set(name, registrationController);
       try {
         await modelContext.registerTool(definitions[name], { signal: registrationController.signal });
-        if (generation !== reconcileGeneration || !desired.has(name)) {
+        if (
+          registrationController.signal.aborted
+          || !currentDesired.has(name)
+        ) {
           registrationController.abort();
+          if (registrations.get(name) === registrationController) registrations.delete(name);
           activity("SYSTEM", `${name} late registration discarded`);
           continue;
         }
-        registrations.set(name, registrationController);
         activity("SYSTEM", `${name} registered`);
         persistActivity("tool_registered", name);
       } catch (error) {
         registrationController.abort();
-        status.textContent = `WebMCP registration failed: ${error.name || "Error"}`;
-        activity("SYSTEM", `${name} registration failed closed`);
-        persistActivity("registration_failed", name, "failed");
+        if (registrations.get(name) === registrationController) registrations.delete(name);
+        if (!currentDesired.has(name)) {
+          activity("SYSTEM", `${name} late registration discarded`);
+        } else {
+          status.textContent = `WebMCP registration failed: ${error.name || "Error"}`;
+          activity("SYSTEM", `${name} registration failed closed`);
+          persistActivity("registration_failed", name, "failed");
+        }
       }
     }
   }

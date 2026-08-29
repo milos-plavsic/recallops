@@ -149,6 +149,9 @@ test("native Chromium exposes assessment only after server-issued evidence", asy
   });
 
   await page.goto("/");
+  await expect.poll(() => page.evaluate(async () =>
+    (await (document as any).modelContext.getTools()).map((tool: any) => tool.name)))
+    .toEqual(["inspect_incident", "propose_mitigation"]);
   await page.evaluate(async () => {
     const context = (document as any).modelContext;
     const proposal = (await context.getTools()).find((tool: any) => tool.name === "propose_mitigation");
@@ -163,6 +166,9 @@ test("native Chromium exposes assessment only after server-issued evidence", asy
   await expect.poll(() => page.evaluate(async () =>
     (await (document as any).modelContext.getTools()).map((tool: any) => tool.name)))
     .toEqual(["inspect_incident", "record_postcheck_assessment"]);
+  await expect(page.locator("#webmcp-events")).toContainText(
+    "record_postcheck_assessment registered",
+  );
   const result = await page.evaluate(async (id) => {
     const context = (document as any).modelContext;
     const tool = (await context.getTools()).find((entry: any) => entry.name === "record_postcheck_assessment");

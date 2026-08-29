@@ -439,6 +439,10 @@ test.describe("judge console", () => {
     await installWebMcpHarness(page);
     await mockApi(page, abstainedAnalysis);
     await page.goto("/");
+    await expect.poll(() => page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
+        "inspect_incident", "propose_mitigation",
+      ]);
 
     const result = await page.evaluate(async () => {
       const tool = (window as any).__webmcpTools.get("propose_mitigation").definition;
@@ -477,6 +481,8 @@ test.describe("judge console", () => {
     });
     await mockApi(page);
     await page.goto("/");
+    await expect.poll(() => page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.keys()))).toEqual(["inspect_incident"]);
     await page.evaluate(() => window.dispatchEvent(new CustomEvent("recallops:webmcp-state", {
       detail: {
         phase: "AWAITING_OPERATOR_APPROVAL", epoch: 2,
@@ -511,6 +517,10 @@ test.describe("judge console", () => {
       await route.fulfill({ status: 201, json: successfulAnalysis }).catch(() => {});
     });
     await page.goto("/");
+    await expect.poll(() => page.evaluate(() =>
+      Array.from((window as any).__webmcpTools.keys()).sort())).toEqual([
+        "inspect_incident", "propose_mitigation",
+      ]);
     const outcome = await page.evaluate(async () => {
       const tool = (window as any).__webmcpTools.get("propose_mitigation").definition;
       const controller = new AbortController();

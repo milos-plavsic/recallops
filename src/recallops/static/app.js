@@ -169,8 +169,22 @@ function renderRecurrence(result) {
   $("#recurrence-proof").hidden = false;
   setText("#recurrence-recommendation", result.governed_recommendation || "Abstained");
   $("#stage-recall").classList.add("active");
-  $("#live-proof-badge").className = "readiness-badge complete";
-  setText("#live-proof-badge", "LIVE PROOF · COMPLETE");
+}
+
+function renderReleaseStatus(release) {
+  const renderGate = (selector, label, gate) => {
+    const cryptographicallyComplete = gate.complete && release.signed_statement_verified;
+    const badge = $(selector);
+    badge.className = `readiness-badge ${cryptographicallyComplete ? "complete" : "pending"}`;
+    const detail = cryptographicallyComplete
+      ? "COMPLETE"
+      : gate.status === "passing"
+        ? "EVIDENCE PASSING · SIGNATURE PENDING"
+        : gate.status.toUpperCase();
+    badge.textContent = `${label} · ${detail}`;
+  };
+  renderGate("#live-proof-badge", "LIVE PROOF", release.live_proof);
+  renderGate("#assurance-badge", "ASSURANCE", release.assurance);
 }
 
 async function refreshTimeline() {
@@ -662,6 +676,7 @@ async function startJudgeScenario() {
 async function initialize() {
   try {
     state.config = await request("/v1/config");
+    renderReleaseStatus(await request("/v1/release"));
     if (state.config.auth_mode !== "judge") {
       setWebMcpPhase("INVESTIGATING", {
         availableTools: ["inspect_incident", "propose_mitigation"],
