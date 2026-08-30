@@ -925,3 +925,22 @@
 - The successful Terra run is supporting manual evidence, not yet the final ChatGPT gate: it lacks
   an uncut/time-continuous capture and focused Site Tools recent-activity screenshots. The gate stays
   fail-closed until those media artifacts are hashed and validated against rc11 or a successor.
+
+### Item 11 — final client-contract closure
+
+- The rc13 direct ChatGPT run reached `POSTCHECK_READY`, but the agent correctly refused to record
+  `recovered`: `inspect_incident` exposed the workflow state without the immutable observation ID,
+  measurements, or server policy verdict required by `record_postcheck_assessment`. The stopped run
+  is retained as fail-closed evidence. No identifier was manually copied from the UI and no hidden
+  browser state was used to bypass the WebMCP contract.
+- The successor fix preserves the four-tool surface and extends only the read-only inspection
+  contract. In `POSTCHECK_READY`, candidate detail is replaced by the exact server-issued
+  observation ID, proposal/observation bindings, bounded immutable measurements, observation
+  provenance, and independent policy verdict. The response stays below the 1,500-character tool
+  limit; execution detail remains in the authority receipt. In every other state—or if stored
+  evidence disagrees with authoritative state—the assessment-ready field is `null`.
+- Browser acceptance now obtains the observation ID only by invoking `inspect_incident` and passes
+  that result to `record_postcheck_assessment`; it no longer reads the ID from page session storage.
+  Verification covers the positive chain, pre-observation absence, post-assessment withdrawal,
+  inconsistent-state failure, disclosure exclusions, and exact result-size bound. The combined
+  Python gate covers 5,451/5,451 statements and 1,224/1,224 branches (100.00%).

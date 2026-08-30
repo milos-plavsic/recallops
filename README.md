@@ -28,7 +28,7 @@ protected transitions remain server-enforced human actions.
 
 | Tool | Purpose | Boundary |
 | --- | --- | --- |
-| `inspect_incident` | Return bounded incident, workflow state, and at most three candidate decisions | Read-only; similarity is separate from eligibility and external content is untrusted |
+| `inspect_incident` | Return bounded incident, workflow state, at most three candidate decisions, and—only in `POSTCHECK_READY`—the server-issued immutable observation and policy verdict | Read-only; similarity is separate from eligibility, external content is untrusted, and no assessment-ready evidence is inferred when the authoritative record is absent |
 | `propose_mitigation` | Create one idempotent, digest-bound proposal | Cannot approve or execute; withdrawn while unresolved |
 | `record_postcheck_assessment` | Record the agent's assessment of a server-created observation | Cannot invent metrics, compute the policy verdict, or activate memory |
 | `recall_reviewed_memory` | Read one compatible recurrence after certification | Read-only; absent until reviewed evidence is admissible |

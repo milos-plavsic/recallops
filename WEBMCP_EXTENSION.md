@@ -19,7 +19,9 @@ workflow state while server policy remains the eventual security boundary.
 
 The frozen native imperative surface contains exactly four tools:
 
-- `inspect_incident`: bounded, read-only incident and candidate evidence.
+- `inspect_incident`: bounded, read-only incident and candidate evidence; in `POSTCHECK_READY` it
+  includes the server-issued immutable observation and independent policy verdict needed by the
+  assessment tool, without exposing tenant/session data or accepting agent-supplied measurements.
 - `propose_mitigation`: stages an idempotent, digest-bound proposal but cannot approve or execute it.
 - `record_postcheck_assessment`: records an attributable opinion about immutable server observation;
   it cannot submit measurements or a policy verdict and creates only pending review memory.

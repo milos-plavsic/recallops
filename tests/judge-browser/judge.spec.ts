@@ -59,15 +59,25 @@ test("a first-time judge completes the visible governed recurrence without docum
       "inspect_incident", "record_postcheck_assessment",
     ]);
 
-  await page.evaluate(async () => {
+  const inspectedPostcheck = await page.evaluate(async () => {
+    const tool = (window as any).__webmcpTools.get("inspect_incident").definition;
+    return JSON.parse((await tool.execute({})).content[0].text).verified_postcheck;
+  });
+  expect(inspectedPostcheck).toMatchObject({
+    measurements: {
+      before: { latency_p95_ms: 1420, error_rate: 0.031 },
+      after: { latency_p95_ms: 210, error_rate: 0.004 },
+    },
+    policy_verdict: { classification: "recovered" },
+  });
+  await page.evaluate(async (observationId) => {
     const tool = (window as any).__webmcpTools.get("record_postcheck_assessment").definition;
-    const observationId = sessionStorage.getItem("observation_id");
     await tool.execute({
       observation_id: observationId,
       classification: "recovered",
       rationale: "All immutable recovery checks satisfy the published policy.",
     });
-  });
+  }, inspectedPostcheck.observation_id);
   await expect(page.locator("#webmcp-state")).toHaveText("PENDING_REVIEW");
   await expect(page.locator("#evidence-assessment")).toHaveText("recovered");
   await page.reload();

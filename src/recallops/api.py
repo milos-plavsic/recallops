@@ -1352,9 +1352,35 @@ def create_app(
         if incident is None or analysis is None or snapshot is None:
             raise HTTPException(status.HTTP_404_NOT_FOUND, "incident not found")
         manifest_value = webmcp_manifest(run, snapshot)
+        verified_postcheck: dict[str, object] | None = None
+        if snapshot.state == WorkflowState.POSTCHECK_READY:
+            postcheck = service.get_postcheck(run.source_incident_id, run.tenant_id)
+            if postcheck is not None:
+                observation, verdict = postcheck
+                verified_postcheck = {
+                    "observation_id": str(observation.id),
+                    "proposal_hash": observation.proposal_hash,
+                    "observation_digest": observation.observation_digest,
+                    "source": observation.source,
+                    "observation_window_seconds": observation.observation_window_seconds,
+                    "observed_at": observation.observed_at,
+                    "measurements": {
+                        "before": observation.before,
+                        "after": observation.after,
+                    },
+                    "policy_verdict": {
+                        "classification": verdict.classification,
+                        "policy_version": verdict.policy_version,
+                        "checks_passed": verdict.checks_passed,
+                        "checks_failed": verdict.checks_failed,
+                    },
+                }
         decisions = {item.memory_id: item for item in analysis.candidate_decisions}
         candidates = []
-        for retrieved in analysis.memories[:3]:
+        candidate_memories = (
+            [] if snapshot.state == WorkflowState.POSTCHECK_READY else analysis.memories[:3]
+        )
+        for retrieved in candidate_memories:
             decision = decisions.get(retrieved.memory.id)
             candidates.append(
                 {
@@ -1387,7 +1413,13 @@ def create_app(
             "authority_owner": manifest_value.authority_owner,
             "available_tools": manifest_value.available_tools,
             "candidates": candidates,
-            "trusted_fields": ["workflow", "authority_owner", "available_tools"],
+            "verified_postcheck": verified_postcheck,
+            "trusted_fields": [
+                "workflow",
+                "authority_owner",
+                "available_tools",
+                "verified_postcheck",
+            ],
             "untrusted_fields": [
                 "incident.service",
                 "incident.service_version",

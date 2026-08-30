@@ -64,7 +64,9 @@ review in one independently verifiable chain.
 ## Four WebMCP tools
 
 1. `inspect_incident` — bounded, read-only incident, workflow, and at most three candidate decisions;
-   similarity is separate from eligibility and rejection codes are machine-readable.
+   similarity is separate from eligibility and rejection codes are machine-readable. Only in
+   `POSTCHECK_READY`, it also returns the server-issued immutable observation and independent policy
+   verdict required for assessment, and fails closed if that evidence is absent.
 2. `propose_mitigation` — proposal-only mutation bound to incident, evidence, idempotency key, and
    action hash; it cannot approve or execute.
 3. `record_postcheck_assessment` — appears only after server-created evidence; accepts an observation

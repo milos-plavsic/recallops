@@ -1,4 +1,5 @@
 import hashlib
+import json
 from datetime import UTC, datetime, timedelta
 from typing import cast
 from urllib.parse import urlsplit
@@ -631,6 +632,8 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
         (0.81, True),
     ]
     assert "incident.symptom" in evidence["untrusted_fields"]
+    assert evidence["verified_postcheck"] is None
+    assert "verified_postcheck" in evidence["trusted_fields"]
 
     proposal_payload = {
         "service": evidence["incident"]["service"],
@@ -795,6 +798,30 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     observation = executed.json()["observation"]
     ready = operator.get("/v1/webmcp/capabilities").json()
     assert ready["available_tools"] == ["inspect_incident", "record_postcheck_assessment"]
+    ready_evidence = operator.get("/v1/webmcp/incident").json()
+    verified = ready_evidence["verified_postcheck"]
+    assert ready_evidence["candidates"] == []
+    assert len(json.dumps(ready_evidence, separators=(",", ":"))) <= 1500
+    assert verified == {
+        "observation_id": observation["id"],
+        "proposal_hash": observation["proposal_hash"],
+        "observation_digest": observation["observation_digest"],
+        "source": observation["source"],
+        "observation_window_seconds": observation["observation_window_seconds"],
+        "observed_at": observation["observed_at"],
+        "measurements": {
+            "before": observation["before"],
+            "after": observation["after"],
+        },
+        "policy_verdict": {
+            "classification": executed.json()["policy_verdict"]["classification"],
+            "policy_version": executed.json()["policy_verdict"]["policy_version"],
+            "checks_passed": executed.json()["policy_verdict"]["checks_passed"],
+            "checks_failed": executed.json()["policy_verdict"]["checks_failed"],
+        },
+    }
+    assert "tenant_id" not in verified
+    assert "actor_id" not in verified
 
     assessed = operator.post(
         "/v1/webmcp/assessment",
@@ -816,6 +843,7 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     assert assessment["policy_verdict"]["classification"] == "recovered"
     assert assessment["memory"]["state"] == "pending_review"
     assert assessment["memory"]["retrievable"] is False
+    assert operator.get("/v1/webmcp/incident").json()["verified_postcheck"] is None
     operator_evidence = operator.get("/v1/operator/evidence")
     assert operator_evidence.status_code == 200
     assert operator_evidence.json()["proposal_digest"] == proposal_digest

@@ -98,17 +98,31 @@ test("public judge path produces a signed, downloadable authority bundle", async
     )
     .toEqual(["inspect_incident", "record_postcheck_assessment"]);
 
-  await page.evaluate(async () => {
+  const inspectedPostcheck = await page.evaluate(async () => {
+    const tool = (window as any).__webmcpTools.get(
+      "inspect_incident",
+    ).definition;
+    return JSON.parse((await tool.execute({})).content[0].text)
+      .verified_postcheck;
+  });
+  expect(inspectedPostcheck).toMatchObject({
+    measurements: {
+      before: { latency_p95_ms: 1420, error_rate: 0.031 },
+      after: { latency_p95_ms: 210, error_rate: 0.004 },
+    },
+    policy_verdict: { classification: "recovered" },
+  });
+  await page.evaluate(async (observationId) => {
     const tool = (window as any).__webmcpTools.get(
       "record_postcheck_assessment",
     ).definition;
     await tool.execute({
-      observation_id: sessionStorage.getItem("observation_id"),
+      observation_id: observationId,
       classification: "not_recovered",
       rationale:
         "Deliberate disagreement retained separately from the policy verdict.",
     });
-  });
+  }, inspectedPostcheck.observation_id);
   await expect(page.locator("#webmcp-state")).toHaveText("PENDING_REVIEW");
   await expect(page.locator("#evidence-assessment")).toHaveText(
     "not_recovered",

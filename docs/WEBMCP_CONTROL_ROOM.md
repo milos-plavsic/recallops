@@ -44,6 +44,11 @@ content is marked untrusted.
 
 - Page-lifetime, read-only tool.
 - Returns a bounded incident, workflow, authority, and capability snapshot.
+- Only in `POSTCHECK_READY`, replaces candidate detail with the bounded immutable observation, its
+  exact server-issued ID, proposal/observation binding digests, before/after measurements, and the
+  independent policy verdict required for assessment. If either authoritative record is absent, no
+  assessment-ready evidence is inferred. Execution detail remains in the authority receipt instead
+  of enlarging the agent-visible result.
 - Does not return credentials, unrestricted logs, or raw embeddings.
 - Uses `readOnlyHint: true` and `untrustedContentHint: true`.
 

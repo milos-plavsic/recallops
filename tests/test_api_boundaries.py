@@ -635,6 +635,20 @@ def test_webmcp_assessment_requires_a_verified_postcheck() -> None:
     assert response.status_code == 404
 
 
+def test_inspection_fails_closed_if_ready_state_has_no_verified_postcheck(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    app = create_app(judge_settings(), InMemoryStore())
+    client, _, _, _ = observation_context(app)
+    monkeypatch.setattr(app.state.service, "get_postcheck", MagicMock(return_value=None))
+
+    evidence = client.get("/v1/webmcp/incident")
+
+    assert evidence.status_code == 200
+    assert evidence.json()["workflow"]["state"] == "POSTCHECK_READY"
+    assert evidence.json()["verified_postcheck"] is None
+
+
 def test_webmcp_assessment_maps_prepare_and_persist_failures() -> None:
     app = create_app(judge_settings(), InMemoryStore())
     client, _, observation, ready = observation_context(app)

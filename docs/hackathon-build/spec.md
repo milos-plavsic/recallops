@@ -248,8 +248,14 @@ Input:
 
 Output fields: `incident`, `workflow`, `authority_owner`, `available_tools`, up to three candidate
 summaries, eligibility/rejection codes, trusted-field labels, untrusted-field labels, and build/
-policy versions. It MUST NOT return raw logs, embeddings, credentials, session/run secrets, or
-cross-tenant identifiers.
+policy versions. Only in `POSTCHECK_READY`, candidate details are omitted and `verified_postcheck`
+contains the exact server-issued observation ID, proposal/observation bindings, bounded immutable
+before/after metrics, observation time/window/source, and independently computed policy verdict
+required by `record_postcheck_assessment`. Execution bindings remain in the authority receipt. This
+keeps the structured tool result within its 1,500-character disclosure bound. `verified_postcheck`
+is `null` in every other state and also fails closed to `null` if authoritative state and stored
+evidence disagree. It MUST NOT return raw logs, embeddings,
+credentials, session/run secrets, tenant identities, actor identities, or cross-tenant identifiers.
 
 Implements PRD: 1.2, 2.1, 2.2, 2.3, 8.1, 9.3.
 
