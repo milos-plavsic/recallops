@@ -98,6 +98,13 @@ test("a first-time judge completes the visible governed recurrence without docum
     await tool.execute({});
   });
   await expect(page.locator("#recurrence-proof")).toBeVisible();
+  await expect(page.locator("#recurrence-title")).toHaveText(
+    "Independent review changed the evidence authority",
+  );
+  await expect(page.locator("#recurrence-before")).toContainText("evidence");
+  await expect(page.locator("#recurrence-change")).toContainText(
+    "bounded action remained stable",
+  );
   await expect(page.locator("#live-proof-badge")).toHaveText("LIVE PROOF · PENDING");
   await expect(page.locator("#assurance-badge")).toHaveText("ASSURANCE · PENDING");
   await expect.poll(() => page.locator("#authority-events li").count()).toBeGreaterThanOrEqual(7);

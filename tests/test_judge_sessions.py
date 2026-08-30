@@ -903,6 +903,10 @@ def test_four_tool_journey_preserves_three_evidence_layers_and_independent_revie
     recurrence = operator.get("/v1/webmcp/recurrence")
     assert recurrence.status_code == 200
     assert recurrence.json()["governed_memory_id"] == assessment["memory"]["id"]
+    assert recurrence.json()["reviewed_evidence_changed_authority"] is True
+    assert recurrence.json()["pre_review_governed_memory_id"] != assessment["memory"]["id"]
+    assert recurrence.json()["reviewed_evidence_changed_action"] is False
+    assert "bounded action remained stable" in recurrence.json()["change_explanation"]
     events = app.state.ledger_repository.list_events(run.run_id, run.tenant_id)
     assert events[-1].actor_subject == exchange.json()["identity"]["subject"]
     assert events[-2].actor_subject.startswith("webmcp_agent_")

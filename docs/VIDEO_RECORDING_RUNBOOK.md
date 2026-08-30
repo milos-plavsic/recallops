@@ -24,7 +24,7 @@ Do not record an older public URL, local fallback, mock response, or test signer
 | 0:40–1:05 | Agent stages proposal; show tool withdrawal and authority owner change; operator approves exact hash | “The agent may prepare, never authorize. Staging withdraws the tool at protocol level, and the operator approves only this exact proposal hash.” |
 | 1:05–1:28 | Operator attests labeled simulation; immutable observation appears; postcheck tool registers; agent assesses | “The simulator runs once. The application creates the measurements; the agent can interpret them but cannot invent them. Backend policy computes an independent verdict.” |
 | 1:28–1:48 | Show pending memory excluded; open reviewer handoff; show zero tools; reviewer activates | “The memory is quarantined until a distinct reviewer acts. This page exposes zero WebMCP tools, so activation can never become agent authority.” |
-| 1:48–2:08 | Open `checkout-latency-43`; show reviewed memory now eligible and recommendation changed | “Only after review does the later compatible recurrence reuse the evidence. The same memory has no influence while pending and changes the result after certification.” |
+| 1:48–2:08 | Open `checkout-latency-43`; show reviewed memory replace the pre-review evidence authority | “Only after review does the later compatible recurrence reuse this evidence. The selected authority changes to the locally verified memory; the bounded action remains stable, which RecallOps reports explicitly.” |
 | 2:08–2:30 | Open Authority Receipt visual chain and offline verification result | “The receipt binds evidence, proposal, approval, observation, assessment, policy verdict, and review. The verifier rejects every material tamper while stating exactly what the signature cannot prove.” |
 | 2:30–2:42 | Frame Live proof/Assurance badges, exact test counts, source/image identity | “The release is backed by native WebMCP tests, real Cockroach transactions, complete branch coverage, mutation testing, and independent proof vectors—all bound to this build.” |
 | 2:42–2:48 | Return to recurrence and hold | “Similarity can discover experience. Only reviewed evidence earns authority.” |
@@ -46,7 +46,7 @@ The product already exposes the facts judges need; repository and receipt links 
 8. Open the single-use reviewer handoff. Cut credential/session exchange if any sensitive material
    could appear, but do not reconstruct product transitions from unrelated runs.
 9. Hold the reviewer page's zero-tool indicator, then activate the exact memory.
-10. Open the recurrence and frame the changed recommendation.
+10. Open the recurrence and frame the changed evidence authority and separately reported stable action.
 11. Open the receipt and verifier result, then return to the recurrence for the closing line.
 
 ## Required overlays

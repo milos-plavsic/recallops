@@ -92,6 +92,8 @@ def test_generator_is_byte_identical_and_publishes_fair_bounded_evidence(
     assert headline["governed_selected"] == "mem_12"
     assert results["summary"]["governed_unsafe_selections"] == 0
     assert results["summary"]["governed_pending_leakage"] == 0
+    assert results["summary"]["recurrence_evidence_authority_changed_after_review"] is True
+    assert "recurrence_recommendation_changed_after_review" not in results["summary"]
     assert results["passed"] is True
 
     webmcp = json.loads((first / "evaluation" / "webmcp_cases.json").read_text())

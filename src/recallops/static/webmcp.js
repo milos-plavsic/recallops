@@ -156,7 +156,7 @@
     recall_reviewed_memory: {
       name: "recall_reviewed_memory",
       title: "Recall certified evidence for occurrence 43",
-      description: "Evaluate the immutable compatible recurrence using only admissible reviewed memory. This tool performs no domain mutation.",
+      description: "Evaluate the immutable compatible recurrence using only admissible reviewed memory and compare the selected evidence authority with the exact pre-review counterfactual. This tool performs no domain mutation.",
       inputSchema: { type: "object", properties: {}, additionalProperties: false },
       annotations: { readOnlyHint: true, untrustedContentHint: true },
       async execute(_input, options = {}) {

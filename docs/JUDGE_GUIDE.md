@@ -38,8 +38,9 @@ The signature moment is visible: after the agent stages one exact remediation pr
    policy verdict. The resulting memory is `PENDING_REVIEW` and absent from governed retrieval.
 8. Open the purpose-bound reviewer handoff. Confirm the reviewer page registers zero WebMCP tools.
    Activate the memory as the distinct reviewer.
-9. Confirm `recall_reviewed_memory` appears only now. Invoke it and verify that reviewed compatible
-   evidence changes the `checkout-latency-43` recurrence.
+9. Confirm `recall_reviewed_memory` appears only now. Invoke it and verify that the newly reviewed
+   memory replaces the exact pre-review evidence authority for `checkout-latency-43`; confirm the
+   UI reports separately that the bounded action remained stable.
 10. Open the Authority Receipt. The visual chain and offline bundle bind the exact ledger prefix,
     while the adjacent limitations prevent a cryptographic-integrity claim from becoming an
     external-truth claim.

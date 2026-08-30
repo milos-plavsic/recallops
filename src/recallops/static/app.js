@@ -171,7 +171,14 @@ function renderEvidence(observation, assessment = null, verdict = null) {
 
 function renderRecurrence(result) {
   $("#recurrence-proof").hidden = false;
-  setText("#recurrence-recommendation", result.governed_recommendation || "Abstained");
+  const beforeId = shortId(result.pre_review_governed_memory_id);
+  const afterId = shortId(result.governed_memory_id);
+  setText("#recurrence-before", `${result.pre_review_governed_recommendation || "Abstained"} · evidence ${beforeId}`);
+  setText("#recurrence-recommendation", `${result.governed_recommendation || "Abstained"} · evidence ${afterId}`);
+  setText("#recurrence-change", result.change_explanation || "Authority comparison unavailable.");
+  setText("#recurrence-title", result.reviewed_evidence_changed_authority
+    ? "Independent review changed the evidence authority"
+    : "Independent review preserved the evidence authority");
   $("#stage-recall").classList.add("active");
 }
 

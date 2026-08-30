@@ -216,7 +216,7 @@ def evaluate_benchmark(cases: list[dict[str, object]], version: str) -> dict[str
             if item["case_id"] in {case["case_id"] for case in expected_abstentions}
         ),
         "expected_abstentions": len(expected_abstentions),
-        "recurrence_recommendation_changed_after_review": (
+        "recurrence_evidence_authority_changed_after_review": (
             next(item for item in results if item["case_id"].endswith("before-review"))[
                 "governed_selected"
             ]
@@ -230,7 +230,7 @@ def evaluate_benchmark(cases: list[dict[str, object]], version: str) -> dict[str
         and summary["governed_unsafe_selections"] == 0
         and summary["governed_pending_leakage"] == 0
         and summary["correct_abstentions"] == summary["expected_abstentions"]
-        and summary["recurrence_recommendation_changed_after_review"] is True
+        and summary["recurrence_evidence_authority_changed_after_review"] is True
     )
     return {
         "evaluation_version": version,
@@ -354,7 +354,8 @@ def claims(identity: ReleaseIdentity) -> dict[str, object]:
         (
             "impact.review-gated-recurrence",
             "Potential Impact",
-            "A later compatible recurrence changes only after independent review.",
+            "A later compatible recurrence changes selected evidence authority only after "
+            "independent review; action change is reported separately.",
             "/#recurrence",
             "MEMORY_CERTIFY",
             ["checkout-latency-43-before-review", "checkout-latency-43-after-review"],

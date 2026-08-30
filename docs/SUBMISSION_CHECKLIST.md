@@ -59,7 +59,8 @@ on `2026-08-29T07:20:09Z`. The account is registered for **The WebMCP Challenge*
 - Show the identical candidate pool: similarity-only chooses incompatible known failure `mem_47`
   at `0.94`; governed retrieval chooses reviewed compatible `mem_12` at `0.81`.
 - Publish exact synthetic counts and denominators, including every failure.
-- Show pending leakage is zero and later compatible recurrence changes only after independent review.
+- Show pending leakage is zero and the later recurrence's selected evidence authority changes only
+  after independent review; report action change independently.
 - Do not extrapolate synthetic policy results to production incident rates or universal safety.
 
 ### Creativity & Ambition

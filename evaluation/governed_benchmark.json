@@ -497,7 +497,7 @@
       "governed_correct": 12,
       "governed_pending_leakage": 0,
       "governed_unsafe_selections": 0,
-      "recurrence_recommendation_changed_after_review": true
+      "recurrence_evidence_authority_changed_after_review": true
     },
     "synthetic": true
   },

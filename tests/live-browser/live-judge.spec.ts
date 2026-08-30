@@ -161,6 +161,13 @@ test("public judge path produces a signed, downloadable authority bundle", async
     await tool.execute({});
   });
   await expect(page.locator("#recurrence-proof")).toBeVisible();
+  await expect(page.locator("#recurrence-title")).toHaveText(
+    "Independent review changed the evidence authority",
+  );
+  await expect(page.locator("#recurrence-before")).toContainText("evidence");
+  await expect(page.locator("#recurrence-change")).toContainText(
+    "bounded action remained stable",
+  );
 
   await expect
     .poll(

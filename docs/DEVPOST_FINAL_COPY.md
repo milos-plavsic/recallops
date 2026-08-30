@@ -141,7 +141,8 @@ the remaining ChatGPT Site Tools observation stays red rather than being inferre
 8. Open the purpose-bound reviewer handoff. Confirm the reviewer page exposes zero WebMCP tools and
    activate the memory as the distinct reviewer.
 9. Confirm `recall_reviewed_memory` appears only after review; invoke it and verify the compatible
-   `checkout-latency-43` recommendation changes.
+   `checkout-latency-43` selected evidence authority changes, while the UI separately reports whether
+   the bounded action changed.
 10. Download the Authority Receipt and run the documented network-free verifier if desired.
 
 ## Official form answers requiring entrant confirmation

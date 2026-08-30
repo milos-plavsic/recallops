@@ -891,3 +891,17 @@
   its canonical encoding before loading it. The registry is now written without a trailing newline,
   and the dedicated receipt suite passes. `webmcp-rc10` is the successor candidate; no rc9 image,
   source tag, release record, receipt, or failed smoke evidence was overwritten.
+- The official ChatGPT Site Tools journey on deployed `webmcp-rc10` completed the protected
+  operator approval, labeled sandbox execution, immutable observation, agent assessment,
+  independent reviewer certification, and post-review recurrence. ChatGPT correctly rejected the
+  incompatible 0.94-similarity known failure, and server state proved the reviewer surface exposed
+  zero WebMCP tools throughout certification.
+- The same acceptance run falsified one remaining product claim: independent review replaced the
+  selected evidence authority with the newly certified local memory, but the bounded remediation
+  action remained unchanged. The run and screenshots are preserved as rc10 evidence; rc10 is not
+  promoted as the final release and its history is not rewritten.
+- The rc11 correction computes the exact pre-review governed counterfactual by excluding only the
+  newly reviewed memory from the otherwise identical admissible candidate set. It reports evidence-
+  authority change and bounded-action change as separate facts, displays both selected memory IDs,
+  and explicitly states when authority changes while the action remains stable. This strengthens
+  the causal proof without forcing an artificial action change or weakening any policy boundary.

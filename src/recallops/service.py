@@ -764,7 +764,12 @@ class IncidentService:
     def govern_memory(self, memory_id: UUID, request: MemoryGovernanceRequest) -> Memory | None:
         return self._store.govern_memory(memory_id, request)
 
-    def recurrence_view(self, incident: IncidentCreate) -> RecurrenceView:
+    def recurrence_view(
+        self,
+        incident: IncidentCreate,
+        *,
+        newly_reviewed_memory_id: UUID | None = None,
+    ) -> RecurrenceView:
         """Compare similarity-only recall with governed, read-only recurrence recall.
 
         The baseline deliberately sees the same tenant/service candidate pool before lifecycle
@@ -796,6 +801,45 @@ class IncidentService:
             and item.compatibility == 1.0
         ]
         governed = compatible_positive[0] if compatible_positive else None
+        pre_review_candidates = [
+            item for item in compatible_positive if item.memory.id != newly_reviewed_memory_id
+        ]
+        pre_review_governed = pre_review_candidates[0] if pre_review_candidates else None
+        reviewed_evidence_changed_authority = bool(
+            newly_reviewed_memory_id is not None
+            and governed is not None
+            and governed.memory.id == newly_reviewed_memory_id
+            and (pre_review_governed is None or pre_review_governed.memory.id != governed.memory.id)
+        )
+        pre_review_recommendation = (
+            pre_review_governed.memory.action
+            if pre_review_governed
+            else "abstain: no compatible certified positive memory"
+        )
+        governed_recommendation = (
+            governed.memory.action
+            if governed
+            else "abstain: no compatible certified positive memory"
+        )
+        reviewed_evidence_changed_action = bool(
+            reviewed_evidence_changed_authority
+            and pre_review_recommendation != governed_recommendation
+        )
+        if reviewed_evidence_changed_authority and reviewed_evidence_changed_action:
+            change_explanation = (
+                "Independent review changed both the selected evidence authority and the bounded "
+                "recommendation."
+            )
+        elif reviewed_evidence_changed_authority:
+            change_explanation = (
+                "Independent review replaced the prior evidence authority with the locally "
+                "verified memory; the bounded action remained stable."
+            )
+        else:
+            change_explanation = (
+                "Independent review did not change the selected evidence authority for this "
+                "recurrence."
+            )
         warnings = [
             item.memory.id
             for item in governed_candidates
@@ -815,12 +859,15 @@ class IncidentService:
             baseline_recommendation=(
                 baseline.action if baseline else "abstain: no historical memory"
             ),
-            governed_memory_id=governed.memory.id if governed else None,
-            governed_recommendation=(
-                governed.memory.action
-                if governed
-                else "abstain: no compatible certified positive memory"
+            pre_review_governed_memory_id=(
+                pre_review_governed.memory.id if pre_review_governed else None
             ),
+            pre_review_governed_recommendation=pre_review_recommendation,
+            governed_memory_id=governed.memory.id if governed else None,
+            governed_recommendation=governed_recommendation,
+            reviewed_evidence_changed_authority=reviewed_evidence_changed_authority,
+            reviewed_evidence_changed_action=reviewed_evidence_changed_action,
+            change_explanation=change_explanation,
             eligible_memory_ids=[item.memory.id for item in compatible_positive],
             negative_warning_memory_ids=warnings,
             compatibility_policy_version=self._compatibility_policy_version,

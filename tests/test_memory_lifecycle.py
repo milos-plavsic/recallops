@@ -171,6 +171,21 @@ def test_certified_negative_warns_but_cannot_be_recommended() -> None:
     assert recurrence.governed_memory_id != negative.id
 
 
+def test_recurrence_reports_action_change_when_reviewed_action_differs() -> None:
+    prior = memory(suffix="compatible")
+    newly_reviewed = memory(suffix="base")
+    store = InMemoryStore([prior, newly_reviewed])
+    service = IncidentService(store, EMBEDDER, DeterministicReasoner())
+
+    recurrence = service.recurrence_view(incident(), newly_reviewed_memory_id=newly_reviewed.id)
+
+    assert recurrence.governed_memory_id == newly_reviewed.id
+    assert recurrence.pre_review_governed_memory_id == prior.id
+    assert recurrence.reviewed_evidence_changed_authority is True
+    assert recurrence.reviewed_evidence_changed_action is True
+    assert "both the selected evidence authority" in recurrence.change_explanation
+
+
 def test_governance_reason_outcome_and_digest_invariants() -> None:
     pending = memory(state=MemoryState.PENDING_REVIEW, score=0, suffix="pending")
     store = InMemoryStore([pending])

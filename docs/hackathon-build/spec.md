@@ -1316,7 +1316,8 @@ all failures rather than claiming certainty.
 - Similarity-only selects maximum semantic similarity with published deterministic tie-break.
 - RecallOps filters policy-ineligible candidates before governed ranking.
 - Report exact unsafe top selections, pending leakage, correct abstentions, compatibility rejection,
-  negative penalties, and recurrence recommendation changes.
+  negative penalties, and recurrence evidence-authority changes with action changes reported
+  separately.
 - Dataset/result/policy/source digests bind the live case to the raw artifact.
 - All results are explicitly synthetic; no production incident/time/safety extrapolation.
 

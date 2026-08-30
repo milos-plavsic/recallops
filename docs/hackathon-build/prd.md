@@ -357,8 +357,9 @@ Acceptance criteria:
 
 - `checkout-latency-43` is visibly a later compatible occurrence, not a reset of the first incident.
 - `recall_reviewed_memory` appears only after compatible reviewed evidence exists.
-- The newly certified successful memory becomes eligible and changes the recommendation relative to
-  the pre-review state.
+- The newly certified successful memory becomes eligible and changes the selected evidence authority
+  relative to the exact pre-review counterfactual. The product reports separately whether the bounded
+  action changed and must not imply an action change when only its evidence authority changed.
 - The recall result exposes why the evidence is compatible and reviewed.
 - Certified negative evidence appears only as a warning or ranking penalty and is never returned as
   a recommended remediation.
@@ -495,7 +496,7 @@ Acceptance criteria:
 - The headline case shows similarity-only selecting the incompatible known failure while RecallOps
   rejects it before ranking.
 - Results report counts with denominators for unsafe top selections, pending-memory leakage,
-  abstention, incompatibility rejection, and recommendation changes after review.
+  abstention, incompatibility rejection, and evidence-authority changes after review.
 - Results are labeled synthetic and do not claim unmeasured production incidents prevented or time
   saved.
 
@@ -674,7 +675,8 @@ causal story or require a different risk claim:
 
 - A fair published baseline selects the high-similarity incompatible known failure; RecallOps
   rejects it before ranking.
-- Pending evidence never leaks into recall, and a compatible recurrence changes only after review.
+- Pending evidence never leaks into recall, and a compatible recurrence changes selected evidence
+  authority only after review; action change is reported independently.
 - Exact synthetic benchmark counts and denominators demonstrate prevented unsafe selections,
   correct abstention, governed reuse, and zero accepted invariant violations across committed cases.
 
@@ -697,4 +699,3 @@ causal story or require a different risk claim:
 - The video stays in the product; source code and extended test output remain linked evidence.
 - The final spoken line is: **“Similarity can discover experience. Only reviewed evidence earns
   authority.”**
-

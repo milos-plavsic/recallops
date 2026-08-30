@@ -444,8 +444,13 @@ class RecurrenceView(BaseModel):
     symptom: str
     baseline_memory_id: UUID | None
     baseline_recommendation: str
+    pre_review_governed_memory_id: UUID | None
+    pre_review_governed_recommendation: str
     governed_memory_id: UUID | None
     governed_recommendation: str
+    reviewed_evidence_changed_authority: bool
+    reviewed_evidence_changed_action: bool
+    change_explanation: str
     eligible_memory_ids: list[UUID]
     negative_warning_memory_ids: list[UUID]
     compatibility_policy_version: str

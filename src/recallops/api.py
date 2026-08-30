@@ -1593,7 +1593,11 @@ def create_app(
             symptom="checkout-latency-43: compatible recurrence of elevated p95 latency",
             idempotency_key=f"recurrence-{run.run_id.hex}",
         )
-        result = service.recurrence_view(recurrence)
+        reviewed_memory = run_memory(run)
+        result = service.recurrence_view(
+            recurrence,
+            newly_reviewed_memory_id=(reviewed_memory.id if reviewed_memory else None),
+        )
         record_server_activity(
             run,
             activity_type="tool_invoked",
