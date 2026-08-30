@@ -859,3 +859,26 @@
   does not support `--verify`. No smoke artifact or gate update was produced. The corrected workflow
   resolves the annotated tag to a commit with `git rev-parse --verify <tag>^{commit}`; rc7 remains an
   immutable failed candidate and rc8 is the successor rather than rewriting published history.
+
+### Item 10 — direct ChatGPT client finding and fail-safe recovery
+
+- Official ChatGPT Linux desktop `26.825.41651`, using GPT-5.6 Terra with high reasoning, discovered
+  exactly `inspect_incident` and `propose_mitigation` on `webmcp-rc8`. It invoked both tools,
+  rejected the incompatible higher-similarity candidate, staged proposal
+  `97734ef6-b1f9-4fcb-a138-900dca334ab9`, and then exposed exactly one read tool and zero write tools
+  while the page showed `AWAITING_OPERATOR_APPROVAL` and `HUMAN_OPERATOR`. The earlier Sol attempt
+  that was denied browser access is retained in the partial observation rather than omitted.
+- The operator approval attempt failed closed with `valid CSRF token required`. Root cause: creating
+  a new ChatGPT Work chat recreated the built-in browser tab, preserving the secure HttpOnly
+  operator cookie while correctly discarding the tab-bound synchronizer token from session storage.
+  The old token cannot be reconstructed and the failed proposal was not approved or executed.
+- Added a narrow recovery state: when an operator cookie is restored without its tab-bound CSRF
+  token, RecallOps labels the session read-only, disables every protected operator control, hides
+  the protected logout path, and offers a fresh isolated judge scenario. It does not recover,
+  authorize, reset, or mutate the old run. A browser regression removes the token, reloads the page,
+  and proves all protected controls remain disabled.
+- Verification passed after the fix: tracked Ruff and strict mypy; 494 Python tests including the
+  real CockroachDB boundary suite; exactly 5,427/5,427 tracked statements and 1,216/1,216 branches
+  covered (100.00%); 10/10 browser tests; and 4/4 native Chromium WebMCP tests. The direct ChatGPT
+  protocol remains incomplete and `passed: false` until a successor immutable release completes the
+  whole operator, observer, agent-assessment, reviewer, and recurrence journey with captured media.

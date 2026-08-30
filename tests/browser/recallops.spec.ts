@@ -622,4 +622,18 @@ test("judge bootstrap is removed from the URL and WebMCP receives no CSRF author
   expect(proposalHeaders[0]["idempotency-key"]).toBeTruthy();
   expect(await page.evaluate(() => sessionStorage.getItem("judge_csrf"))).toBe("synchronizer-token");
   expect(page.url()).not.toContain("judge-bootstrap-secret");
+
+  await page.evaluate(() => sessionStorage.removeItem("judge_csrf"));
+  await page.reload();
+  await expect(page.locator("#auth-status")).toHaveText(
+    "Operator session restored read-only · protected token unavailable",
+  );
+  await expect(page.locator("#start-judge")).toBeVisible();
+  await expect(page.locator("#start-judge")).toBeEnabled();
+  await expect(page.locator("#start-judge")).toHaveText("Start fresh isolated judge scenario");
+  await expect(page.locator("#signout")).toBeHidden();
+  await expect(page.locator("#approve")).toBeDisabled();
+  await expect(page.locator("#reject-proposal")).toBeDisabled();
+  await expect(page.locator("#execute")).toBeDisabled();
+  await expect(page.locator("#reset-workflow")).toBeDisabled();
 });

@@ -48,6 +48,9 @@ function base64Url(data) {
   return btoa(String.fromCharCode(...data)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 function accessToken() { return sessionStorage.getItem("access_token"); }
+function protectedUiReady() {
+  return state.config?.auth_mode !== "judge" || Boolean(sessionStorage.getItem("judge_csrf"));
+}
 function headers(actor = "demo-operator", roles = "operator", channel = "ui", epoch = null) {
   const token = accessToken() || $("#token").value.trim();
   const context = {
@@ -127,16 +130,17 @@ function renderAuthorityChain(phase) {
 
 function syncProtectedControls(phase) {
   if (state.config?.auth_mode !== "judge") return;
+  const protectedReady = protectedUiReady();
   $("#loop-actions").hidden = false;
-  $("#approve").disabled = phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
-  $("#reject-proposal").disabled = phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
-  $("#execute").disabled = phase !== "APPROVED_AWAITING_EXECUTION" || !state.action;
-  $("#retry-observation").disabled = phase !== "POSTCHECK_UNAVAILABLE";
-  $("#review").disabled = phase !== "PENDING_REVIEW" || !state.memoryDigest;
+  $("#approve").disabled = !protectedReady || phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
+  $("#reject-proposal").disabled = !protectedReady || phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
+  $("#execute").disabled = !protectedReady || phase !== "APPROVED_AWAITING_EXECUTION" || !state.action;
+  $("#retry-observation").disabled = !protectedReady || phase !== "POSTCHECK_UNAVAILABLE";
+  $("#review").disabled = !protectedReady || phase !== "PENDING_REVIEW" || !state.memoryDigest;
   $("#review").hidden = phase === "REVIEWED";
   $("#observe").hidden = true;
   $("#recall").hidden = true;
-  $("#reset-workflow").disabled = phase === "SYNC_UNAVAILABLE";
+  $("#reset-workflow").disabled = !protectedReady || phase === "SYNC_UNAVAILABLE";
 }
 
 function renderEvidence(observation, assessment = null, verdict = null) {
@@ -720,7 +724,14 @@ async function initialize() {
         $("#tenant").value = state.identity.tenant_id; $("#tenant").disabled = true;
         $("#auth-status").textContent = `${state.identity.roles.join(" + ")} · ${state.identity.subject.slice(0, 8)}`;
         $("#signin").hidden = true; $("#signout").hidden = false;
-        $("#start-judge").hidden = state.config.auth_mode === "judge";
+        const missingJudgeCsrf = state.config.auth_mode === "judge" && !protectedUiReady();
+        $("#start-judge").hidden = state.config.auth_mode === "judge" && !missingJudgeCsrf;
+        if (missingJudgeCsrf) {
+          $("#auth-status").textContent = "Operator session restored read-only · protected token unavailable";
+          $("#signout").hidden = true;
+          $("#start-judge").disabled = false;
+          $("#start-judge").textContent = "Start fresh isolated judge scenario";
+        }
         if (state.config.auth_mode === "judge") {
           const run = await request("/v1/operator/run");
           state.incidentId = run.incident_id;
