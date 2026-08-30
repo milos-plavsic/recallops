@@ -882,3 +882,12 @@
   covered (100.00%); 10/10 browser tests; and 4/4 native Chromium WebMCP tests. The direct ChatGPT
   protocol remains incomplete and `passed: false` until a successor immutable release completes the
   whole operator, observer, agent-assessment, reviewer, and recurrence journey with captured media.
+- `webmcp-rc9` deployed the recovery fix and passed both public Playwright journeys, but the
+  credential-free bundle failed the independent verifier with `E_CANONICAL`. The signed bundle was
+  canonical; the repository trust registry had gained a single trailing newline during the rc9
+  release-ID edit. Because the offline verifier requires exact RFC 8785 bytes, it correctly rejected
+  the registry before signature verification. rc9 remains an immutable failed candidate.
+- Added a repository-level regression that compares the committed trust registry byte-for-byte to
+  its canonical encoding before loading it. The registry is now written without a trailing newline,
+  and the dedicated receipt suite passes. `webmcp-rc10` is the successor candidate; no rc9 image,
+  source tag, release record, receipt, or failed smoke evidence was overwritten.

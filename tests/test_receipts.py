@@ -647,6 +647,13 @@ def test_registry_file_must_itself_be_canonical_and_pinned(tmp_path: Path) -> No
     assert TrustedKeyRegistry.from_bytes(canonical).document.keys == ()
 
 
+def test_repository_trusted_key_registry_is_exact_canonical_bytes() -> None:
+    path = Path(__file__).parents[1] / "tools" / "trusted-receipt-keys.json"
+    raw = path.read_bytes()
+    assert raw == canonical_bytes(json.loads(raw))
+    assert TrustedKeyRegistry.load(path).document.registry_version == "trusted-receipt-keys-v1"
+
+
 def test_unpinned_kms_key_fails_preflight() -> None:
     key = private_key()
     signer = KmsReceiptSigner(
