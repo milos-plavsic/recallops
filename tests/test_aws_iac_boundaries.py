@@ -321,6 +321,7 @@ def test_release_bootstraps_fail_closed_before_any_service_runs() -> None:
     ):
         container = resources[task]["Properties"]["ContainerDefinitions"][0]
         assert container["ReadonlyRootFilesystem"] is True
+        assert container["User"] == "65532"
         assert container["LinuxParameters"]["Capabilities"] == {"Drop": ["ALL"]}
 
 

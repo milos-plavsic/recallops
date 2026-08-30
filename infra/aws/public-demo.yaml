@@ -607,6 +607,7 @@ Resources:
           Image: !Ref ImageUri
           Essential: true
           ReadonlyRootFilesystem: true
+          User: '65532'
           LinuxParameters:
             Capabilities: { Drop: [ALL] }
             InitProcessEnabled: true
@@ -664,6 +665,7 @@ Resources:
           Essential: true
           Command: [recallops-outbox, --watch, --poll-seconds, '5']
           ReadonlyRootFilesystem: true
+          User: '65532'
           LinuxParameters:
             Capabilities: { Drop: [ALL] }
             InitProcessEnabled: true
@@ -701,6 +703,7 @@ Resources:
           Essential: true
           Command: [recallops-receipt-worker, --watch, --poll-seconds, '2']
           ReadonlyRootFilesystem: true
+          User: '65532'
           LinuxParameters:
             Capabilities: { Drop: [ALL] }
             InitProcessEnabled: true
@@ -752,6 +755,7 @@ Resources:
           Essential: true
           Command: [recallops-migrate]
           ReadonlyRootFilesystem: true
+          User: '65532'
           LinuxParameters:
             Capabilities: { Drop: [ALL] }
             InitProcessEnabled: true
