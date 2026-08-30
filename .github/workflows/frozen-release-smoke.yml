@@ -19,8 +19,8 @@ jobs:
     timeout-minutes: 12
     env:
       RECALLOPS_LIVE_URL: https://6n4hjbd6xh.execute-api.us-east-1.amazonaws.com
-      RECALLOPS_EXPECTED_RELEASE_ID: webmcp-rc11
-      RECALLOPS_RELEASE_TAG: webmcp-rc11-source
+      RECALLOPS_EXPECTED_RELEASE_ID: webmcp-rc12
+      RECALLOPS_RELEASE_TAG: webmcp-rc12-source
       RECALLOPS_TRUSTED_KEYS: tools/trusted-receipt-keys.json
       RECALLOPS_SMOKE_OUTPUT: artifacts/smoke-live.json
     steps:
