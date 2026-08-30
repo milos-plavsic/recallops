@@ -70,6 +70,11 @@ test("a first-time judge completes the visible governed recurrence without docum
   });
   await expect(page.locator("#webmcp-state")).toHaveText("PENDING_REVIEW");
   await expect(page.locator("#evidence-assessment")).toHaveText("recovered");
+  await page.reload();
+  await expect(page.locator("#webmcp-state")).toHaveText("PENDING_REVIEW");
+  await expect(
+    page.getByRole("button", { name: "Create independent reviewer handoff" }),
+  ).toBeEnabled();
   await page.getByRole("button", { name: "Create independent reviewer handoff" }).click();
   const reviewerLink = page.getByRole("link", { name: "Open independent reviewer" });
   await expect(reviewerLink).toBeVisible();

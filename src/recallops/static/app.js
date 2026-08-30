@@ -131,12 +131,17 @@ function renderAuthorityChain(phase) {
 function syncProtectedControls(phase) {
   if (state.config?.auth_mode !== "judge") return;
   const protectedReady = protectedUiReady();
+  const reviewerHandoffVisible = !$("#reviewer-link").hidden;
   $("#loop-actions").hidden = false;
   $("#approve").disabled = !protectedReady || phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
   $("#reject-proposal").disabled = !protectedReady || phase !== "AWAITING_OPERATOR_APPROVAL" || !state.action;
   $("#execute").disabled = !protectedReady || phase !== "APPROVED_AWAITING_EXECUTION" || !state.action;
   $("#retry-observation").disabled = !protectedReady || phase !== "POSTCHECK_UNAVAILABLE";
-  $("#review").disabled = !protectedReady || phase !== "PENDING_REVIEW" || !state.memoryDigest;
+  $("#review").textContent = reviewerHandoffVisible
+    ? "Reviewer handoff created"
+    : "Create independent reviewer handoff";
+  $("#review").disabled = !protectedReady || phase !== "PENDING_REVIEW"
+    || !state.memoryDigest || reviewerHandoffVisible;
   $("#review").hidden = phase === "REVIEWED";
   $("#observe").hidden = true;
   $("#recall").hidden = true;
