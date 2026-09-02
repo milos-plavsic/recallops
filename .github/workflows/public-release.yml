@@ -6,7 +6,7 @@ on:
       release_id:
         description: Immutable release ID authorized by tools/trusted-receipt-keys.json
         required: true
-        default: webmcp-rc17
+        default: webmcp-rc18
 
 permissions:
   contents: read
