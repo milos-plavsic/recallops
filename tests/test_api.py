@@ -54,11 +54,14 @@ def test_judge_console_and_live_evaluation_are_served() -> None:
     client = TestClient(create_app(Settings(store="memory"), InMemoryStore()))
 
     console = client.get("/")
+    app_bundle = client.get("/assets/app.js?v=webmcp-prompts-20260902")
     report = client.get("/v1/evaluation")
 
     assert console.status_code == 200
     assert "Investigate with agents" in console.text
-    assert "Replayable agent trace" in client.get("/assets/app.js").text
+    assert console.headers["cache-control"] == "no-store"
+    assert "Replayable agent trace" in app_bundle.text
+    assert app_bundle.headers["cache-control"] == "no-store"
     assert report.status_code == 200
     assert report.json()["passed"] is True
     assert report.json()["similarity_only"]["unsafe_selection_rate"] > 0

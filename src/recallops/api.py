@@ -2553,7 +2553,17 @@ def create_app(
 
     @app.get("/", include_in_schema=False)
     def console() -> FileResponse:
-        return FileResponse(static_directory / "index.html")
+        return FileResponse(
+            static_directory / "index.html", headers={"Cache-Control": "no-store"}
+        )
+
+    @app.get("/assets/app.js", include_in_schema=False)
+    def console_application() -> FileResponse:
+        # The console's authority prompts are rendered by this bundle. Never
+        # let a long-lived tab retain an obsolete policy surface after release.
+        return FileResponse(
+            static_directory / "app.js", headers={"Cache-Control": "no-store"}
+        )
 
     @app.get("/reviewer", include_in_schema=False)
     def reviewer_console() -> FileResponse:
