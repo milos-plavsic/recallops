@@ -53,7 +53,7 @@ h2 { margin-bottom: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; lett
 .principle p { margin-bottom: 0; color: var(--muted); }
 .danger-proof strong { display: block; margin: .7rem 0 .2rem; color: var(--danger); font: 650 2rem ui-monospace, monospace; }
 .compact-status { min-height: 1.5rem; margin: .5rem 0 0; font-size: .78rem; }
-.hero-prompt { margin: 1rem 0 0; padding: .7rem .9rem; border-left: 2px solid var(--cyan); background: #0b1119; color: #dce7f4; font-size: .82rem; }
+.hero-prompt { margin: 1rem 0 0; padding: .7rem .9rem; border-left: 2px solid var(--cyan); background: #0b1119; color: #dce7f4; font-size: .82rem; white-space: pre-wrap; }
 .readiness { display: flex; flex-wrap: wrap; gap: .5rem; margin-top: 1rem; }
 .readiness-badge { padding: .35rem .6rem; border: 1px solid var(--line); border-radius: .25rem; font: 700 .66rem ui-monospace, monospace; }
 .readiness-badge.pending { color: #ffe082; border-color: #685c25; background: #201d0c; }
@@ -76,7 +76,8 @@ h2 { margin-bottom: 0; font-size: clamp(2rem, 4vw, 3.5rem); line-height: 1; lett
 .judge-brief p { margin-bottom: 0; }
 .prompt-card { border-left: 2px solid var(--cyan); padding-left: 1rem; }
 .prompt-card b { color: var(--cyan); font-size: .78rem; }
-.prompt-card p { margin-top: .35rem; color: #dce7f4; }
+.prompt-card p { margin-top: .35rem; color: #dce7f4; white-space: pre-wrap; }
+.prompt-copy { min-height: 2.1rem; margin: .5rem 0 .15rem; padding: .35rem .65rem; font-size: .72rem; }
 .trust-legend { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: .5rem; }
 .trust-legend span { padding: .3rem .5rem; border: 1px solid var(--line); color: var(--muted); font: 650 .64rem ui-monospace, monospace; }
 .panel { min-width: 0; border: 1px solid var(--line); border-radius: .45rem; padding: 1.4rem; background: #101620e8; }

@@ -1387,7 +1387,7 @@ def create_app(
                     "memory_id": str(retrieved.memory.id),
                     "similarity": round(retrieved.semantic_similarity, 6),
                     "eligible": bool(decision and decision.disposition.value == "selected"),
-                    "rejection_codes": [] if decision is None else decision.reasons[:5],
+                    "rejection_codes": [] if decision is None else decision.reasons,
                     "service_version": retrieved.memory.service_version,
                     "outcome_semantics": retrieved.memory.outcome_semantics,
                     "state": retrieved.memory.state,

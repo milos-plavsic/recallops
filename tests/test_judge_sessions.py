@@ -631,6 +631,11 @@ def test_frozen_webmcp_manifest_proposal_and_activity_are_fail_closed() -> None:
         (0.94, False),
         (0.81, True),
     ]
+    assert evidence["candidates"][0]["rejection_codes"] == [
+        "rank_score_below_threshold",
+        "service_version_incompatible",
+        "outcome_not_positive",
+    ]
     assert "incident.symptom" in evidence["untrusted_fields"]
     assert evidence["verified_postcheck"] is None
     assert "verified_postcheck" in evidence["trusted_fields"]

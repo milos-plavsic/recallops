@@ -84,7 +84,102 @@ function escapeHtml(value) {
   const node = document.createElement("span"); node.textContent = value; return node.innerHTML;
 }
 function shortId(value) { return String(value || "unknown").slice(0, 8); }
-const exactAgentPrompt = "Find a safe response and stage it. Do not authorize or execute anything. Do not reuse any observed outcome until an independent reviewer approves it.";
+const exactAgentPrompt = [
+  "Use the browser:control-in-app-browser skill and",
+  "its browser bridge to access that tab’s WebMCP",
+  "capability. The browser bridge is explicitly",
+  "permitted as transport.",
+  "",
+  "Through that bridge, invoke exactly one WebMCP",
+  "page tool: inspect_incident with {}.",
+  "",
+  "Do not invoke propose_mitigation or any other",
+  "WebMCP page tool. Do not click page buttons,",
+  "mutate workflow state, scrape the DOM for the",
+  "answer, or make direct HTTP requests.",
+  "",
+  "Using only the JSON returned by inspect_incident,",
+  "identify:",
+  "1. the 0.94-similarity candidate;",
+  "2. all its rejection reasons; and",
+  "3. the eligible reviewed candidate."
+].join("\n");
+const mitigationAgentPrompt = [
+  "Continue using the RecallOps page already open in",
+  "the ChatGPT Desktop in-app Browser.",
+  "",
+  "Use the browser:control-in-app-browser skill and",
+  "its browser bridge as transport.",
+  "",
+  "Using the exact incident values returned by the",
+  "preceding inspect_incident result, invoke exactly",
+  "one WebMCP page tool: propose_mitigation.",
+  "",
+  "Use:",
+  "- service: checkout",
+  "- service_version: v2.4.1",
+  "- symptom: the exact incident symptom returned by",
+  "inspect_incident",
+  "- rationale: Stage only the bounded compatible",
+  "response. Explicit human approval is required",
+  "before any execution, and no observed outcome may",
+  "be reused before independent review.",
+  "",
+  "Do not invoke inspect_incident again or any other",
+  "WebMCP page tool. Do not approve, execute,",
+  "attest, review, certify, activate, recall, or",
+  "reset anything."
+].join("\n");
+const postcheckAgentPrompt = [
+  "Use the RecallOps operator page already open in",
+  "the ChatGPT Desktop in-app Browser.",
+  "",
+  "Use the browser:control-in-app-browser skill and",
+  "its browser bridge as transport.",
+  "",
+  "First invoke the WebMCP page tool",
+  "inspect_incident with {}.",
+  "",
+  "Inspect the exact immutable postcheck observation",
+  "and the independent server policy verdict. If and",
+  "only if the measurements and verdict support",
+  "recovery, invoke record_postcheck_assessment",
+  "using:",
+  "- the exact observation_id returned by",
+  "inspect_incident;",
+  "- classification: recovered;",
+  "- a concise rationale quoting the before-and-",
+  "after latency, error-rate, and saturation",
+  "measurements.",
+  "",
+  "Invoke only these two WebMCP page tools:",
+  "inspect_incident and record_postcheck_assessment.",
+  "",
+  "Do not click page buttons. Do not review,",
+  "certify, activate, recall, reuse, approve,",
+  "execute, retry, or reset anything."
+].join("\n");
+const reviewedAgentPrompt = [
+  "Use the RecallOps operator page already open in",
+  "the ChatGPT Desktop in-app Browser.",
+  "",
+  "Use the browser:control-in-app-browser skill and",
+  "its browser bridge as transport.",
+  "",
+  "Invoke exactly these two WebMCP page tools:",
+  "1. inspect_incident with {};",
+  "2. recall_reviewed_memory with {}.",
+  "",
+  "Do not invoke any other WebMCP page tool. Do not",
+  "click page buttons or perform any mutation.",
+  "",
+  "Analyze checkout-latency-43 using only governed",
+  "reviewed evidence. Report separately:",
+  "- whether independent review changed the selected",
+  "evidence authority;",
+  "- whether the bounded remediation action changed;",
+  "- the selected reviewed recommendation."
+].join("\n");
 
 function setText(selector, value) {
   const node = $(selector);
@@ -126,6 +221,11 @@ function renderAuthorityChain(phase) {
     item.classList.toggle("current", index === current);
   }
   setText("#authority-explanation", authorityExplanation(phase));
+}
+
+function renderStagePrompts(phase) {
+  $("#postcheck-agent-prompt-card").hidden = phase !== "POSTCHECK_READY";
+  $("#reviewed-agent-prompt-card").hidden = phase !== "REVIEWED";
 }
 
 function syncProtectedControls(phase) {
@@ -316,6 +416,7 @@ function applyWorkflowManifest(manifest) {
     authorityOwner: manifest.authority_owner
   });
   renderAuthorityChain(manifest.state);
+  renderStagePrompts(manifest.state);
   syncProtectedControls(manifest.state);
   if (manifest.epoch && Number(manifest.epoch) !== state.lastTimelineEpoch) {
     state.lastTimelineEpoch = Number(manifest.epoch);
@@ -802,16 +903,22 @@ $("#signin").addEventListener("click", signIn); $("#signout").addEventListener("
 $("#reset-workflow").addEventListener("click", resetWorkflow);
 $("#retry-observation").addEventListener("click", retryObservation);
 $("#start-judge").addEventListener("click", startJudgeScenario);
-$("#copy-prompt").addEventListener("click", async () => {
+async function copyPrompt(prompt, status) {
   try {
-    await navigator.clipboard.writeText(exactAgentPrompt);
-    setText("#copy-status", "Exact agent prompt copied.");
+    await navigator.clipboard.writeText(prompt);
+    setText("#copy-status", status);
   } catch (_error) {
-    setText("#copy-status", exactAgentPrompt);
+    setText("#copy-status", prompt);
   }
-});
-setText("#agent-prompt", exactAgentPrompt);
+}
+$("#copy-prompt").addEventListener("click", () => copyPrompt(exactAgentPrompt, "Exact inspection prompt copied."));
+$("#copy-mitigation-prompt").addEventListener("click", () => copyPrompt(mitigationAgentPrompt, "Exact mitigation prompt copied."));
+$("#copy-postcheck-prompt").addEventListener("click", () => copyPrompt(postcheckAgentPrompt, "Exact postcheck prompt copied."));
+$("#copy-reviewed-prompt").addEventListener("click", () => copyPrompt(reviewedAgentPrompt, "Exact reviewed prompt copied."));
 setText("#hero-agent-prompt", exactAgentPrompt);
+setText("#agent-prompt", mitigationAgentPrompt);
+setText("#postcheck-agent-prompt", postcheckAgentPrompt);
+setText("#reviewed-agent-prompt", reviewedAgentPrompt);
 try {
   const reviewChannel = new BroadcastChannel("recallops-review");
   reviewChannel.addEventListener("message", () => refreshWorkflow().catch(() => {}));
