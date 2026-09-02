@@ -224,6 +224,10 @@ function renderAuthorityChain(phase) {
 }
 
 function renderStagePrompts(phase) {
+  const investigating = phase === "INVESTIGATING";
+  $("#copy-prompt").hidden = !investigating;
+  $("#hero-agent-prompt").hidden = !investigating;
+  $("#mitigation-agent-prompt-card").hidden = !investigating;
   $("#postcheck-agent-prompt-card").hidden = phase !== "POSTCHECK_READY";
   $("#reviewed-agent-prompt-card").hidden = phase !== "REVIEWED";
 }

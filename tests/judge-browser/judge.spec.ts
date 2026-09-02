@@ -26,6 +26,9 @@ test("a first-time judge completes the visible governed recurrence without docum
   await expect(page.getByText("0.94 similarity")).toBeVisible();
   await expect(page.locator("#hero-agent-prompt")).toContainText("invoke exactly one WebMCP");
   await expect(page.locator("#agent-prompt")).toContainText("service_version: v2.4.1");
+  await expect(page.locator("#mitigation-agent-prompt-card")).toBeVisible();
+  await expect(page.locator("#postcheck-agent-prompt-card")).toBeHidden();
+  await expect(page.locator("#reviewed-agent-prompt-card")).toBeHidden();
   await page.getByRole("button", { name: "Copy exact agent prompt" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("inspect_incident with {}");
   await page.getByRole("button", { name: "Copy mitigation prompt" }).click();
@@ -59,7 +62,11 @@ test("a first-time judge completes the visible governed recurrence without docum
   await page.getByRole("button", { name: "Approve exact action" }).click();
   await page.getByRole("button", { name: "Apply sandbox mitigation" }).click();
   await expect(page.locator("#webmcp-state")).toHaveText("POSTCHECK_READY");
+  await expect(page.locator("#copy-prompt")).toBeHidden();
+  await expect(page.locator("#hero-agent-prompt")).toBeHidden();
+  await expect(page.locator("#mitigation-agent-prompt-card")).toBeHidden();
   await expect(page.locator("#postcheck-agent-prompt-card")).toBeVisible();
+  await expect(page.locator("#reviewed-agent-prompt-card")).toBeHidden();
   await expect(page.locator("#postcheck-agent-prompt")).toContainText("record_postcheck_assessment");
   await page.getByRole("button", { name: "Copy postcheck prompt" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("only these two WebMCP page tools");
@@ -114,6 +121,10 @@ test("a first-time judge completes the visible governed recurrence without docum
       "inspect_incident", "recall_reviewed_memory",
     ]);
   await expect(page.locator("#reviewed-agent-prompt-card")).toBeVisible();
+  await expect(page.locator("#copy-prompt")).toBeHidden();
+  await expect(page.locator("#hero-agent-prompt")).toBeHidden();
+  await expect(page.locator("#mitigation-agent-prompt-card")).toBeHidden();
+  await expect(page.locator("#postcheck-agent-prompt-card")).toBeHidden();
   await expect(page.locator("#reviewed-agent-prompt")).toContainText("checkout-latency-43");
   await page.getByRole("button", { name: "Copy reviewed prompt" }).click();
   await expect.poll(() => page.evaluate(() => navigator.clipboard.readText())).toContain("recall_reviewed_memory");
