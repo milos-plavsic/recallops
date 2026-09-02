@@ -349,6 +349,41 @@ def test_deployment_authority_is_current_account_only_and_cannot_sign() -> None:
         "StringEquals": {"iam:PassedToService": "cloudformation.amazonaws.com"}
     }
 
+    migration = next(
+        statement
+        for statement in deployment["Statement"]
+        if statement["Sid"] == "RunOnlyPublicMigrationTask"
+    )
+    assert migration == {
+        "Sid": "RunOnlyPublicMigrationTask",
+        "Effect": "Allow",
+        "Action": "ecs:RunTask",
+        "Resource": (
+            f"arn:aws:ecs:us-east-1:{CURRENT_ACCOUNT}:task-definition/"
+            "recallops-public-migration:*"
+        ),
+        "Condition": {
+            "ArnEquals": {
+                "ecs:cluster": (
+                    f"arn:aws:ecs:us-east-1:{CURRENT_ACCOUNT}:cluster/"
+                    "recallops-public-cluster"
+                )
+            }
+        },
+    }
+    migration_roles = next(
+        statement
+        for statement in deployment["Statement"]
+        if statement["Sid"] == "PassOnlyPublicMigrationRoles"
+    )
+    assert migration_roles["Resource"] == [
+        f"arn:aws:iam::{CURRENT_ACCOUNT}:role/recallops-public-migration-execution",
+        f"arn:aws:iam::{CURRENT_ACCOUNT}:role/recallops-public-migration-task",
+    ]
+    assert migration_roles["Condition"] == {
+        "StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}
+    }
+
 
 def test_cloudformation_execution_policy_has_no_wildcard_identity_mutation() -> None:
     execution = policy("public-demo-execution-policy.json")

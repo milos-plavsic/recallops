@@ -59,6 +59,37 @@
       "Resource": "arn:aws:iam::158363272009:role/recallops-cloudformation-execution"
     },
     {
+      "Sid": "RunOnlyPublicMigrationTask",
+      "Effect": "Allow",
+      "Action": "ecs:RunTask",
+      "Resource": "arn:aws:ecs:us-east-1:158363272009:task-definition/recallops-public-migration:*",
+      "Condition": {
+        "ArnEquals": {
+          "ecs:cluster": "arn:aws:ecs:us-east-1:158363272009:cluster/recallops-public-cluster"
+        }
+      }
+    },
+    {
+      "Sid": "ObserveOnlyPublicMigrationTask",
+      "Effect": "Allow",
+      "Action": "ecs:DescribeTasks",
+      "Resource": "*"
+    },
+    {
+      "Sid": "PassOnlyPublicMigrationRoles",
+      "Effect": "Allow",
+      "Action": "iam:PassRole",
+      "Resource": [
+        "arn:aws:iam::158363272009:role/recallops-public-migration-execution",
+        "arn:aws:iam::158363272009:role/recallops-public-migration-task"
+      ],
+      "Condition": {
+        "StringEquals": {
+          "iam:PassedToService": "ecs-tasks.amazonaws.com"
+        }
+      }
+    },
+    {
       "Sid": "PublishImmutableRecallOpsImages",
       "Effect": "Allow",
       "Action": [
