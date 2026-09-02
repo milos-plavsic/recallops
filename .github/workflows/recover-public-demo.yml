@@ -1,0 +1,102 @@
+name: Recover public RecallOps demo
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: recallops-public-release
+  cancel-in-progress: false
+
+jobs:
+  recover:
+    name: Complete pending public release activation
+    runs-on: ubuntu-latest
+    environment: recallops-production
+    timeout-minutes: 25
+    env:
+      AWS_REGION: us-east-1
+      STACK_NAME: recallops-public
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+
+      - name: Install release tooling
+        run: |
+          python -m pip install --requirement requirements.lock
+          python -m pip install --no-deps --editable .
+
+      - name: Acquire bounded deployment identity
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::158363272009:role/RecallOpsGitHubDeployment
+          role-session-name: recallops-recovery-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Verify release gate and stack stability
+        run: |
+          set -euo pipefail
+          python scripts/aws-zero-spend-preflight.py --minimum-credits 50 --minimum-days 14
+          status="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].StackStatus' --output text)"
+          test "$status" = UPDATE_COMPLETE
+
+      - name: Run the current one-shot migration idempotently
+        run: |
+          set -euo pipefail
+          cluster="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue | [0]" --output text)"
+          task_definition="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='MigrationTaskDefinitionArn'].OutputValue | [0]" --output text)"
+          security_group="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WorkerTaskSecurityGroupId'].OutputValue | [0]" --output text)"
+          subnets="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='PublicSubnetIds'].OutputValue | [0]" --output text)"
+          task_arn="$(aws ecs run-task --cluster "$cluster" --launch-type FARGATE --task-definition "$task_definition" \
+            --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)"
+          test -n "$task_arn" && test "$task_arn" != None
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
+          test "$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)" = 0
+
+      - name: Reactivate API and receipt services
+        run: |
+          set -euo pipefail
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          keys = subprocess.check_output([
+              'aws', 'cloudformation', 'describe-stacks', '--stack-name', os.environ['STACK_NAME'],
+              '--query', 'Stacks[0].Parameters[].ParameterKey', '--output', 'json',
+          ], text=True)
+          desired = {'DesiredApiCount': '1', 'DesiredOutboxCount': '0', 'DesiredReceiptCount': '1'}
+          parameters = [
+              {'ParameterKey': key, 'ParameterValue': desired[key]}
+              if key in desired else {'ParameterKey': key, 'UsePreviousValue': True}
+              for key in json.loads(keys)
+          ]
+          with open('recovery-parameters.json', 'w', encoding='utf-8') as output:
+              json.dump(parameters, output)
+          PY
+          change_set="recovery-live-$GITHUB_RUN_ID"
+          aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
+            --change-set-type UPDATE --use-previous-template \
+            --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
+            --capabilities CAPABILITY_NAMED_IAM --parameters file://recovery-parameters.json
+          aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+          cluster="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue | [0]" --output text)"
+          api="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiServiceName'].OutputValue | [0]" --output text)"
+          receipt="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ReceiptServiceName'].OutputValue | [0]" --output text)"
+          aws ecs wait services-stable --cluster "$cluster" --services "$api" "$receipt"
+
+      - name: Verify public readiness
+        run: |
+          set -euo pipefail
+          url="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='PublicUrl'].OutputValue | [0]" --output text)"
+          curl --fail --silent --show-error "$url/ready"
