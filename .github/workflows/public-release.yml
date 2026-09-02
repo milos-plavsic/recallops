@@ -1,0 +1,178 @@
+name: Release public RecallOps demo
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_id:
+        description: Immutable release ID authorized by tools/trusted-receipt-keys.json
+        required: true
+        default: webmcp-rc15
+
+permissions:
+  contents: read
+  id-token: write
+
+concurrency:
+  group: recallops-public-release
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Two-phase public release
+    runs-on: ubuntu-latest
+    environment: recallops-production
+    timeout-minutes: 45
+    env:
+      AWS_REGION: us-east-1
+      STACK_NAME: recallops-public
+      FOUNDATION_STACK: recallops-foundation
+      RELEASE_ID: ${{ inputs.release_id }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+          cache: pip
+
+      - name: Install frozen release tooling
+        run: |
+          python -m pip install --requirement requirements.lock
+          python -m pip install --no-deps --editable .
+
+      - name: Acquire bounded deployment identity
+        uses: aws-actions/configure-aws-credentials@e6de054238d6b7531b4efff3b6587d9aade6a06c # v6.2.3
+        with:
+          aws-region: us-east-1
+          role-to-assume: arn:aws:iam::158363272009:role/RecallOpsGitHubDeployment
+          role-session-name: recallops-public-${{ github.run_id }}
+          mask-aws-account-id: true
+
+      - name: Verify release identity and zero-spend gate
+        run: |
+          set -euo pipefail
+          test "$(git rev-parse HEAD)" = "$GITHUB_SHA"
+          python scripts/aws-zero-spend-preflight.py --minimum-credits 50 --minimum-days 14 \
+            --output artifacts/aws/zero-spend-preflight.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+          release_id = __import__('os').environ['RELEASE_ID']
+          keys = json.loads(Path('tools/trusted-receipt-keys.json').read_text())['keys']
+          if not any(key['status'] == 'active' and release_id in key['release_ids'] for key in keys):
+              raise SystemExit(f'{release_id} is not authorized by the trusted key registry')
+          PY
+
+      - name: Build and push immutable image
+        id: image
+        run: |
+          set -euo pipefail
+          account_id="$(aws sts get-caller-identity --query Account --output text)"
+          repository_uri="$account_id.dkr.ecr.$AWS_REGION.amazonaws.com/recallops"
+          aws ecr get-login-password | docker login --username AWS --password-stdin "$account_id.dkr.ecr.$AWS_REGION.amazonaws.com"
+          docker build --pull --build-arg "BUILD_SHA=$GITHUB_SHA" --tag "$repository_uri:$GITHUB_SHA" .
+          docker push "$repository_uri:$GITHUB_SHA"
+          digest="$(aws ecr describe-images --repository-name recallops --image-ids imageTag="$GITHUB_SHA" --query 'imageDetails[0].imageDigest' --output text)"
+          case "$digest" in sha256:[0-9a-f][0-9a-f]*) ;; *) exit 1;; esac
+          echo "uri=$repository_uri@$digest" >> "$GITHUB_OUTPUT"
+          echo "digest=$digest" >> "$GITHUB_OUTPUT"
+
+      - name: Generate and upload immutable release artifacts
+        id: artifacts
+        run: |
+          set -euo pipefail
+          key_arn="$(aws cloudformation describe-stacks --stack-name "$FOUNDATION_STACK" --query "Stacks[0].Outputs[?OutputKey=='ReceiptSigningKeyArn'].OutputValue | [0]" --output text)"
+          evidence_key_arn="$(aws cloudformation describe-stacks --stack-name "$FOUNDATION_STACK" --query "Stacks[0].Outputs[?OutputKey=='EvidenceEncryptionKeyArn'].OutputValue | [0]" --output text)"
+          bucket="$(aws cloudformation describe-stacks --stack-name "$FOUNDATION_STACK" --query "Stacks[0].Outputs[?OutputKey=='EvidenceBucketName'].OutputValue | [0]" --output text)"
+          kid="$(python -c "import json; print(json.load(open('tools/trusted-receipt-keys.json'))['keys'][0]['kid'])")"
+          test -n "$key_arn" && test "$key_arn" != None
+          test -n "$evidence_key_arn" && test "$evidence_key_arn" != None
+          test -n "$bucket" && test "$bucket" != None
+          python scripts/generate-challenge-evidence.py --release-id "$RELEASE_ID" --source-sha "$GITHUB_SHA" \
+            --image-digest "${{ steps.image.outputs.digest }}" --key-thumbprint "$kid"
+          prefix="releases/$RELEASE_ID"
+          python scripts/upload-release-artifacts.py --bucket "$bucket" --prefix "$prefix" \
+            --kms-key-arn "$evidence_key_arn" --output artifacts/release-artifacts-manifest.jcs.json
+          echo "trusted_keys=$(tr -d '\n' < tools/trusted-receipt-keys.json)" >> "$GITHUB_OUTPUT"
+          echo "manifest=$(tr -d '\n' < artifacts/release-artifacts-manifest.jcs.json)" >> "$GITHUB_OUTPUT"
+          echo "prefix=$prefix" >> "$GITHUB_OUTPUT"
+          echo "kid=$kid" >> "$GITHUB_OUTPUT"
+
+      - name: Update stack with all public services stopped
+        run: |
+          set -euo pipefail
+          params=()
+          while read -r key; do
+            case "$key" in
+              BuildSha) value="$GITHUB_SHA" ;;
+              ImageDigest) value="${{ steps.image.outputs.digest }}" ;;
+              ImageUri) value="${{ steps.image.outputs.uri }}" ;;
+              ReleaseId) value="$RELEASE_ID" ;;
+              ReceiptKeyThumbprint) value="${{ steps.artifacts.outputs.kid }}" ;;
+              TrustedKeysJson) value="${{ steps.artifacts.outputs.trusted_keys }}" ;;
+              ReleaseArtifactsManifestJson) value="${{ steps.artifacts.outputs.manifest }}" ;;
+              ReleaseArtifactsPrefix) value="${{ steps.artifacts.outputs.prefix }}" ;;
+              DesiredApiCount|DesiredOutboxCount|DesiredReceiptCount) value=0 ;;
+              *) params+=("ParameterKey=$key,UsePreviousValue=true"); continue ;;
+            esac
+            params+=("ParameterKey=$key,ParameterValue=$value")
+          done < <(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
+          change_set="release-zero-$GITHUB_RUN_ID"
+          aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
+            --change-set-type UPDATE --template-body file://infra/aws/public-demo.yaml \
+            --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
+            --capabilities CAPABILITY_NAMED_IAM --parameters "${params[@]}"
+          aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+
+      - name: Run and verify one-shot migration
+        run: |
+          set -euo pipefail
+          cluster="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue | [0]" --output text)"
+          task_definition="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='MigrationTaskDefinitionArn'].OutputValue | [0]" --output text)"
+          security_group="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='WorkerTaskSecurityGroupId'].OutputValue | [0]" --output text)"
+          subnets="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='PublicSubnetIds'].OutputValue | [0]" --output text)"
+          task_arn="$(aws ecs run-task --cluster "$cluster" --launch-type FARGATE --task-definition "$task_definition" \
+            --network-configuration "awsvpcConfiguration={subnets=[$subnets],securityGroups=[$security_group],assignPublicIp=ENABLED}" \
+            --query 'tasks[0].taskArn' --output text)"
+          test -n "$task_arn" && test "$task_arn" != None
+          aws ecs wait tasks-stopped --cluster "$cluster" --tasks "$task_arn"
+          exit_code="$(aws ecs describe-tasks --cluster "$cluster" --tasks "$task_arn" --query 'tasks[0].containers[0].exitCode' --output text)"
+          test "$exit_code" = 0
+
+      - name: Activate API and receipt services after migration
+        run: |
+          set -euo pipefail
+          params=()
+          while read -r key; do
+            case "$key" in
+              DesiredApiCount|DesiredReceiptCount) params+=("ParameterKey=$key,ParameterValue=1") ;;
+              DesiredOutboxCount) params+=("ParameterKey=$key,ParameterValue=0") ;;
+              *) params+=("ParameterKey=$key,UsePreviousValue=true") ;;
+            esac
+          done < <(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
+          change_set="release-live-$GITHUB_RUN_ID"
+          aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
+            --change-set-type UPDATE --use-previous-template \
+            --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
+            --capabilities CAPABILITY_NAMED_IAM --parameters "${params[@]}"
+          aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
+          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+          cluster="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue | [0]" --output text)"
+          api="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiServiceName'].OutputValue | [0]" --output text)"
+          receipt="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ReceiptServiceName'].OutputValue | [0]" --output text)"
+          aws ecs wait services-stable --cluster "$cluster" --services "$api" "$receipt"
+
+      - name: Retain release inputs
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        if: always()
+        with:
+          name: recallops-public-release-${{ github.run_id }}
+          path: |
+            artifacts/aws/zero-spend-preflight.json
+            artifacts/release/**
+            artifacts/release-artifacts-manifest.jcs.json
+          if-no-files-found: warn
+          retention-days: 14
