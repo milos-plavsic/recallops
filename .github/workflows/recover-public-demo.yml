@@ -85,10 +85,11 @@ jobs:
           ]
           with open('recovery-parameters.json', 'w', encoding='utf-8') as output:
               json.dump(parameters, output)
-          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
-              required = any(current_values.get(key) != value for key, value in desired.items())
-              output.write(f'RECALLOPS_ACTIVATION_REQUIRED={str(required).lower()}\\n')
+          required = any(current_values.get(key) != value for key, value in desired.items())
+          with open('recovery-activation-required', 'w', encoding='utf-8') as output:
+              output.write(str(required).lower())
           PY
+          RECALLOPS_ACTIVATION_REQUIRED="$(<recovery-activation-required)"
           if [ "$RECALLOPS_ACTIVATION_REQUIRED" = true ]; then
             change_set="recovery-live-$GITHUB_RUN_ID"
             aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
