@@ -383,6 +383,22 @@ def test_deployment_authority_is_current_account_only_and_cannot_sign() -> None:
     assert migration_roles["Condition"] == {
         "StringEquals": {"iam:PassedToService": "ecs-tasks.amazonaws.com"}
     }
+    recovery_services = next(
+        statement
+        for statement in deployment["Statement"]
+        if statement["Sid"] == "ObserveOnlyPublicRecoveryServices"
+    )
+    assert recovery_services == {
+        "Sid": "ObserveOnlyPublicRecoveryServices",
+        "Effect": "Allow",
+        "Action": "ecs:DescribeServices",
+        "Resource": [
+            f"arn:aws:ecs:us-east-1:{CURRENT_ACCOUNT}:service/"
+            "recallops-public-cluster/recallops-public-api",
+            f"arn:aws:ecs:us-east-1:{CURRENT_ACCOUNT}:service/"
+            "recallops-public-cluster/recallops-public-receipt",
+        ],
+    }
 
 
 def test_cloudformation_execution_policy_has_no_wildcard_identity_mutation() -> None:
