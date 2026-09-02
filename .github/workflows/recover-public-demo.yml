@@ -69,27 +69,36 @@ jobs:
           import os
           import subprocess
 
-          keys = subprocess.check_output([
+          current = json.loads(subprocess.check_output([
               'aws', 'cloudformation', 'describe-stacks', '--stack-name', os.environ['STACK_NAME'],
-              '--query', 'Stacks[0].Parameters[].ParameterKey', '--output', 'json',
-          ], text=True)
+              '--query', 'Stacks[0].Parameters', '--output', 'json',
+          ], text=True))
           desired = {'DesiredApiCount': '1', 'DesiredOutboxCount': '0', 'DesiredReceiptCount': '1'}
+          current_values = {
+              parameter['ParameterKey']: parameter.get('ParameterValue')
+              for parameter in current
+          }
           parameters = [
               {'ParameterKey': key, 'ParameterValue': desired[key]}
               if key in desired else {'ParameterKey': key, 'UsePreviousValue': True}
-              for key in json.loads(keys)
+              for key in current_values
           ]
           with open('recovery-parameters.json', 'w', encoding='utf-8') as output:
               json.dump(parameters, output)
+          with open(os.environ['GITHUB_ENV'], 'a', encoding='utf-8') as output:
+              required = any(current_values.get(key) != value for key, value in desired.items())
+              output.write(f'RECALLOPS_ACTIVATION_REQUIRED={str(required).lower()}\\n')
           PY
-          change_set="recovery-live-$GITHUB_RUN_ID"
-          aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
-            --change-set-type UPDATE --use-previous-template \
-            --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
-            --capabilities CAPABILITY_NAMED_IAM --parameters file://recovery-parameters.json
-          aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
-          aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
-          aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+          if [ "$RECALLOPS_ACTIVATION_REQUIRED" = true ]; then
+            change_set="recovery-live-$GITHUB_RUN_ID"
+            aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
+              --change-set-type UPDATE --use-previous-template \
+              --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
+              --capabilities CAPABILITY_NAMED_IAM --parameters file://recovery-parameters.json
+            aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
+            aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
+            aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
+          fi
           cluster="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ClusterName'].OutputValue | [0]" --output text)"
           api="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ApiServiceName'].OutputValue | [0]" --output text)"
           receipt="$(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query "Stacks[0].Outputs[?OutputKey=='ReceiptServiceName'].OutputValue | [0]" --output text)"
