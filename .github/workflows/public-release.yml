@@ -99,29 +99,48 @@ jobs:
           echo "kid=$kid" >> "$GITHUB_OUTPUT"
 
       - name: Update stack with all public services stopped
+        env:
+          IMAGE_DIGEST: ${{ steps.image.outputs.digest }}
+          IMAGE_URI: ${{ steps.image.outputs.uri }}
+          RECEIPT_KEY_THUMBPRINT: ${{ steps.artifacts.outputs.kid }}
+          TRUSTED_KEYS_JSON: ${{ steps.artifacts.outputs.trusted_keys }}
+          RELEASE_ARTIFACTS_MANIFEST_JSON: ${{ steps.artifacts.outputs.manifest }}
+          RELEASE_ARTIFACTS_PREFIX: ${{ steps.artifacts.outputs.prefix }}
         run: |
           set -euo pipefail
-          params=()
-          while read -r key; do
-            case "$key" in
-              BuildSha) value="$GITHUB_SHA" ;;
-              ImageDigest) value="${{ steps.image.outputs.digest }}" ;;
-              ImageUri) value="${{ steps.image.outputs.uri }}" ;;
-              ReleaseId) value="$RELEASE_ID" ;;
-              ReceiptKeyThumbprint) value="${{ steps.artifacts.outputs.kid }}" ;;
-              TrustedKeysJson) value="${{ steps.artifacts.outputs.trusted_keys }}" ;;
-              ReleaseArtifactsManifestJson) value="${{ steps.artifacts.outputs.manifest }}" ;;
-              ReleaseArtifactsPrefix) value="${{ steps.artifacts.outputs.prefix }}" ;;
-              DesiredApiCount|DesiredOutboxCount|DesiredReceiptCount) value=0 ;;
-              *) params+=("ParameterKey=$key,UsePreviousValue=true"); continue ;;
-            esac
-            params+=("ParameterKey=$key,ParameterValue=$value")
-          done < <(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          keys = subprocess.check_output([
+              'aws', 'cloudformation', 'describe-stacks', '--stack-name', os.environ['STACK_NAME'],
+              '--query', 'Stacks[0].Parameters[].ParameterKey', '--output', 'json',
+          ], text=True)
+          changed = {
+              'BuildSha': os.environ['GITHUB_SHA'],
+              'ImageDigest': os.environ['IMAGE_DIGEST'],
+              'ImageUri': os.environ['IMAGE_URI'],
+              'ReleaseId': os.environ['RELEASE_ID'],
+              'ReceiptKeyThumbprint': os.environ['RECEIPT_KEY_THUMBPRINT'],
+              'TrustedKeysJson': os.environ['TRUSTED_KEYS_JSON'],
+              'ReleaseArtifactsManifestJson': os.environ['RELEASE_ARTIFACTS_MANIFEST_JSON'],
+              'ReleaseArtifactsPrefix': os.environ['RELEASE_ARTIFACTS_PREFIX'],
+              'DesiredApiCount': '0', 'DesiredOutboxCount': '0', 'DesiredReceiptCount': '0',
+          }
+          parameters = [
+              {'ParameterKey': key, 'ParameterValue': changed[key]}
+              if key in changed else {'ParameterKey': key, 'UsePreviousValue': True}
+              for key in json.loads(keys)
+          ]
+          with open('artifacts/release-zero-parameters.json', 'w', encoding='utf-8') as output:
+              json.dump(parameters, output)
+          PY
           change_set="release-zero-$GITHUB_RUN_ID"
           aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
             --change-set-type UPDATE --template-body file://infra/aws/public-demo.yaml \
             --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
-            --capabilities CAPABILITY_NAMED_IAM --parameters "${params[@]}"
+            --capabilities CAPABILITY_NAMED_IAM --parameters file://artifacts/release-zero-parameters.json
           aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
           aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
           aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
@@ -144,19 +163,29 @@ jobs:
       - name: Activate API and receipt services after migration
         run: |
           set -euo pipefail
-          params=()
-          while read -r key; do
-            case "$key" in
-              DesiredApiCount|DesiredReceiptCount) params+=("ParameterKey=$key,ParameterValue=1") ;;
-              DesiredOutboxCount) params+=("ParameterKey=$key,ParameterValue=0") ;;
-              *) params+=("ParameterKey=$key,UsePreviousValue=true") ;;
-            esac
-          done < <(aws cloudformation describe-stacks --stack-name "$STACK_NAME" --query 'Stacks[0].Parameters[].ParameterKey' --output text | tr '\t' '\n')
+          python - <<'PY'
+          import json
+          import os
+          import subprocess
+
+          keys = subprocess.check_output([
+              'aws', 'cloudformation', 'describe-stacks', '--stack-name', os.environ['STACK_NAME'],
+              '--query', 'Stacks[0].Parameters[].ParameterKey', '--output', 'json',
+          ], text=True)
+          desired = {'DesiredApiCount': '1', 'DesiredOutboxCount': '0', 'DesiredReceiptCount': '1'}
+          parameters = [
+              {'ParameterKey': key, 'ParameterValue': desired[key]}
+              if key in desired else {'ParameterKey': key, 'UsePreviousValue': True}
+              for key in json.loads(keys)
+          ]
+          with open('artifacts/release-live-parameters.json', 'w', encoding='utf-8') as output:
+              json.dump(parameters, output)
+          PY
           change_set="release-live-$GITHUB_RUN_ID"
           aws cloudformation create-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set" \
             --change-set-type UPDATE --use-previous-template \
             --role-arn arn:aws:iam::158363272009:role/recallops-cloudformation-execution \
-            --capabilities CAPABILITY_NAMED_IAM --parameters "${params[@]}"
+            --capabilities CAPABILITY_NAMED_IAM --parameters file://artifacts/release-live-parameters.json
           aws cloudformation wait change-set-create-complete --stack-name "$STACK_NAME" --change-set-name "$change_set"
           aws cloudformation execute-change-set --stack-name "$STACK_NAME" --change-set-name "$change_set"
           aws cloudformation wait stack-update-complete --stack-name "$STACK_NAME"
